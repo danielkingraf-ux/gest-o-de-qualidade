@@ -27,6 +27,16 @@ Este é um aplicativo de gestão de qualidade desenvolvido em React com TypeScri
 3. Execute o aplicativo:
    `npm run dev`
 
+## Deploy na Vercel
+
+Este projeto usa **Vite**, então as variáveis devem começar com `VITE_`.
+
+Em **Settings → Environment Variables**, crie:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Depois faça um **Redeploy** para aplicar as variáveis no runtime.
+
 ## Build para Produção
 
 `npm run build`
