@@ -59,9 +59,7 @@ const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
 import { ToastProvider, useToast } from './contexts/ToastContext';
 
-// ... (keep ThemeContext as is for I'm only refactoring Toast for now, though Theme could be moved too)
 
-// Theme System ... (lines 22-68, keep them)
 
 
 const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number }) => {
