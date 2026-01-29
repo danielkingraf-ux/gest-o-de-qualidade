@@ -3,7 +3,8 @@ export enum ProcessType {
   OFFSET = 'OFFSET',
   UV = 'UV',
   HOT_STAMPING = 'HOT_STAMPING',
-  ESCOLHAS = 'ESCOLHAS'
+  ESCOLHAS = 'ESCOLHAS',
+  ACABAMENTO = 'ACABAMENTO'
 }
 
 export enum InspectionStatus {

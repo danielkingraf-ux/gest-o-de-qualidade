@@ -83,6 +83,15 @@ const CATEGORY_CONFIG: Record<ProcessType, {
     tabClass: 'bg-gradient-to-br from-amber-50 via-white to-amber-100 dark:from-amber-950/30 dark:via-slate-900 dark:to-amber-900/20 border-amber-200 dark:border-amber-900/60',
     ringClass: 'ring-2 ring-amber-200 dark:ring-amber-900/60'
   },
+  [ProcessType.ACABAMENTO]: {
+    label: 'Acabamento',
+    description: 'Inspeção Final',
+    icon: 'verified',
+    dotClass: 'bg-violet-500',
+    badgeClass: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200',
+    tabClass: 'bg-gradient-to-br from-violet-50 via-white to-violet-100 dark:from-violet-950/30 dark:via-slate-900 dark:to-violet-900/20 border-violet-200 dark:border-violet-900/60',
+    ringClass: 'ring-2 ring-violet-200 dark:ring-violet-900/60'
+  },
 };
 
 const normalizeProcessType = (type?: string) => {
@@ -120,7 +129,7 @@ const getCategoryMeta = (type?: string) => {
   return CATEGORY_CONFIG[normalized] || CATEGORY_CONFIG[ProcessType.OFFSET];
 };
 
-const CATEGORY_ORDER: Array<ProcessType | 'ALL'> = ['ALL', ProcessType.OFFSET, ProcessType.UV, ProcessType.HOT_STAMPING];
+const CATEGORY_ORDER: Array<ProcessType | 'ALL'> = ['ALL', ProcessType.OFFSET, ProcessType.UV, ProcessType.HOT_STAMPING, ProcessType.ACABAMENTO];
 
 export default function RecordsView() {
   const { showToast } = useToast();
@@ -237,6 +246,23 @@ export default function RecordsView() {
   const getDefectsList = (record: any) => {
     try {
       const obs = record.observations ? JSON.parse(record.observations) : {};
+
+      // Finishing records have categorized defects
+      if (obs.is_finishing_laudo && obs.defects) {
+        const categories = ['critical', 'major', 'minor'];
+        const flattened: any[] = [];
+        categories.forEach(cat => {
+          if (obs.defects[cat]) {
+            Object.entries(obs.defects[cat]).forEach(([key, count]) => {
+              if ((count as number) > 0) {
+                flattened.push({ name: key.replace(/_/g, ' '), count, category: cat });
+              }
+            });
+          }
+        });
+        return flattened;
+      }
+
       const defects = obs.defects || {};
       // Filter only defects with count > 0
       return Object.entries(defects)
@@ -326,7 +352,8 @@ export default function RecordsView() {
       [ProcessType.OFFSET]: 0,
       [ProcessType.UV]: 0,
       [ProcessType.HOT_STAMPING]: 0,
-      [ProcessType.ESCOLHAS]: 0
+      [ProcessType.ESCOLHAS]: 0,
+      [ProcessType.ACABAMENTO]: 0
     };
     visibleRecords.forEach(record => {
       const key = normalizeProcessType(record.displayProcessType || record.process_type);
@@ -553,7 +580,13 @@ export default function RecordsView() {
                             </>
                           )}
                           <button
-                            onClick={() => reportService.generateInspectionPDF(record, operatorsList, analystsList)}
+                            onClick={() => {
+                              if (record.displayProcessType === ProcessType.ACABAMENTO) {
+                                reportService.generateFinishingPDF(record, operatorsList, analystsList);
+                              } else {
+                                reportService.generateInspectionPDF(record, operatorsList, analystsList);
+                              }
+                            }}
                             className="p-2 text-slate-400 hover:text-primary transition-colors rounded-lg"
                             title="Exportar PDF"
                           >
@@ -670,7 +703,41 @@ export default function RecordsView() {
                   {getStatusLabel(viewingRecord.status)}
                 </span>
               </div>
+              {parseObservations(viewingRecord.observations).desenho_tecnico && (
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">Desenho Técnico</p>
+                  <p className="font-bold text-sm text-violet-600 italic">{parseObservations(viewingRecord.observations).desenho_tecnico}</p>
+                </div>
+              )}
             </div>
+
+            {parseObservations(viewingRecord.observations).is_finishing_laudo && parseObservations(viewingRecord.observations).tests && (
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Testes Técnicos (Amostras)</p>
+                <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+                  <table className="w-full text-left text-[10px]">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50">
+                      <tr>
+                        <th className="p-2 font-black uppercase text-slate-400">Teste</th>
+                        <th className="p-2 font-black uppercase text-slate-400 text-center">A1</th>
+                        <th className="p-2 font-black uppercase text-slate-400 text-center">A2</th>
+                        <th className="p-2 font-black uppercase text-violet-500 text-center">Média</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                      {Object.entries(parseObservations(viewingRecord.observations).tests).map(([key, data]: [string, any]) => (
+                        <tr key={key}>
+                          <td className="p-2 font-bold capitalize text-slate-600">{key}</td>
+                          <td className="p-2 text-center">{data.a1 || '-'}</td>
+                          <td className="p-2 text-center">{data.a2 || '-'}</td>
+                          <td className="p-2 text-center font-black text-violet-600 bg-violet-50/30">{data.avg || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Equipe Técnica</p>
@@ -690,12 +757,21 @@ export default function RecordsView() {
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Defeitos / Ocorrências</p>
               {getDefectsList(viewingRecord).length > 0 ? (
                 <div className="space-y-2">
-                  {getDefectsList(viewingRecord).map((d: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-center bg-rose-50 dark:bg-rose-900/10 p-2 rounded-lg border border-rose-100 dark:border-rose-900/30">
-                      <span className="text-xs font-bold text-rose-700 dark:text-rose-400 uppercase">{d.name}</span>
-                      <span className="text-sm font-black text-rose-800 dark:text-rose-300">{d.count}</span>
-                    </div>
-                  ))}
+                  {getDefectsList(viewingRecord).map((d: any, idx: number) => {
+                    const colorClasses =
+                      d.category === 'critical' ? 'bg-rose-50 border-rose-100 text-rose-700' :
+                        d.category === 'major' ? 'bg-amber-50 border-amber-100 text-amber-700' :
+                          'bg-slate-50 border-slate-100 text-slate-700';
+                    return (
+                      <div key={idx} className={`flex justify-between items-center p-2 rounded-lg border ${colorClasses}`}>
+                        <div className="flex items-center gap-2">
+                          {d.category && <span className="text-[8px] font-black uppercase tracking-widest opacity-50">{d.category}</span>}
+                          <span className="text-xs font-bold uppercase">{d.name}</span>
+                        </div>
+                        <span className="text-sm font-black">{d.count}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm italic text-slate-400">Nenhum defeito registrado.</p>

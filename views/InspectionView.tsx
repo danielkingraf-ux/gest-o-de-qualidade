@@ -673,33 +673,31 @@ export default function InspectionView() {
             </div>
           </div>
         )}
-
       </main>
 
       {/* --- Rodapé Fixo --- */}
       <footer className="fixed bottom-0 left-64 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 p-6 flex justify-end gap-3 z-30">
         <button
           onClick={resetAll}
-          className="h-12 px-8 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-xs tracking-widest hover:bg-slate-50 transition-all"
+          className="h-12 px-8 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-xs tracking-widest hover:bg-slate-50 transition-all text-slate-500"
         >
           LIMPAR
         </button>
         <button
           onClick={() => handleSave(false)}
           disabled={isSaving}
-          className="h-12 px-8 rounded-xl border border-primary text-primary font-black text-xs tracking-widest hover:bg-primary/5 transition-all"
+          className="h-12 px-8 rounded-xl border border-primary text-primary font-black text-xs tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50"
         >
-          SALVAR
+          {isSaving ? 'SALVANDO...' : 'SALVAR'}
         </button>
         <button
           onClick={() => handleSave(true)}
           disabled={isSaving}
-          className="h-12 px-8 rounded-xl bg-primary text-white font-black text-xs tracking-widest shadow-lg shadow-primary/25 hover:scale-[1.02] transition-all"
+          className="h-12 px-8 rounded-xl bg-primary text-white font-black text-xs tracking-widest shadow-lg shadow-primary/25 hover:scale-[1.02] transition-all disabled:opacity-50"
         >
-          SALVAR E NOVO
+          {isSaving ? 'SALVANDO...' : 'SALVAR E NOVO'}
         </button>
       </footer>
-
     </div>
   );
 }

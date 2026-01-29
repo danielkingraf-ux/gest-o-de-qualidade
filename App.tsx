@@ -9,6 +9,7 @@ import AdminView from './views/AdminView';
 import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import ShiftLogView from './views/ShiftLogView';
+import FinishingView from './views/FinishingView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
 
@@ -95,6 +96,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLog
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: 'dashboard' },
     { path: '/inspections', label: 'Inspeções', icon: 'assignment_turned_in' },
+    { path: '/finishing', label: 'Acabamento', icon: 'verified' },
     { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true },
     { path: '/records', label: 'Registros', icon: 'analytics' },
     { path: '/admin', label: 'Administração', icon: 'admin_panel_settings' },
@@ -340,6 +342,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<DashboardView />} />
                   <Route path="/inspections" element={<InspectionView />} />
+                  <Route path="/finishing" element={<FinishingView />} />
                   {/* Remove permanent shift-log route if we only want popup */}
                   <Route path="/shift-log" element={<ShiftLogView />} />
                   <Route path="/records" element={<RecordsView />} />
