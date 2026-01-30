@@ -81,8 +81,8 @@ export default function FinishingView() {
         qtd_analisada: 0,
     });
 
-    const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
-    const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
+    const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>(() => [{ rowId: nextRowId(), value: '' }]);
+    const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>(() => [{ rowId: nextRowId(), value: '' }]);
 
     const [tests, setTests] = useState({
         espessura: { a1: '', a2: '', avg: '', limit: '' },
@@ -116,13 +116,13 @@ export default function FinishingView() {
                 if (oRes.data) setOperators(oRes.data);
                 if (aRes.data) setAnalysts(aRes.data);
             } catch (err) {
-                showToast('Erro ao carregar dados mestres', 'error');
+                console.error('Erro ao carregar dados:', err);
             } finally {
                 setIsLoading(false);
             }
         }
         fetchData();
-    }, [showToast]);
+    }, []);
 
     const resetAll = useCallback(() => {
         setHeader({
