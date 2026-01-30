@@ -194,7 +194,7 @@ export default function FinishingView() {
     if (isLoading) return <div className="p-8 text-center animate-pulse text-slate-500">Inicializando...</div>;
 
     return (
-        <div className="p-4 md:p-6 max-w-full mx-auto space-y-4 pb-96">
+        <div className="p-4 md:p-6 max-w-full mx-auto space-y-4 pb-[450px]">
 
             {/* Header Compact */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-950 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -397,7 +397,7 @@ export default function FinishingView() {
             </div>
 
             {/* Bottom Footer Section */}
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-white dark:bg-slate-950 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-white dark:bg-slate-950 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm mb-12">
                 <div className="lg:col-span-2 space-y-2">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Notas Gerais do Analista</label>
                     <textarea
