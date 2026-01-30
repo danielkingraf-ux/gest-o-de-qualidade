@@ -130,7 +130,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-center px-4 py-6 border-b border-slate-100 dark:border-slate-800/50 mb-2">
           {isCollapsed ? (
-            <img src="/logo-symbol.png" alt="K" className="h-8 w-auto object-contain transition-all" />
+            <img src="/logo-symbol.png" alt="K" className="h-10 w-auto object-contain transition-all" />
           ) : (
             <img src="/logo-full.png" alt="Kingraf" className="h-12 w-auto object-contain transition-all" />
           )}

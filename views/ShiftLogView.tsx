@@ -156,75 +156,80 @@ export default function ShiftLogView() {
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto h-full flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
-                        <span className="material-symbols-outlined text-2xl">forum</span>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Chat da Qualidade</h1>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm">Bate-papo e alertas entre analistas</p>
-                    </div>
+        <div className="p-4 md:p-6 max-w-7xl mx-auto h-full flex flex-col gap-4 animate-fade-in pb-20">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="space-y-1">
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
+                        Comunicação em Tempo Real • Kingraf
+                    </p>
+                    <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Chat da Qualidade</h1>
+                    <p className="text-xs text-slate-500 font-medium">Bate-papo e alertas instantâneos entre analistas.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-[10px] font-black uppercase text-emerald-600 animate-pulse flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-emerald-500"></span>
+                        Analistas Online
+                    </span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
                 {/* Input Area */}
                 <div className="lg:col-span-1">
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 h-fit sticky top-6">
-                        <h3 className="font-bold text-lg mb-4 text-slate-800 dark:text-white flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary">edit_note</span>
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 h-fit sticky top-6">
+                        <h3 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-xl">edit_note</span>
                             Nova Mensagem
                         </h3>
-                        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tipo de Mensagem</label>
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Prioridade do Alerta</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     <button
                                         type="button"
                                         onClick={() => setType('info')}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${type === 'info' ? 'bg-sky-50 dark:bg-sky-900/30 border-sky-500 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${type === 'info' ? 'bg-primary/5 border-primary text-primary ring-4 ring-primary/5' : 'border-slate-100 dark:border-slate-800 text-slate-400 hover:bg-slate-50'}`}
                                     >
                                         <span className="material-symbols-outlined mb-1">chat</span>
-                                        <span className="text-xs font-bold">Chat</span>
+                                        <span className="text-[9px] font-black uppercase">Chat</span>
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setType('alert')}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${type === 'alert' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${type === 'alert' ? 'bg-amber-500/10 border-amber-500 text-amber-600 ring-4 ring-amber-500/10' : 'border-slate-100 dark:border-slate-800 text-slate-400 hover:bg-slate-50'}`}
                                     >
                                         <span className="material-symbols-outlined mb-1">warning</span>
-                                        <span className="text-xs font-bold">Alerta</span>
+                                        <span className="text-[9px] font-black uppercase">Alerta</span>
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setType('critical')}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${type === 'critical' ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-500 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${type === 'critical' ? 'bg-rose-500/10 border-rose-500 text-rose-600 ring-4 ring-rose-500/10' : 'border-slate-100 dark:border-slate-800 text-slate-400 hover:bg-slate-50'}`}
                                     >
                                         <span className="material-symbols-outlined mb-1">report</span>
-                                        <span className="text-xs font-bold">Urgente</span>
+                                        <span className="text-[9px] font-black uppercase">Urgente</span>
                                     </button>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mensagem</label>
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Mensagem Técnica</label>
                                 <textarea
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
-                                    placeholder="Digite sua mensagem para a equipe..."
-                                    className="w-full rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-primary focus:border-primary min-h-[150px] resize-none"
+                                    placeholder="Descreva a ocorrência ou mensagem..."
+                                    className="w-full rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4 text-xs font-medium focus:ring-2 focus:ring-primary/10 outline-none min-h-[140px] resize-none"
                                     required
                                 />
                             </div>
 
                             <button
                                 type="submit"
-                                className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 group"
+                                className="w-full h-11 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2 group"
                             >
-                                <span>Enviar Mensagem</span>
-                                <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">send</span>
+                                <span>ENVIAR MENSAGEM</span>
+                                <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">send</span>
                             </button>
                         </form>
                     </div>
@@ -232,59 +237,56 @@ export default function ShiftLogView() {
 
                 {/* Timeline Feed */}
                 <div className="lg:col-span-2 flex flex-col min-h-0">
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex-1 flex flex-col min-h-0 overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                <span className="material-symbols-outlined">forum</span>
-                                Conversas Recentes
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 flex-1 flex flex-col min-h-0 overflow-hidden">
+                        <div className="p-5 border-b border-slate-50 dark:border-slate-800/50 flex items-center justify-between">
+                            <h3 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-xl">forum</span>
+                                Fluxo de Atividade
                             </h3>
-                            <span className="text-xs font-medium px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full flex items-center gap-1 animate-pulse">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                Ao Vivo
+                            <span className="text-[9px] font-black px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg uppercase tracking-widest">
+                                Últimas 50 mensagens
                             </span>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" ref={feedRef}>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" ref={feedRef}>
                             {loading ? (
                                 <div className="flex justify-center p-8">
-                                    <span className="material-symbols-outlined text-4xl animate-spin text-slate-300">progress_activity</span>
+                                    <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
                                 </div>
                             ) : logs.length === 0 ? (
                                 <div className="text-center py-12 text-slate-400">
-                                    <span className="material-symbols-outlined text-5xl mb-2 opacity-50">forum</span>
-                                    <p>Nenhuma mensagem no chat.</p>
+                                    <span className="material-symbols-outlined text-4xl mb-2 opacity-20">forum</span>
+                                    <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma mensagem no histórico</p>
                                 </div>
                             ) : (
                                 logs.map((log) => (
-                                    <div key={log.id} className={`p-4 rounded-2xl border ${getTypeColor(log.type)} animate-fade-in relative transition-all hover:shadow-md group`}>
+                                    <div key={log.id} className={`p-4 rounded-2xl border ${getTypeColor(log.type)} animate-fade-in relative transition-all group border-opacity-50`}>
                                         <div className="flex items-start gap-4">
-                                            <div className={`p-2 rounded-xl bg-white/50 dark:bg-black/20 shrink-0`}>
-                                                <span className="material-symbols-outlined">{getTypeIcon(log.type)}</span>
+                                            <div className={`size-10 rounded-xl bg-white/40 dark:bg-black/20 flex items-center justify-center shrink-0`}>
+                                                <span className="material-symbols-outlined text-xl">{getTypeIcon(log.type)}</span>
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                <div className="flex items-center justify-between gap-2 mb-2">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-sm">{log.user_email?.split('@')[0]}</span>
-                                                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10">
-                                                            Turno {log.shift}
+                                                        <span className="text-xs font-black uppercase tracking-tight">{log.user_email?.split('@')[0]}</span>
+                                                        <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 opacity-70">
+                                                            {log.shift}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-xs opacity-70 flex items-center gap-1 whitespace-nowrap" title={new Date(log.created_at).toLocaleString()}>
-                                                            <span className="material-symbols-outlined text-[10px]">schedule</span>
+                                                        <span className="text-[9px] font-black uppercase tracking-widest opacity-40 flex items-center gap-1 whitespace-nowrap">
                                                             {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                            <span className="hidden sm:inline"> - {new Date(log.created_at).toLocaleDateString()}</span>
                                                         </span>
                                                         <button
                                                             onClick={() => handleDeleteClick(log.id, log.user_id)}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-black/10 dark:hover:bg-white/20 rounded-lg transition-all text-red-500"
-                                                            title="Excluir mensagem"
+                                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-rose-500 rounded-lg transition-all text-rose-500 hover:text-white"
+                                                            title="Excluir"
                                                         >
-                                                            <span className="material-symbols-outlined text-sm">delete</span>
+                                                            <span className="material-symbols-outlined text-[14px]">delete</span>
                                                         </button>
                                                     </div>
                                                 </div>
-                                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{log.content}</p>
+                                                <p className="text-[11px] font-medium whitespace-pre-wrap leading-relaxed opacity-90">{log.content}</p>
                                             </div>
                                         </div>
                                     </div>

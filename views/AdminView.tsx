@@ -17,34 +17,35 @@ export default function AdminView() {
     ];
 
     return (
-        <div className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-4 animate-fade-in">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 animate-fade-in pb-20">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="space-y-1">
-                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Painel de Controle</h1>
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
                         <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
-                        Gestão centralizada • Kingraf
+                        Painel de Controle • Kingraf
                     </p>
+                    <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none tracking-tighter">Administração</h1>
+                    <p className="text-xs text-slate-500 font-medium">Gestão centralizada de ativos e equipes.</p>
                 </div>
 
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800/50">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as Tab)}
-                            className={`flex items-center gap-2 px-4 h-9 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id
-                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                            className={`flex items-center gap-2 px-5 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id
+                                ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[1.05]'
+                                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-base">{tab.icon}</span>
-                            {tab.label}
+                            <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
+                            <span className="hidden sm:inline">{tab.label}</span>
                         </button>
                     ))}
                 </div>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-2">
                 {activeTab === 'machines' && <MachinesManager />}
                 {activeTab === 'operators' && <OperatorsManager />}
                 {activeTab === 'analysts' && <AnalystsManager />}
