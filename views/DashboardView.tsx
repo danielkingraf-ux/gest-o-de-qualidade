@@ -29,7 +29,19 @@ export default function DashboardView() {
                 .order('created_at', { ascending: true });
 
             if (inspError) throw inspError;
-            setData(inspections || []);
+            const parseObs = (obs?: string) => {
+                if (!obs) return {};
+                try {
+                    return JSON.parse(obs);
+                } catch {
+                    return {};
+                }
+            };
+            const cleaned = (inspections || []).filter((insp: any) => {
+                const obs = parseObs(insp.observations);
+                return obs.is_spreadsheet_analysis !== true && insp.status;
+            });
+            setData(cleaned);
 
             // Fetch Operators for naming
             const { data: opsData } = await supabase.from('operators').select('id, name');

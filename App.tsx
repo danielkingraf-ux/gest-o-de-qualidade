@@ -11,6 +11,7 @@ import DashboardView from './views/DashboardView';
 import ShiftLogView from './views/ShiftLogView';
 import FinishingView from './views/FinishingView';
 import FinishingAnalysisView from './views/FinishingAnalysisView';
+import ReportsView from './views/ReportsView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
 
@@ -102,6 +103,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
     { path: '/inspections', label: 'Inspeções', icon: 'assignment_turned_in' },
     { path: '/finishing', label: 'Acabamento', icon: 'verified' },
     { path: '/finishing-analysis', label: 'Análise Acabamento', icon: 'table_chart' },
+    { path: '/reports', label: 'Relatórios', icon: 'insert_chart' },
     { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true },
     { path: '/records', label: 'Registros', icon: 'analytics' },
     { path: '/admin', label: 'Administração', icon: 'admin_panel_settings' },
@@ -403,6 +405,7 @@ export default function App() {
                   <Route path="/inspections" element={<InspectionView />} />
                   <Route path="/finishing" element={<FinishingView />} />
                   <Route path="/finishing-analysis" element={<FinishingAnalysisView />} />
+                  <Route path="/reports" element={<ReportsView />} />
                   {/* Remove permanent shift-log route if we only want popup */}
                   <Route path="/shift-log" element={<ShiftLogView />} />
                   <Route path="/records" element={<RecordsView />} />

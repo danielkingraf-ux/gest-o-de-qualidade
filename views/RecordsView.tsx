@@ -108,6 +108,11 @@ const parseObservations = (observations?: string) => {
   }
 };
 
+const isSpreadsheetAnalysis = (record: any) => {
+  const obs = parseObservations(record.observations);
+  return obs.is_spreadsheet_analysis === true;
+};
+
 const mapEscolhaFromObservations = (obs: any) => {
   if (!obs) return null;
   if (obs.escolha) return obs.escolha;
@@ -364,18 +369,19 @@ export default function RecordsView() {
 
   // Dynamic stats
   const stats = useMemo(() => {
-    if (visibleRecords.length === 0) return { apr: '0%', fail: '0%', total: '0', pending: '0' };
-    const approved = visibleRecords.filter(r => r.status === 'APPROVED').length;
-    const rejected = visibleRecords.filter(r => r.status === 'REJECTED').length;
-    const restricted = visibleRecords.filter(r => r.status === 'RESTRICTED').length;
+    const kpiRecords = visibleRecords.filter(r => !isSpreadsheetAnalysis(r) && r.status);
+    if (kpiRecords.length === 0) return { apr: '0%', fail: '0%', total: '0', pending: '0' };
+    const approved = kpiRecords.filter(r => r.status === 'APPROVED').length;
+    const rejected = kpiRecords.filter(r => r.status === 'REJECTED').length;
+    const restricted = kpiRecords.filter(r => r.status === 'RESTRICTED').length;
 
     return {
-      apr: `${((approved / records.length) * 100).toFixed(1)}%`,
-      fail: `${((rejected / records.length) * 100).toFixed(1)}%`,
-      total: records.length.toString(),
+      apr: `${((approved / kpiRecords.length) * 100).toFixed(1)}%`,
+      fail: `${((rejected / kpiRecords.length) * 100).toFixed(1)}%`,
+      total: kpiRecords.length.toString(),
       pending: restricted.toString()
     };
-  }, [records]);
+  }, [visibleRecords]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);

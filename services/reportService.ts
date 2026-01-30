@@ -1,6 +1,7 @@
 ﻿
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { supabase } from './supabase';
 import { InspectionRecord } from '../types';
 
 export const reportService = {
@@ -311,5 +312,134 @@ export const reportService = {
             console.error(e);
             return false;
         }
+    }
+    ,
+    async generateSummaryReportPDF(report: {
+        title: string;
+        generatedAt: string;
+        filters?: Record<string, string>;
+        totals: { inspections: number; defects: number; approved: number; rejected: number; restricted: number };
+        topMachines: Array<{ name: string; count: number }>;
+        topOperators: Array<{ name: string; count: number }>;
+        topDefects: Array<{ name: string; count: number }>;
+        weekly: Array<{ label: string; inspections: number; defects: number }>;
+        monthly: Array<{ label: string; inspections: number; defects: number }>;
+        annual: Array<{ label: string; inspections: number; defects: number }>;
+    }, options: { save?: boolean; filename?: string; returnBlob?: boolean } = {}) {
+        const { save = true, filename = 'RELATORIO_QUALIDADE.pdf', returnBlob = false } = options;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        // Header
+        doc.setFillColor(30, 41, 59);
+        doc.rect(0, 0, pageWidth, 60, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text(report.title, 20, 32);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Gerado em: ${report.generatedAt}`, pageWidth - 20, 30, { align: 'right' });
+
+        let y = 80;
+        doc.setTextColor(31, 41, 55);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text('Resumo Geral', 20, y);
+        y += 8;
+
+        autoTable(doc, {
+            startY: y,
+            body: [
+                ['Inspeções', report.totals.inspections.toString(), 'Defeitos', report.totals.defects.toString()],
+                ['Aprovados', report.totals.approved.toString(), 'Reprovados', report.totals.rejected.toString()],
+                ['Restritos', report.totals.restricted.toString(), '', '']
+            ],
+            theme: 'plain',
+            styles: { fontSize: 9, cellPadding: 2 },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 80 }, 2: { fontStyle: 'bold', cellWidth: 80 } },
+            margin: { left: 20 }
+        });
+
+        y = (doc as any).lastAutoTable.finalY + 10;
+
+        const drawBarChart = (title: string, data: Array<{ name: string; count: number }>) => {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text(title, 20, y);
+            y += 6;
+            const maxVal = Math.max(1, ...data.map(d => d.count));
+            const chartWidth = pageWidth - 60;
+            data.slice(0, 8).forEach((d, idx) => {
+                const barWidth = (d.count / maxVal) * chartWidth;
+                const rowY = y + idx * 14;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                doc.text(d.name.substring(0, 28), 20, rowY + 8);
+                doc.setFillColor(99, 102, 241);
+                doc.rect(160, rowY + 1, barWidth, 8, 'F');
+                doc.setTextColor(31, 41, 55);
+                doc.text(String(d.count), 160 + barWidth + 6, rowY + 8);
+            });
+            y += data.slice(0, 8).length * 14 + 10;
+        };
+
+        drawBarChart('Top Problemas', report.topDefects);
+        drawBarChart('Top Máquinas', report.topMachines);
+        drawBarChart('Top Operadores', report.topOperators);
+
+        const addSeriesTable = (title: string, series: Array<{ label: string; inspections: number; defects: number }>) => {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text(title, 20, y);
+            y += 6;
+            autoTable(doc, {
+                startY: y,
+                head: [['Período', 'Inspeções', 'Defeitos']],
+                body: series.map(s => [s.label, s.inspections.toString(), s.defects.toString()]),
+                theme: 'grid',
+                styles: { fontSize: 8, halign: 'center' },
+                headStyles: { fillColor: [15, 118, 110], textColor: 255, fontSize: 8 },
+                margin: { left: 20, right: 20 }
+            });
+            y = (doc as any).lastAutoTable.finalY + 10;
+            if (y > pageHeight - 140) {
+                doc.addPage();
+                y = 40;
+            }
+        };
+
+        addSeriesTable('Série Semanal (últimas 12 semanas)', report.weekly);
+        addSeriesTable('Série Mensal (últimos 12 meses)', report.monthly);
+        addSeriesTable('Série Anual (últimos 5 anos)', report.annual);
+
+        let blob: Blob | null = null;
+        if (returnBlob) {
+            blob = doc.output('blob');
+        }
+        if (save) {
+            doc.save(filename);
+        }
+        return blob;
+    },
+    async sendReportEmail(payload: { to: string; subject: string; filename: string; pdfBlob: Blob }) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = () => reject(new Error('Falha ao ler PDF'));
+            reader.readAsDataURL(payload.pdfBlob);
+        });
+
+        const { data, error } = await supabase.functions.invoke('send-report-email', {
+            body: {
+                to: payload.to,
+                subject: payload.subject,
+                filename: payload.filename,
+                fileBase64: base64
+            }
+        });
+        if (error) throw error;
+        return data;
     }
 };

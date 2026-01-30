@@ -1,8 +1,8 @@
 ﻿
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
-import { ProcessType, Analyst } from '../types';
+import { ProcessType, Analyst, InspectionStatus } from '../types';
 
 const DEFECT_COLUMNS = [
     { key: 'manchas', label: 'Manchas', icon: 'texture' },
@@ -131,6 +131,7 @@ export default function FinishingAnalysisView() {
             const dataToSave = {
                 op: formData.op,
                 analyst_id: formData.analyst_id,
+                status: InspectionStatus.APPROVED,
                 samples_count: formData.amostragem,
                 process_type: ProcessType.ACABAMENTO,
                 created_at: new Date().toISOString(),
