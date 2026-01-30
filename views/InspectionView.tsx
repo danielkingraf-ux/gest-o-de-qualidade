@@ -323,7 +323,7 @@ export default function InspectionView() {
   if (isLoading) return <div className="p-8 text-center italic">Carregando...</div>;
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4 pb-48">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4 pb-56 md:pb-48">
 
       {/* --- Cabeçalho de Tela Compacto --- */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -685,24 +685,24 @@ export default function InspectionView() {
       </main>
 
       {/* --- Rodapé Fixo Compacto --- */}
-      <footer className="fixed bottom-0 left-0 md:left-64 right-0 p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex justify-end items-center gap-3 z-30">
+      <footer className="fixed bottom-0 left-[var(--sidebar-width)] right-0 p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:justify-end items-stretch sm:items-center gap-3 z-30">
         <button
           onClick={resetAll}
-          className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] tracking-widest hover:bg-slate-50 transition-all text-slate-500 uppercase"
+          className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] tracking-widest hover:bg-slate-50 transition-all text-slate-500 uppercase w-full sm:w-auto"
         >
           LIMPAR
         </button>
         <button
           onClick={() => handleSave(false)}
           disabled={isSaving}
-          className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase"
+          className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase w-full sm:w-auto"
         >
           {isSaving ? '...' : 'SALVAR'}
         </button>
         <button
           onClick={() => handleSave(true)}
           disabled={isSaving}
-          className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase"
+          className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase w-full sm:w-auto"
         >
           {isSaving ? 'SINC...' : 'SALVAR E NOVO'}
         </button>

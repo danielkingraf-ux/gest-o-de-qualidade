@@ -194,7 +194,7 @@ export default function FinishingView() {
     if (isLoading) return <div className="p-8 text-center animate-pulse text-slate-500">Inicializando...</div>;
 
     return (
-        <div className="p-4 md:p-6 max-w-full mx-auto space-y-4 pb-24">
+        <div className="p-4 md:p-6 max-w-full mx-auto space-y-4 pb-32 md:pb-36">
 
             {/* Header Compact */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-950 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -433,39 +433,17 @@ export default function FinishingView() {
                 </div>
             </section>
 
-            {/* Parecer Final Mini-Bar */}
-            <div className="fixed bottom-0 left-0 md:left-64 right-0 p-4 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex flex-wrap justify-between items-center z-50 gap-4">
-                <div className="flex gap-4 items-center">
-                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">Parecer Final do Lote:</span>
-                    <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl gap-1">
-                        {[
-                            { id: InspectionStatus.APPROVED, label: 'APROVADO', icon: 'check_circle', color: 'bg-emerald-500' },
-                            { id: InspectionStatus.RESTRICTED, label: 'RESTRITO', icon: 'warning', color: 'bg-amber-500' },
-                            { id: InspectionStatus.REJECTED, label: 'REPROVADO', icon: 'cancel', color: 'bg-rose-500' }
-                        ].map(s => (
-                            <button
-                                key={s.id}
-                                onClick={() => setDefects(p => ({ ...p, status: s.id as any }))}
-                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-2 ${defects.status === s.id ? `${s.color} text-white shadow-lg shadow-current/20` : 'text-slate-400 opacity-60'}`}
-                            >
-                                <span className="material-symbols-outlined text-sm">{s.icon}</span>
-                                {s.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="flex gap-3 ml-auto">
-                    <button onClick={resetAll} className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-800 font-bold text-[10px] text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-tighter">Limpar</button>
-                    <button
-                        onClick={() => handleSave(false)}
-                        disabled={isSaving}
-                        className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] hover:bg-violet-700 transition-all shadow-xl shadow-violet-500/20 flex items-center gap-2 disabled:opacity-50 uppercase tracking-tighter"
-                    >
-                        {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">save_as</span>}
-                        Salvar Laudo
-                    </button>
-                </div>
+            {/* Barra de Ações */}
+            <div className="fixed bottom-0 left-[var(--sidebar-width)] right-0 p-4 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex flex-wrap justify-end items-center z-50 gap-3">
+                <button onClick={resetAll} className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-800 font-bold text-[10px] text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-tighter">Limpar</button>
+                <button
+                    onClick={() => handleSave(false)}
+                    disabled={isSaving}
+                    className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] hover:bg-violet-700 transition-all shadow-xl shadow-violet-500/20 flex items-center gap-2 disabled:opacity-50 uppercase tracking-tighter"
+                >
+                    {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">save_as</span>}
+                    Salvar Laudo
+                </button>
             </div>
         </div>
     );

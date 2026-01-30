@@ -21,6 +21,7 @@ export const reportService = {
             const headerData = parsedObservations.header || {};
             const testsData = parsedObservations.tests || {};
             const defectsData = parsedObservations.defects || { critical: {}, major: {}, minor: {} };
+            const isSpreadsheetAnalysis = parsedObservations.is_spreadsheet_analysis === true;
 
             // Helper to get names
             const getNames = (type: 'operator' | 'analyst') => {
@@ -146,13 +147,14 @@ export const reportService = {
             // -- Final Opinion & Observations --
             y = (doc as any).lastAutoTable?.finalY + 15 || y + 15;
 
-            const statusColor = record.status === 'APPROVED' ? [16, 185, 129] : [220, 38, 38];
-            doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
-            doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`PARECER FINAL: ${record.status === 'APPROVED' ? 'LOTE APROVADO' : 'LOTE REPROVADO'}`, 15, y);
-
-            y += 10;
+            if (!isSpreadsheetAnalysis) {
+                const statusColor = record.status === 'APPROVED' ? [16, 185, 129] : [220, 38, 38];
+                doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`PARECER FINAL: ${record.status === 'APPROVED' ? 'LOTE APROVADO' : 'LOTE REPROVADO'}`, 15, y);
+                y += 10;
+            }
             doc.setTextColor(31, 41, 55);
             doc.setFontSize(10);
             doc.setFont('helvetica', 'bold');

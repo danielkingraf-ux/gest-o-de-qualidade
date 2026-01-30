@@ -171,7 +171,7 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
     if (!isOpen) return null;
 
     return (
-        <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden z-[100] animate-slide-in">
+        <div className="fixed bottom-6 right-6 w-[calc(100vw-2rem)] sm:w-96 h-[70vh] sm:h-[500px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden z-[100] animate-slide-in">
             {/* Header */}
             <div className="bg-primary p-4 text-white flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-3">

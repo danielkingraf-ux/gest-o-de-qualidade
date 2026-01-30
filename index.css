@@ -12,6 +12,24 @@ body {
     font-family: 'Inter', sans-serif;
 }
 
+:root {
+    --sidebar-width: 16rem;
+}
+
+.sidebar-collapsed {
+    --sidebar-width: 5rem;
+}
+
+@media (max-width: 767px) {
+    :root {
+        --sidebar-width: 0px;
+    }
+
+    .sidebar-collapsed {
+        --sidebar-width: 0px;
+    }
+}
+
 ::-webkit-scrollbar {
     width: 6px;
 }

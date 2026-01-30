@@ -64,8 +64,9 @@ import { ToastProvider, useToast } from './contexts/ToastContext';
 
 
 
-const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCollapsed }: {
-  user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number, isCollapsed: boolean, setIsCollapsed: (v: boolean) => void
+const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCollapsed, isMobileOpen, onCloseMobile }: {
+  user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number, isCollapsed: boolean, setIsCollapsed: (v: boolean) => void,
+  isMobileOpen: boolean, onCloseMobile: () => void
 }) => {
   const location = useLocation();
   const { showToast } = useToast();
@@ -116,11 +117,14 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
   };
 
   return (
-    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 relative`}>
+    <aside
+      className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 relative z-40 fixed md:static inset-y-0 left-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+      aria-hidden={!isMobileOpen ? true : undefined}
+    >
       {/* Collapse Toggle Button */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -right-3 top-10 size-6 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-sm z-20 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+        className="absolute -right-3 top-10 size-6 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center shadow-sm z-20 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors hidden md:flex"
       >
         <span className="material-symbols-outlined text-xs text-slate-500">
           {isCollapsed ? 'chevron_right' : 'chevron_left'}
@@ -130,7 +134,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-center px-4 py-6 border-b border-slate-100 dark:border-slate-800/50 mb-2">
           {isCollapsed ? (
-            <img src="/logo-symbol.png" alt="K" className="h-10 w-auto object-contain transition-all" />
+            <img src="/logo-symbol.png" alt="K" className="h-20 w-20 object-contain transition-all" />
           ) : (
             <img src="/logo-full.png" alt="Kingraf" className="h-12 w-auto object-contain transition-all" />
           )}
@@ -143,7 +147,10 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
             return item.isAction ? (
               <button
                 key={item.path}
-                onClick={onOpenChat}
+                onClick={() => {
+                  onOpenChat();
+                  onCloseMobile();
+                }}
                 title={isCollapsed ? item.label : ''}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center' : ''}`}
               >
@@ -162,6 +169,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
                 key={item.path}
                 to={item.path}
                 title={isCollapsed ? item.label : ''}
+                onClick={onCloseMobile}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''} ${isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -225,7 +233,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
   );
 };
 
-const Header = () => {
+const Header = ({ onOpenSidebar }: { onOpenSidebar: () => void }) => {
   const [now, setNow] = React.useState(new Date());
 
   React.useEffect(() => {
@@ -234,8 +242,15 @@ const Header = () => {
   }, []);
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-8 py-3 transition-colors duration-300">
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 md:px-8 py-3 transition-colors duration-300">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onOpenSidebar}
+          className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors md:hidden"
+          aria-label="Abrir menu"
+        >
+          <span className="material-symbols-outlined">menu</span>
+        </button>
         <h2 className="text-lg font-bold tracking-tight text-slate-800 dark:text-white">Qualidade em Tempo Real</h2>
         <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 animate-pulse">
           Ativo
@@ -286,6 +301,7 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('kg_sidebar_collapsed') === 'true';
   });
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const toggleSidebar = (v: boolean) => {
     setIsSidebarCollapsed(v);
@@ -362,7 +378,7 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <HashRouter>
-          <div className="flex h-full w-full bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300">
+          <div className={`flex h-full w-full bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300 ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
             <Sidebar
               user={session.user}
               onLogout={() => setSession(null)}
@@ -370,9 +386,17 @@ export default function App() {
               unreadCount={unreadCount}
               isCollapsed={isSidebarCollapsed}
               setIsCollapsed={toggleSidebar}
+              isMobileOpen={isMobileSidebarOpen}
+              onCloseMobile={() => setIsMobileSidebarOpen(false)}
             />
+            {isMobileSidebarOpen && (
+              <div
+                className="fixed inset-0 bg-black/40 z-30 md:hidden"
+                onClick={() => setIsMobileSidebarOpen(false)}
+              />
+            )}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <Header />
+              <Header onOpenSidebar={() => setIsMobileSidebarOpen(true)} />
               <main className="flex-1 overflow-y-auto">
                 <Routes>
                   <Route path="/" element={<DashboardView />} />
