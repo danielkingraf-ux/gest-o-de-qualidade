@@ -10,6 +10,7 @@ import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import ShiftLogView from './views/ShiftLogView';
 import FinishingView from './views/FinishingView';
+import FinishingAnalysisView from './views/FinishingAnalysisView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
 
@@ -63,7 +64,9 @@ import { ToastProvider, useToast } from './contexts/ToastContext';
 
 
 
-const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number }) => {
+const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCollapsed }: {
+  user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number, isCollapsed: boolean, setIsCollapsed: (v: boolean) => void
+}) => {
   const location = useLocation();
   const { showToast } = useToast();
   const { theme, toggleTheme } = useTheme();
@@ -97,6 +100,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLog
     { path: '/', label: 'Dashboard', icon: 'dashboard' },
     { path: '/inspections', label: 'Inspeções', icon: 'assignment_turned_in' },
     { path: '/finishing', label: 'Acabamento', icon: 'verified' },
+    { path: '/finishing-analysis', label: 'Análise Acabamento', icon: 'table_chart' },
     { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true },
     { path: '/records', label: 'Registros', icon: 'analytics' },
     { path: '/admin', label: 'Administração', icon: 'admin_panel_settings' },
@@ -112,22 +116,36 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLog
   };
 
   return (
-    <aside className="w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between p-4 shrink-0 h-full transition-colors duration-300">
+    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 relative`}>
+      {/* Collapse Toggle Button */}
+      <button
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="absolute -right-3 top-10 size-6 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-sm z-20 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+      >
+        <span className="material-symbols-outlined text-xs text-slate-500">
+          {isCollapsed ? 'chevron_right' : 'chevron_left'}
+        </span>
+      </button>
+
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-center px-4 py-6 border-b border-slate-100 dark:border-slate-800/50 mb-2">
-          <img src="/logo-full.png" alt="Kingraf" className="h-12 w-auto object-contain transition-all" />
+          {isCollapsed ? (
+            <img src="/logo-symbol.png" alt="K" className="h-8 w-auto object-contain transition-all" />
+          ) : (
+            <img src="/logo-full.png" alt="Kingraf" className="h-12 w-auto object-contain transition-all" />
+          )}
         </div>
         <nav className="flex flex-col gap-1">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
-            // Type assertion to access 'badge' property safely if needed, or just allow it since JS
             const badgeCount = (item as any).badge;
 
             return item.isAction ? (
               <button
                 key={item.path}
                 onClick={onOpenChat}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800`}
+                title={isCollapsed ? item.label : ''}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center' : ''}`}
               >
                 <div className="relative flex items-center justify-center">
                   <span className="material-symbols-outlined">{item.icon}</span>
@@ -137,13 +155,14 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLog
                     </span>
                   )}
                 </div>
-                <p className={`text-sm font-medium`}>{item.label}</p>
+                {!isCollapsed && <p className={`text-sm font-medium`}>{item.label}</p>}
               </button>
             ) : (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${isActive
+                title={isCollapsed ? item.label : ''}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''} ${isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
@@ -156,7 +175,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLog
                     </span>
                   )}
                 </div>
-                <p className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</p>
+                {!isCollapsed && <p className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</p>}
               </Link>
             );
           })}
@@ -166,34 +185,40 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount }: { user: any, onLog
 
         <button
           onClick={toggleTheme}
-          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors w-full group"
+          title={isCollapsed ? `Modo ${theme === 'dark' ? 'Claro' : 'Escuro'}` : ''}
+          className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors w-full group ${isCollapsed ? 'justify-center' : ''}`}
         >
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-xl group-hover:rotate-12 transition-transform">
               {theme === 'dark' ? 'dark_mode' : 'light_mode'}
             </span>
-            <p className="text-sm font-medium">Modo {theme === 'dark' ? 'Escuro' : 'Claro'}</p>
+            {!isCollapsed && <p className="text-sm font-medium">Modo {theme === 'dark' ? 'Escuro' : 'Claro'}</p>}
           </div>
-          <div className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${theme === 'dark' ? 'bg-primary' : 'bg-slate-300'}`}>
-            <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full shadow-sm transition-transform duration-200 ${theme === 'dark' ? 'translate-x-4' : 'translate-x-0'}`}></div>
-          </div>
+          {!isCollapsed && (
+            <div className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${theme === 'dark' ? 'bg-primary' : 'bg-slate-300'}`}>
+              <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full shadow-sm transition-transform duration-200 ${theme === 'dark' ? 'translate-x-4' : 'translate-x-0'}`}></div>
+            </div>
+          )}
         </button>
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-500 hover:text-rose-600 transition-colors w-full"
+          title={isCollapsed ? 'Sair do Sistema' : ''}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-500 hover:text-rose-600 transition-colors w-full ${isCollapsed ? 'justify-center' : ''}`}
         >
           <span className="material-symbols-outlined">logout</span>
-          <p className="text-sm font-medium">Sair do Sistema</p>
+          {!isCollapsed && <p className="text-sm font-medium">Sair do Sistema</p>}
         </button>
-        <div className="flex items-center gap-3 px-3 py-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-          <div className="size-8 rounded-full bg-primary/20 text-primary flex items-center justify-center">
+        <div className={`flex items-center gap-3 px-3 py-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl ${isCollapsed ? 'justify-center' : ''}`}>
+          <div className="size-8 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
             <span className="material-symbols-outlined text-xs">person</span>
           </div>
-          <div className="flex flex-col overflow-hidden">
-            <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{user?.email?.split('@')[0] || 'Usuário'}</p>
-            <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest leading-none">Online</p>
-          </div>
+          {!isCollapsed && (
+            <div className="flex flex-col overflow-hidden">
+              <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{user?.email?.split('@')[0] || 'Usuário'}</p>
+              <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest leading-none">Online</p>
+            </div>
+          )}
         </div>
       </div>
     </aside>
@@ -258,6 +283,14 @@ export default function App() {
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('kg_sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebar = (v: boolean) => {
+    setIsSidebarCollapsed(v);
+    localStorage.setItem('kg_sidebar_collapsed', String(v));
+  };
 
   useEffect(() => {
     if (!session?.user) return;
@@ -335,6 +368,8 @@ export default function App() {
               onLogout={() => setSession(null)}
               onOpenChat={() => setIsChatOpen(true)}
               unreadCount={unreadCount}
+              isCollapsed={isSidebarCollapsed}
+              setIsCollapsed={toggleSidebar}
             />
             <div className="flex-1 flex flex-col overflow-hidden">
               <Header />
@@ -343,6 +378,7 @@ export default function App() {
                   <Route path="/" element={<DashboardView />} />
                   <Route path="/inspections" element={<InspectionView />} />
                   <Route path="/finishing" element={<FinishingView />} />
+                  <Route path="/finishing-analysis" element={<FinishingAnalysisView />} />
                   {/* Remove permanent shift-log route if we only want popup */}
                   <Route path="/shift-log" element={<ShiftLogView />} />
                   <Route path="/records" element={<RecordsView />} />

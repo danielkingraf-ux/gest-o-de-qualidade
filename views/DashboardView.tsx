@@ -163,26 +163,29 @@ export default function DashboardView() {
     }
 
     return (
-        <div className="p-8 space-y-8 max-w-7xl mx-auto w-full animate-fade-in pb-20">
-            {/* Header */}
-            <div className="flex justify-between items-end">
+        <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto w-full animate-fade-in pb-20">
+            {/* Header Compact */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tighter flex items-center gap-3">
-                        <LayoutDashboard className="text-primary size-8" />
+                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none flex items-center gap-3">
+                        <LayoutDashboard className="text-primary size-7" />
                         Dashboard Intelligence
                     </h1>
-                    <p className="text-slate-500 font-medium text-sm">Análise em tempo real dos indicadores de qualidade.</p>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
+                        Análise em tempo real • Kingraf
+                    </p>
                 </div>
                 <button
                     onClick={fetchData}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-600"
+                    className="flex items-center gap-2 px-4 h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-600"
                 >
-                    <Clock className="size-4" /> Atualizar Dados
+                    <Clock className="size-3.5" /> ATUALIZAR
                 </button>
             </div>
 
-            {/* KPI Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* KPI Row Compact */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard title="Total Inspeções" value={stats.total} icon={<TrendingUp />} color="bg-blue-500" />
                 <StatCard title="Taxa Aprovação" value={`${stats.approvalRate.toFixed(1)}%`} icon={<CheckCircle />} color="bg-emerald-500" />
                 <StatCard title="Total Defeitos" value={stats.totalDefects} icon={<AlertTriangle />} color="bg-rose-500" />
@@ -192,10 +195,10 @@ export default function DashboardView() {
             {/* Row 1: Defects by Type (Pareto) & Status Pie */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Pareto Chart (2/3 width) */}
-                <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm h-[400px] flex flex-col">
-                    <div className="mb-6">
-                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Pareto de Defeitos</h3>
-                        <p className="text-xs text-slate-400 font-medium">Top causas de não conformidade</p>
+                <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm h-[350px] flex flex-col">
+                    <div className="mb-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pareto de Defeitos</h3>
+                        <p className="text-xs text-slate-700 dark:text-slate-200 font-bold">Principais causas de não conformidade</p>
                     </div>
                     <div className="flex-1 w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -214,10 +217,10 @@ export default function DashboardView() {
                 </div>
 
                 {/* Status Pie Chart (1/3 width) */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm h-[400px] flex flex-col">
-                    <div className="mb-6">
-                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Status Geral</h3>
-                        <p className="text-xs text-slate-400 font-medium">Distribuição de aprovação</p>
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm h-[350px] flex flex-col">
+                    <div className="mb-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status Geral</h3>
+                        <p className="text-xs text-slate-700 dark:text-slate-200 font-bold">Distribuição de aprovação</p>
                     </div>
                     <div className="flex-1 w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -246,10 +249,10 @@ export default function DashboardView() {
             {/* Row 2: Defects by Machine & Defects by Operator */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Defects by Machine */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm h-[400px] flex flex-col">
-                    <div className="mb-6">
-                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Defeitos por Máquina</h3>
-                        <p className="text-xs text-slate-400 font-medium">Máquinas com maior índice de falhas</p>
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm h-[350px] flex flex-col">
+                    <div className="mb-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Defeitos por Máquina</h3>
+                        <p className="text-xs text-slate-700 dark:text-slate-200 font-bold">Índice de falhas por equipamento</p>
                     </div>
                     <div className="flex-1 w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -268,10 +271,10 @@ export default function DashboardView() {
                 </div>
 
                 {/* Defects by Operator */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm h-[400px] flex flex-col">
-                    <div className="mb-6">
-                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Defeitos por Operador</h3>
-                        <p className="text-xs text-slate-400 font-medium">Operadores com maior índice de apontamentos</p>
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm h-[350px] flex flex-col">
+                    <div className="mb-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Defeitos por Operador</h3>
+                        <p className="text-xs text-slate-700 dark:text-slate-200 font-bold">Índice de apontamentos por operador</p>
                     </div>
                     <div className="flex-1 w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -291,10 +294,10 @@ export default function DashboardView() {
             </div>
 
             {/* Row 3: Temporal Evolution */}
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm h-[400px] flex flex-col">
-                <div className="mb-6">
-                    <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Evolução de Produção</h3>
-                    <p className="text-xs text-slate-400 font-medium">Histórico de qualidade (14 dias)</p>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm h-[350px] flex flex-col">
+                <div className="mb-4">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Evolução de Produção</h3>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 font-bold">Histórico de qualidade (14 dias)</p>
                 </div>
                 <div className="flex-1 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -327,13 +330,13 @@ export default function DashboardView() {
 
 function StatCard({ title, value, icon, color }: any) {
     return (
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-5 group hover:border-primary/50 transition-all">
-            <div className={`size-14 ${color} text-white rounded-2xl flex items-center justify-center shadow-lg shadow-${color.split('-')[1]}-500/20 group-hover:scale-110 transition-transform`}>
-                {React.cloneElement(icon, { size: 28 })}
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group hover:border-primary/50 transition-all">
+            <div className={`size-11 ${color} text-white rounded-xl flex items-center justify-center shadow-lg shadow-${color.split('-')[1]}-500/20 group-hover:scale-105 transition-transform`}>
+                {React.cloneElement(icon, { size: 20 })}
             </div>
             <div>
-                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">{title}</p>
-                <p className="text-2xl font-black text-slate-800 dark:text-white">{value}</p>
+                <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">{title}</p>
+                <p className="text-lg font-black text-slate-800 dark:text-white">{value}</p>
             </div>
         </div>
     );

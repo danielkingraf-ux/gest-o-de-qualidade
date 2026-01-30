@@ -13,33 +13,33 @@ const DefectCounter: React.FC<{
   onUpdate: (delta: number) => void;
   onSet: (val: number) => void;
 }> = ({ name, icon, count, onUpdate, onSet }) => (
-  <div className={`p-4 flex flex-col items-center gap-3 bg-white dark:bg-slate-900 rounded-xl border transition-all ${count > 0
+  <div className={`flex items-center justify-between p-2 rounded-xl border transition-all bg-white dark:bg-slate-900/50 group ${count > 0
     ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20'
     : 'border-slate-100 dark:border-slate-800'
     }`}>
-    <div className="flex items-center justify-between w-full">
-      <span className="material-symbols-outlined text-lg text-primary">{icon}</span>
-      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate">{name}</span>
+    <div className="flex items-center gap-2 overflow-hidden">
+      <span className="material-symbols-outlined text-base text-primary p-1">{icon}</span>
+      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase truncate">{name}</span>
     </div>
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-1">
       <button
         type="button"
         onClick={() => onUpdate(-1)}
-        className="size-8 rounded-lg flex items-center justify-center border border-rose-100 dark:border-rose-900/30 text-rose-500 hover:bg-rose-50 transition-colors"
+        className="size-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 transition-colors"
       >
         <span className="material-symbols-outlined text-sm">remove</span>
       </button>
       <input
         type="number"
-        value={count === 0 ? '' : count}
-        onChange={(e) => onSet(Math.max(0, Number(e.target.value)))}
+        value={count || ''}
+        onChange={(e) => onSet(Math.max(0, parseInt(e.target.value) || 0))}
+        className="w-10 h-6 text-center font-black text-[11px] bg-slate-50 dark:bg-slate-800 rounded border-none outline-none focus:ring-1 focus:ring-primary/30"
         placeholder="0"
-        className={`text-xl font-black w-16 text-center bg-transparent outline-none transition-colors border-b-2 border-transparent focus:border-primary/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${count > 0 ? 'text-amber-600' : 'text-slate-300'}`}
       />
       <button
         type="button"
         onClick={() => onUpdate(1)}
-        className="size-8 rounded-lg flex items-center justify-center bg-primary text-white hover:bg-primary/90 transition-colors"
+        className="size-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-500 transition-colors"
       >
         <span className="material-symbols-outlined text-sm">add</span>
       </button>
@@ -53,20 +53,20 @@ const MetricInput: React.FC<{
   onChange: (val: number) => void;
   icon: string;
 }> = ({ label, value, onChange, icon }) => (
-  <div className="flex flex-col gap-1.5 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-    <div className="flex items-center gap-2 mb-1">
-      <span className="material-symbols-outlined text-sm text-slate-400">{icon}</span>
-      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</label>
+  <div className="flex flex-col gap-1 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+    <div className="flex items-center gap-1.5 mb-1">
+      <span className="material-symbols-outlined text-xs text-slate-400">{icon}</span>
+      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</label>
     </div>
     <div className="flex items-center gap-2">
-      <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="size-8 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500">-</button>
+      <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">-</button>
       <input
         type="number"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-8 bg-transparent text-center font-black text-sm outline-none"
+        className="w-full h-6 bg-transparent text-center font-black text-xs outline-none"
       />
-      <button type="button" onClick={() => onChange(value + 1)} className="size-8 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500">+</button>
+      <button type="button" onClick={() => onChange(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
     </div>
   </div>
 );
@@ -81,18 +81,18 @@ const OFFSET_ESCOLHA_FIELDS: Array<{ key: OffsetEscolhaNumericKeys; label: strin
 ];
 
 const OffsetEscolhaCard: React.FC<{ value: EscolhaData; onChange: (partial: Partial<EscolhaData>) => void }> = ({ value, onChange }) => (
-  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm">
+  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-sm">
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Escolha</p>
-        <p className="text-sm text-slate-700 dark:text-slate-300">Registre as quantidades finais do processo de separação.</p>
+        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Escolha</p>
+        <p className="text-xs text-slate-700 dark:text-slate-300">Quantidades finais do processo de separação.</p>
       </div>
-      <span className="text-xs font-black uppercase tracking-widest text-slate-400">Unidades</span>
+      <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">Unidades</span>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {OFFSET_ESCOLHA_FIELDS.map(field => (
         <div key={field.key} className="space-y-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{field.label}</label>
+          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">{field.label}</label>
           <input
             type="number"
             min={0}
@@ -100,18 +100,18 @@ const OffsetEscolhaCard: React.FC<{ value: EscolhaData; onChange: (partial: Part
             onChange={(e) => onChange({
               [field.key]: Math.max(0, Number(e.target.value))
             })}
-            className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
           />
         </div>
       ))}
     </div>
     <div className="space-y-1">
-      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Observações e restrições</label>
+      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações e restrições</label>
       <textarea
         value={value.observacoes ?? ''}
         onChange={(e) => onChange({ observacoes: e.target.value })}
-        placeholder="Notas sobre o lote, restrições de qualidade ou retrabalhos..."
-        className="w-full min-h-[120px] p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+        placeholder="Notas sobre o lote..."
+        className="w-full h-20 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-primary/20 resize-none"
       />
     </div>
   </div>
@@ -323,61 +323,70 @@ export default function InspectionView() {
   if (isLoading) return <div className="p-8 text-center italic">Carregando...</div>;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-8 pb-40">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4 pb-48">
 
-      {/* --- Navegação por Abas (Fichário) --- */}
-      <div className="flex bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-20">
-        {[
-          { id: ProcessType.OFFSET, label: 'OFF-SET', icon: 'print' },
-          { id: ProcessType.UV, label: 'UV', icon: 'flare' },
-          { id: ProcessType.HOT_STAMPING, label: 'HOT STAMPING', icon: 'stars' }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-2 h-12 rounded-xl text-xs font-black tracking-widest transition-all ${activeTab === tab.id
-              ? 'bg-primary text-white shadow-lg shadow-primary/25'
-              : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
+      {/* --- Cabeçalho de Tela Compacto --- */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Inspeção de Produção</h1>
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
+            Qualidade • Processos Produtivos
+          </p>
+        </div>
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+          {[
+            { id: ProcessType.OFFSET, label: 'OFF-SET', icon: 'print' },
+            { id: ProcessType.UV, label: 'UV', icon: 'flare' },
+            { id: ProcessType.HOT_STAMPING, label: 'HOT STAMPING', icon: 'stars' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 h-9 rounded-lg text-[10px] font-black tracking-widest transition-all ${activeTab === tab.id
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+            >
+              <span className="material-symbols-outlined text-base">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* --- Cabeçalho Fixo --- */}
-      <section className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Ordem de Produção (OP)</label>
+      {/* --- Cabeçalho Fixo (Dados OP) --- */}
+      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ordem de Produção (OP)</label>
           <input
             type="text"
             value={selectedOP}
             onChange={(e) => setSelectedOP(e.target.value.toUpperCase())}
-            className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+            className="w-full h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-1 focus:ring-primary/20 outline-none"
             placeholder="00000"
           />
         </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Máquina</label>
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Máquina</label>
           <select
             value={selectedMachineId}
             onChange={(e) => setSelectedMachineId(e.target.value)}
-            className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+            className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
           >
             <option value="">Selecionar...</option>
             {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
-        <div className="space-y-1.5 flex flex-col">
-          <div className="flex justify-between items-center">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Operador(es)</label>
+        <div className="space-y-1 flex flex-col">
+          <div className="flex justify-between items-center pr-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador(es)</label>
             <button
               onClick={() => setSelectedOperatorRows(prev => [...prev, { rowId: nextRowId(), value: '' }])}
-              className="text-primary hover:bg-primary/10 rounded-full p-1 transition-colors"
+              className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors"
               title="Adicionar Operador"
             >
-              <span className="material-symbols-outlined text-sm font-bold">add</span>
+              <span className="material-symbols-outlined text-sm font-black">add</span>
             </button>
           </div>
           <div className="space-y-2">
@@ -390,7 +399,7 @@ export default function InspectionView() {
                     newRows[idx] = { ...newRows[idx], value: e.target.value };
                     setSelectedOperatorRows(newRows);
                   }}
-                  className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
                 >
                   <option value="">Selecionar...</option>
                   {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -401,7 +410,7 @@ export default function InspectionView() {
                       const newRows = selectedOperatorRows.filter((_, i) => i !== idx);
                       setSelectedOperatorRows(newRows);
                     }}
-                    className="size-11 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                    className="size-10 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors"
                   >
                     <span className="material-symbols-outlined text-lg">delete</span>
                   </button>
@@ -410,15 +419,15 @@ export default function InspectionView() {
             ))}
           </div>
         </div>
-        <div className="space-y-1.5 flex flex-col">
-          <div className="flex justify-between items-center">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Analista(s)</label>
+        <div className="space-y-1 flex flex-col">
+          <div className="flex justify-between items-center pr-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Analista(s)</label>
             <button
               onClick={() => setSelectedAnalystRows(prev => [...prev, { rowId: nextRowId(), value: '' }])}
-              className="text-primary hover:bg-primary/10 rounded-full p-1 transition-colors"
+              className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors"
               title="Adicionar Analista"
             >
-              <span className="material-symbols-outlined text-sm font-bold">add</span>
+              <span className="material-symbols-outlined text-sm font-black">add</span>
             </button>
           </div>
           <div className="space-y-2">
@@ -431,7 +440,7 @@ export default function InspectionView() {
                     newRows[idx] = { ...newRows[idx], value: e.target.value };
                     setSelectedAnalystRows(newRows);
                   }}
-                  className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
                 >
                   <option value="">Selecionar...</option>
                   {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -442,7 +451,7 @@ export default function InspectionView() {
                       const newRows = selectedAnalystRows.filter((_, i) => i !== idx);
                       setSelectedAnalystRows(newRows);
                     }}
-                    className="size-11 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                    className="size-10 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors"
                   >
                     <span className="material-symbols-outlined text-lg">delete</span>
                   </button>
@@ -495,13 +504,13 @@ export default function InspectionView() {
                 <button
                   key={s.id}
                   onClick={() => setOffsetData(prev => ({ ...prev, status: s.id as any }))}
-                  className={`flex flex-col items-center p-6 rounded-2xl border-2 transition-all ${offsetData.status === s.id
+                  className={`flex items-center gap-4 px-6 h-14 rounded-2xl border-2 transition-all ${offsetData.status === s.id
                     ? s.styles.card
-                    : 'border-slate-100 dark:border-slate-800 opacity-50 hover:opacity-100'
+                    : 'border-slate-100 dark:border-slate-800 opacity-60 hover:opacity-100'
                     }`}
                 >
-                  <span className={`material-symbols-outlined text-3xl mb-2 ${s.styles.icon}`}>{s.icon}</span>
-                  <span className={`text-xs font-black uppercase tracking-widest ${s.styles.label}`}>{s.label}</span>
+                  <span className={`material-symbols-outlined text-2xl ${s.styles.icon}`}>{s.icon}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${s.styles.label}`}>{s.label}</span>
                 </button>
               ))}
             </div>
@@ -675,27 +684,27 @@ export default function InspectionView() {
         )}
       </main>
 
-      {/* --- Rodapé Fixo --- */}
-      <footer className="fixed bottom-0 left-64 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 p-6 flex justify-end gap-3 z-30">
+      {/* --- Rodapé Fixo Compacto --- */}
+      <footer className="fixed bottom-0 left-0 md:left-64 right-0 p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex justify-end items-center gap-3 z-30">
         <button
           onClick={resetAll}
-          className="h-12 px-8 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-xs tracking-widest hover:bg-slate-50 transition-all text-slate-500"
+          className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] tracking-widest hover:bg-slate-50 transition-all text-slate-500 uppercase"
         >
           LIMPAR
         </button>
         <button
           onClick={() => handleSave(false)}
           disabled={isSaving}
-          className="h-12 px-8 rounded-xl border border-primary text-primary font-black text-xs tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50"
+          className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase"
         >
-          {isSaving ? 'SALVANDO...' : 'SALVAR'}
+          {isSaving ? '...' : 'SALVAR'}
         </button>
         <button
           onClick={() => handleSave(true)}
           disabled={isSaving}
-          className="h-12 px-8 rounded-xl bg-primary text-white font-black text-xs tracking-widest shadow-lg shadow-primary/25 hover:scale-[1.02] transition-all disabled:opacity-50"
+          className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase"
         >
-          {isSaving ? 'SALVANDO...' : 'SALVAR E NOVO'}
+          {isSaving ? 'SINC...' : 'SALVAR E NOVO'}
         </button>
       </footer>
     </div>

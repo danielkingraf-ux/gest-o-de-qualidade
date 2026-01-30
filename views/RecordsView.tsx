@@ -8,13 +8,13 @@ import ConfirmModal from '../components/ConfirmModal';
 import { ProcessType } from '../types';
 
 const StatCard = ({ label, value, icon, colorClass, bgClass }: { label: string, value: string, icon: string, colorClass: string, bgClass: string }) => (
-  <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
-    <div className={`size-12 rounded-xl ${bgClass} flex items-center justify-center ${colorClass}`}>
-      <span className="material-symbols-outlined text-2xl font-bold">{icon}</span>
+  <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
+    <div className={`size-10 rounded-xl ${bgClass} flex items-center justify-center ${colorClass}`}>
+      <span className="material-symbols-outlined text-xl font-bold">{icon}</span>
     </div>
     <div>
-      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{label}</p>
-      <p className="text-xl font-black text-slate-800 dark:text-white leading-tight">{value}</p>
+      <p className="text-slate-400 text-[9px] font-black uppercase tracking-widest leading-none mb-1">{label}</p>
+      <p className="text-lg font-black text-slate-800 dark:text-white leading-tight">{value}</p>
     </div>
   </div>
 );
@@ -392,39 +392,42 @@ export default function RecordsView() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto w-full space-y-8 animate-slide-in">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-800 dark:text-white">Consulta de Registros</h1>
-          <p className="text-slate-500 text-sm mt-1">Gerencie e analise o histórico de inspeções.</p>
+    <div className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-4 animate-slide-in pb-20">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Consulta de Registros</h1>
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
+            Histórico • Gestão de Dados
+          </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => fetchRecords()}
-            className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-12 px-5 text-slate-700 dark:text-slate-200 text-sm font-bold hover:bg-slate-50 transition-all shadow-sm"
+            className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-xl h-9 px-4 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
           >
-            <span className={`material-symbols-outlined text-[20px] ${loading ? 'animate-spin' : ''}`}>sync</span>
-            Atualizar
+            <span className={`material-symbols-outlined text-base ${loading ? 'animate-spin' : ''}`}>sync</span>
+            ATUALIZAR
           </button>
-          <button className="flex items-center gap-2 bg-primary rounded-xl h-12 px-6 text-white text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
-            <span className="material-symbols-outlined text-[20px]">add</span>
-            Exportar CSV
+          <button className="flex items-center gap-2 bg-primary rounded-xl h-9 px-5 text-white text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+            <span className="material-symbols-outlined text-base">download</span>
+            EXPORTAR
           </button>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-        <div className="flex flex-wrap gap-3">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-5 shadow-sm">
+        <div className="flex flex-wrap gap-2">
           {CATEGORY_ORDER.map(cat => {
             const isAll = cat === 'ALL';
             const meta = isAll ? {
-              label: 'Todas as Categorias',
-              description: 'Exibir registros de todos os processos',
+              label: 'TODOS',
+              description: 'Processos',
               icon: 'all_inclusive',
               dotClass: 'bg-slate-400',
               badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
               tabClass: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800',
-              ringClass: 'ring-2 ring-slate-200 dark:ring-slate-700'
+              ringClass: 'ring-1 ring-slate-200 dark:ring-slate-700'
             } : getCategoryMeta(cat as ProcessType);
             const count = isAll ? records.length : categoryCounts[cat as ProcessType] || 0;
             const isActive = categoryFilter === cat;
@@ -433,21 +436,20 @@ export default function RecordsView() {
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(cat as ProcessType | 'ALL')}
-                className={`flex-1 min-w-[220px] text-left p-4 rounded-2xl border transition-all group ${meta.tabClass} ${isActive ? `${meta.ringClass} shadow-lg` : 'hover:-translate-y-0.5 hover:shadow-md'}`}
+                className={`flex-1 min-w-[150px] text-left p-3 rounded-2xl border transition-all ${meta.tabClass} ${isActive ? `${meta.ringClass} border-primary/50 bg-slate-50/50 shadow-sm` : 'hover:bg-slate-50 opacity-70 hover:opacity-100'}`}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className={`size-10 rounded-xl bg-white/80 dark:bg-slate-800/60 shadow-sm flex items-center justify-center ${meta.dotClass} text-white`}>
-                      <span className="material-symbols-outlined text-xl">{meta.icon}</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className={`size-8 rounded-lg ${meta.dotClass} text-white flex items-center justify-center shadow-sm`}>
+                      <span className="material-symbols-outlined text-base">{meta.icon}</span>
                     </span>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-black text-slate-800 dark:text-white">{meta.label}</span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400">{meta.description}</span>
-                    </div>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${meta.badgeClass}`}>
+                      {count}
+                    </span>
                   </div>
-                  <span className={`text-[11px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${meta.badgeClass}`}>
-                    {count} reg.
-                  </span>
+                  <div className="flex flex-col leading-none">
+                    <span className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-wider">{meta.label}</span>
+                  </div>
                 </div>
               </button>
             );
@@ -455,60 +457,59 @@ export default function RecordsView() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Filtrar por Status</label>
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-5 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Filtrar Status</label>
             <div className="relative">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full h-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none appearance-none"
+                className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-xs font-bold outline-none appearance-none cursor-pointer"
               >
                 <option>Todos os Status</option>
                 <option>Aprovado</option>
                 <option>Reprovado</option>
                 <option>Aprovado com Restrição</option>
               </select>
-              <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">filter_alt</span>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Buscar OP</label>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Buscar OP / Lote</label>
             <div className="relative">
               <input
-                className="w-full h-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-12 pr-4 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 text-xs font-bold outline-none"
                 placeholder="Ex: 88421"
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">search</span>
             </div>
           </div>
           <div className="flex items-end">
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-xl h-12 flex items-center px-4 w-full">
-              <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
-                <span className="material-symbols-outlined text-sm">info</span>
-                {filteredRecords.length} registros em {categoryFilter === 'ALL' ? 'todas as categorias' : getCategoryMeta(categoryFilter as ProcessType).label}
+            <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-xl h-10 flex items-center px-4 w-full">
+              <span className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2">
+                <span className="material-symbols-outlined text-xs">info</span>
+                {filteredRecords.length} REGISTROS ENCONTRADOS
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Data/Hora</th>
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">OP</th>
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Maquina</th>
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Categoria</th>
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Falhas</th>
-                <th className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider text-right">Acoes</th>
+              <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Data/Hora</th>
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">OP</th>
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</th>
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Processo</th>
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Resultado</th>
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Falhas</th>
+                <th className="px-3 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400 text-right pr-6">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -608,9 +609,9 @@ export default function RecordsView() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Taxa de Aprovação" value={stats.apr} icon="check_circle" colorClass="text-emerald-600" bgClass="bg-emerald-50 dark:bg-emerald-950/30" />
-        <StatCard label="Taxa de Rejeição" value={stats.fail} icon="warning" colorClass="text-rose-600" bgClass="bg-rose-50 dark:bg-rose-950/30" />
-        <StatCard label="Total Inspeções" value={stats.total} icon="inventory_2" colorClass="text-primary" bgClass="bg-primary/10" />
+        <StatCard label="Aprovação" value={stats.apr} icon="check_circle" colorClass="text-emerald-600" bgClass="bg-emerald-50 dark:bg-emerald-950/30" />
+        <StatCard label="Rejeição" value={stats.fail} icon="warning" colorClass="text-rose-600" bgClass="bg-rose-50 dark:bg-rose-950/30" />
+        <StatCard label="Total" value={stats.total} icon="inventory_2" colorClass="text-primary" bgClass="bg-primary/10" />
         <StatCard label="Em Análise" value={stats.pending} icon="timer" colorClass="text-amber-600" bgClass="bg-amber-50 dark:bg-amber-950/30" />
       </div>
 

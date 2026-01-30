@@ -17,24 +17,27 @@ export default function AdminView() {
     ];
 
     return (
-        <div className="p-8 max-w-7xl mx-auto w-full space-y-8 animate-fade-in">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-800 dark:text-white uppercase drop-shadow-sm">Painel de Controle</h1>
-                    <p className="text-slate-500 text-sm font-medium">Gestão centralizada de dados mestres do sistema.</p>
+        <div className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-4 animate-fade-in">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="space-y-1">
+                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Painel de Controle</h1>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
+                        Gestão centralizada • Kingraf
+                    </p>
                 </div>
 
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as Tab)}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === tab.id
-                                ? 'bg-white dark:bg-slate-900 text-primary shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800'
+                            className={`flex items-center gap-2 px-4 h-9 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id
+                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
+                            <span className="material-symbols-outlined text-base">{tab.icon}</span>
                             {tab.label}
                         </button>
                     ))}
@@ -72,49 +75,49 @@ function ManagerTable({
     return (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
             <table className="w-full text-left">
-                <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <tr>
                         {columns.map(col => (
-                            <th key={col.key} className={`px-8 py-5 ${col.className || ''}`}>{col.label}</th>
+                            <th key={col.key} className={`px-6 py-4 ${col.className || ''}`}>{col.label}</th>
                         ))}
-                        <th className="px-8 py-5 text-right w-32">Configuração</th>
+                        <th className="px-6 py-4 text-right w-32">Configuração</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {loading ? (
                         <tr>
-                            <td colSpan={columns.length + 1} className="px-8 py-16 text-center">
+                            <td colSpan={columns.length + 1} className="px-6 py-12 text-center">
                                 <div className="flex flex-col items-center gap-3">
                                     <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizando...</p>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Sincronizando...</p>
                                 </div>
                             </td>
                         </tr>
                     ) : items.length === 0 ? (
                         <tr>
-                            <td colSpan={columns.length + 1} className="px-8 py-16 text-center">
-                                <p className="text-sm font-medium text-slate-400 italic">{emptyMessage}</p>
+                            <td colSpan={columns.length + 1} className="px-6 py-12 text-center text-slate-400 italic text-xs">
+                                {emptyMessage}
                             </td>
                         </tr>
                     ) : items.map(item => (
                         <tr key={item.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all border-l-4 border-l-transparent hover:border-l-primary">
                             {columns.map(col => (
-                                <td key={col.key} className="px-8 py-4">
+                                <td key={col.key} className="px-6 py-3">
                                     {col.render ? col.render(item) : (
-                                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                                             {item[col.key] || '-'}
                                         </span>
                                     )}
                                 </td>
                             ))}
-                            <td className="px-8 py-4 text-right">
+                            <td className="px-6 py-3 text-right">
                                 <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => onEdit(item)}
-                                        className="p-2 text-primary hover:bg-primary/10 rounded-xl transition-all"
+                                        className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all"
                                         title="Editar"
                                     >
-                                        <span className="material-symbols-outlined text-xl">edit</span>
+                                        <span className="material-symbols-outlined text-lg">edit</span>
                                     </button>
                                     <button
                                         onClick={() => onToggleActive(item.id, item.active)}
