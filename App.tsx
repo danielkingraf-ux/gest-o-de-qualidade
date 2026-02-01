@@ -12,6 +12,7 @@ import ShiftLogView from './views/ShiftLogView';
 import FinishingView from './views/FinishingView';
 import FinishingAnalysisView from './views/FinishingAnalysisView';
 import ReportsView from './views/ReportsView';
+import HistoricalUploadView from './views/HistoricalUploadView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
 
@@ -106,6 +107,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
     { path: '/reports', label: 'Relatórios', icon: 'insert_chart' },
     { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true },
     { path: '/records', label: 'Registros', icon: 'analytics' },
+    { path: '/historical-import', label: 'Importação ODS', icon: 'history' },
     { path: '/admin', label: 'Administração', icon: 'admin_panel_settings' },
     { path: '/docs', label: 'Documentação', icon: 'description' },
   ];
@@ -410,6 +412,7 @@ export default function App() {
                   <Route path="/shift-log" element={<ShiftLogView />} />
                   <Route path="/records" element={<RecordsView />} />
                   <Route path="/docs" element={<DocumentationView />} />
+                  <Route path="/historical-import" element={<HistoricalUploadView />} />
                   <Route path="/admin" element={<AdminView />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

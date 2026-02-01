@@ -1,0 +1,68 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "ods-import",
+                "responseMode": "lastNode",
+                "options": {
+                    "binaryData": true
+                }
+            },
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "toBinary",
+                "options": {}
+            },
+            "name": "Spreadsheet File",
+            "type": "n8n-nodes-base.spreadsheetFile",
+            "typeVersion": 1,
+            "position": [
+                320,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const results = [];\nconst items = $input.all();\n\n// Mock logic: group by operator\nconst operators = {};\nconst machines = {};\n\nitems.forEach(item => {\n  const row = item.json;\n  const op = row['Operador'] || 'Desconhecido';\n  const machine = row['Máquina'] || 'Geral';\n  \n  if(!operators[op]) operators[op] = { name: op, totalIssues: 0, byMachine: {} };\n  if(!machines[machine]) machines[machine] = { name: machine, totalIssues: 0 };\n  \n  // Assume issues are in columns starting with \"Defeito\"\n  Object.keys(row).forEach(key => {\n    if(key.includes('Defeito') && Number(row[key]) > 0) {\n      const count = Number(row[key]);\n      operators[op].totalIssues += count;\n      machines[machine].totalIssues += count;\n    }\n  });\n});\n\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    operators: Object.values(operators),\n    machines: Object.values(machines),\n    totalProcessed: items.length\n  }\n}];"
+            },
+            "name": "Process Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                540,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Spreadsheet File",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Spreadsheet File": {
+            "main": [
+                [
+                    {
+                        "node": "Process Data",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
