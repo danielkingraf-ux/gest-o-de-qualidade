@@ -3,6 +3,9 @@ export interface n8nReportResponse {
     timestamp: string;
     totalProcessed: number;
     overallEfficiency: number; // 0-100 score
+    error?: string;
+    warnings?: string[];
+    debug?: string;
     operators: {
         name: string;
         totalIssues: number;
@@ -23,7 +26,7 @@ class N8nService {
 
     async processHistoricalData(file: File): Promise<n8nReportResponse> {
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('data', file);
 
         const response = await fetch(this.apiUrl, {
             method: 'POST',
@@ -31,7 +34,14 @@ class N8nService {
         });
 
         if (!response.ok) {
-            throw new Error(`Erro ao processar arquivo no n8n: ${response.statusText}`);
+            let errorMsg = `Erro ${response.status}: ${response.statusText}`;
+            try {
+                const errorBody = await response.json();
+                if (errorBody.message) errorMsg += ` - ${errorBody.message}`;
+            } catch (e) {
+                // Ignore json parse error
+            }
+            throw new Error(errorMsg);
         }
 
         return await response.json();
