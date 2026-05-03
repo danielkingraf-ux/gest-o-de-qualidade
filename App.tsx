@@ -286,18 +286,27 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check current session
-    authService.getCurrentUser().then(user => {
-      setSession(user ? { user } : null);
+    let settled = false;
+
+    // Fallback: if Supabase doesn't respond (paused project, network issue), unblock the UI
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        setLoading(false);
+      }
+    }, 5000);
+
+    const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
+      if (!settled) settled = true;
+      clearTimeout(timeout);
+      setSession(session);
       setLoading(false);
     });
 
-    // Listen for changes
-    const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
