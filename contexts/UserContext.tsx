@@ -33,12 +33,20 @@ export const UserProvider = ({ userId, children }: { userId: string; children: R
       .single();
 
     if (!data) {
-      // Primeiro login: cria perfil padrão como analista
+      // Primeiro login: verifica se é o primeiro usuário do sistema
       const { data: { user } } = await supabase.auth.getUser();
       const name = user?.email?.split('@')[0] ?? 'Usuário';
+
+      // Se não há nenhum perfil ainda, este usuário vira supervisor
+      const { count } = await supabase
+        .from('user_profiles')
+        .select('id', { count: 'exact', head: true });
+
+      const role = (count === 0) ? 'supervisor' : 'analista';
+
       const { data: created } = await supabase
         .from('user_profiles')
-        .insert({ user_id: userId, name, role: 'analista' })
+        .insert({ user_id: userId, name, role })
         .select()
         .single();
       setProfile(created ?? null);
