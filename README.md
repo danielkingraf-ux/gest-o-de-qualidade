@@ -50,3 +50,21 @@ Depois faça um **Redeploy** para aplicar as variáveis no runtime.
 - Recharts
 - jsPDF
 - Lucide React
+# Backend ODS (Flask)
+
+## Requisitos
+- Python 3.9+
+
+## Instalar dependencias
+```
+pip install -r requirements.txt
+```
+
+## Rodar o servidor
+```
+python app.py
+```
+
+## Endpoint
+- POST `http://localhost:5000/ods/upload`
+- Campo de upload: `file`
