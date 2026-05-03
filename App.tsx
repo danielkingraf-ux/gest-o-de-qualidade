@@ -13,8 +13,10 @@ import FinishingView from './views/FinishingView';
 import FinishingAnalysisView from './views/FinishingAnalysisView';
 import ReportsView from './views/ReportsView';
 import HistoricalUploadView from './views/HistoricalUploadView';
+import SupervisorView from './views/SupervisorView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
+import { UserProvider, useUser } from './contexts/UserContext';
 
 
 
@@ -66,13 +68,15 @@ import { ToastProvider, useToast } from './contexts/ToastContext';
 
 
 
-const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCollapsed, isMobileOpen, onCloseMobile }: {
-  user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number, isCollapsed: boolean, setIsCollapsed: (v: boolean) => void,
+const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isCollapsed, setIsCollapsed, isMobileOpen, onCloseMobile }: {
+  user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number, pendingRequests: number,
+  isCollapsed: boolean, setIsCollapsed: (v: boolean) => void,
   isMobileOpen: boolean, onCloseMobile: () => void
 }) => {
   const location = useLocation();
   const { showToast } = useToast();
   const { theme, toggleTheme } = useTheme();
+  const { isSupervisor, profile } = useUser();
   const [alertCount, setAlertCount] = useState(0);
 
   // Subscribe to new alerts in Shift Log
@@ -99,18 +103,22 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
     }
   }, [location.pathname]);
 
-  const menuItems = [
-    { path: '/', label: 'Dashboard', icon: 'dashboard' },
-    { path: '/inspections', label: 'Inspeções', icon: 'assignment_turned_in' },
-    { path: '/finishing', label: 'Acabamento', icon: 'verified' },
-    { path: '/finishing-analysis', label: 'Análise Acabamento', icon: 'table_chart' },
-    { path: '/reports', label: 'Relatórios', icon: 'insert_chart' },
-    { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true },
-    { path: '/records', label: 'Registros', icon: 'analytics' },
-    { path: '/historical-import', label: 'Importação ODS', icon: 'history' },
-    { path: '/admin', label: 'Administração', icon: 'admin_panel_settings' },
-    { path: '/docs', label: 'Documentação', icon: 'description' },
+  const allMenuItems = [
+    { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['analista', 'supervisor'] },
+    { path: '/inspections', label: 'Inspeções', icon: 'assignment_turned_in', roles: ['analista', 'supervisor'] },
+    { path: '/finishing', label: 'Laudo de Acabamento', icon: 'verified', roles: ['analista', 'supervisor'] },
+    { path: '/finishing-analysis', label: 'Análise de Amostragem', icon: 'table_chart', roles: ['analista', 'supervisor'] },
+    { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['analista', 'supervisor'] },
+    { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true, roles: ['analista', 'supervisor'] },
+    { path: '/records', label: 'Registros', icon: 'analytics', roles: ['analista', 'supervisor'] },
+    { path: '/historical-import', label: 'Importação ODS', icon: 'history', roles: ['supervisor'] },
+    { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['supervisor'] },
+    { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['supervisor'] },
+    { path: '/docs', label: 'Documentação', icon: 'description', roles: ['analista', 'supervisor'] },
   ];
+
+  const userRole = profile?.role ?? 'analista';
+  const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
 
   const handleLogout = async () => {
     const { error } = await authService.signOut();
@@ -227,8 +235,10 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, isCollapsed, setIsCo
           </div>
           {!isCollapsed && (
             <div className="flex flex-col overflow-hidden">
-              <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{user?.email?.split('@')[0] || 'Usuário'}</p>
-              <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest leading-none">Online</p>
+              <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{profile?.name || user?.email?.split('@')[0] || 'Usuário'}</p>
+              <p className={`text-[10px] uppercase font-black tracking-widest leading-none ${isSupervisor ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {isSupervisor ? 'Supervisão' : 'Analista'}
+              </p>
             </div>
           )}
         </div>
@@ -309,69 +319,11 @@ export default function App() {
     };
   }, []);
 
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('kg_sidebar_collapsed') === 'true';
-  });
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-
-  const toggleSidebar = (v: boolean) => {
-    setIsSidebarCollapsed(v);
-    localStorage.setItem('kg_sidebar_collapsed', String(v));
-  };
-
-  useEffect(() => {
-    if (!session?.user) return;
-
-    const fetchUnread = async () => {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-
-      const { data: logs } = await supabase
-        .from('shift_logs')
-        .select('id')
-        .gte('created_at', threeDaysAgo.toISOString());
-
-      const { data: reads } = await supabase
-        .from('shift_log_reads')
-        .select('log_id')
-        .eq('user_id', session.user.id);
-
-      if (logs && reads) {
-        const readIds = new Set(reads.map(r => r.log_id));
-        setUnreadCount(logs.filter(l => !readIds.has(l.id)).length);
-      }
-    };
-
-    fetchUnread();
-
-    const logsSub = supabase
-      .channel('app_unread_logs')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_logs' }, () => {
-        fetchUnread();
-      })
-      .subscribe();
-
-    const readsSub = supabase
-      .channel('app_unread_reads')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_log_reads' }, () => {
-        fetchUnread();
-      })
-      .subscribe();
-
-    return () => {
-      logsSub.unsubscribe();
-      readsSub.unsubscribe();
-    };
-  }, [session, isChatOpen]);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-6 animate-pulse">
           <img src="/logo-symbol.png" alt="Carregando..." className="w-24 h-24 object-contain animate-bounce" />
-          {/* <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Carregando Sistema...</p> */}
         </div>
       </div>
     );
@@ -390,47 +342,145 @@ export default function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <HashRouter>
-          <div className={`flex h-full w-full bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300 ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-            <Sidebar
-              user={session.user}
-              onLogout={() => setSession(null)}
-              onOpenChat={() => setIsChatOpen(true)}
-              unreadCount={unreadCount}
-              isCollapsed={isSidebarCollapsed}
-              setIsCollapsed={toggleSidebar}
-              isMobileOpen={isMobileSidebarOpen}
-              onCloseMobile={() => setIsMobileSidebarOpen(false)}
-            />
-            {isMobileSidebarOpen && (
-              <div
-                className="fixed inset-0 bg-black/40 z-30 md:hidden"
-                onClick={() => setIsMobileSidebarOpen(false)}
-              />
-            )}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <Header onOpenSidebar={() => setIsMobileSidebarOpen(true)} />
-              <main className="flex-1 overflow-y-auto">
-                <Routes>
-                  <Route path="/" element={<DashboardView />} />
-                  <Route path="/inspections" element={<InspectionView />} />
-                  <Route path="/finishing" element={<FinishingView />} />
-                  <Route path="/finishing-analysis" element={<FinishingAnalysisView />} />
-                  <Route path="/reports" element={<ReportsView />} />
-                  {/* Remove permanent shift-log route if we only want popup */}
-                  <Route path="/shift-log" element={<ShiftLogView />} />
-                  <Route path="/records" element={<RecordsView />} />
-                  <Route path="/docs" element={<DocumentationView />} />
-                  <Route path="/historical-import" element={<HistoricalUploadView />} />
-                  <Route path="/admin" element={<AdminView />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </main>
-            </div>
-            <ChatPopup isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-          </div>
-        </HashRouter>
+        <UserProvider userId={session.user.id}>
+          <AppShell session={session} />
+        </UserProvider>
       </ToastProvider>
     </ThemeProvider>
+  );
+}
+
+function AppShell({ session }: { session: any }) {
+  const { isSupervisor, loading: profileLoading } = useUser();
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('kg_sidebar_collapsed') === 'true';
+  });
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  const toggleSidebar = (v: boolean) => {
+    setIsSidebarCollapsed(v);
+    localStorage.setItem('kg_sidebar_collapsed', String(v));
+  };
+
+  // Shift log unread counter
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const fetchUnread = async () => {
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+      const { data: logs } = await supabase
+        .from('shift_logs')
+        .select('id')
+        .gte('created_at', threeDaysAgo.toISOString());
+
+      const { data: reads } = await supabase
+        .from('shift_log_reads')
+        .select('log_id')
+        .eq('user_id', session.user.id);
+
+      if (logs && reads) {
+        const readIds = new Set(reads.map((r: any) => r.log_id));
+        setUnreadCount(logs.filter((l: any) => !readIds.has(l.id)).length);
+      }
+    };
+
+    fetchUnread();
+
+    const logsSub = supabase
+      .channel('app_unread_logs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_logs' }, fetchUnread)
+      .subscribe();
+
+    const readsSub = supabase
+      .channel('app_unread_reads')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_log_reads' }, fetchUnread)
+      .subscribe();
+
+    return () => {
+      logsSub.unsubscribe();
+      readsSub.unsubscribe();
+    };
+  }, [session, isChatOpen]);
+
+  // Pending edit requests counter (supervisor only)
+  useEffect(() => {
+    if (!isSupervisor) return;
+
+    const fetchPending = async () => {
+      const { count } = await supabase
+        .from('edit_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setPendingRequests(count ?? 0);
+    };
+
+    fetchPending();
+
+    const sub = supabase
+      .channel('app_pending_requests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'edit_requests' }, fetchPending)
+      .subscribe();
+
+    return () => { sub.unsubscribe(); };
+  }, [isSupervisor]);
+
+  if (profileLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-col items-center gap-6 animate-pulse">
+          <img src="/logo-symbol.png" alt="Carregando..." className="w-24 h-24 object-contain animate-bounce" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <HashRouter>
+      <div className={`flex h-full w-full bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300 ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <Sidebar
+          user={session.user}
+          onLogout={() => authService.signOut()}
+          onOpenChat={() => setIsChatOpen(true)}
+          unreadCount={unreadCount}
+          pendingRequests={pendingRequests}
+          isCollapsed={isSidebarCollapsed}
+          setIsCollapsed={toggleSidebar}
+          isMobileOpen={isMobileSidebarOpen}
+          onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        />
+        {isMobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-30 md:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+        )}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header onOpenSidebar={() => setIsMobileSidebarOpen(true)} />
+          <main className="flex-1 overflow-y-auto">
+            <Routes>
+              <Route path="/" element={<DashboardView />} />
+              <Route path="/inspections" element={<InspectionView />} />
+              <Route path="/finishing" element={<FinishingView />} />
+              <Route path="/finishing-analysis" element={<FinishingAnalysisView />} />
+              <Route path="/reports" element={<ReportsView />} />
+              <Route path="/shift-log" element={<ShiftLogView />} />
+              <Route path="/records" element={<RecordsView />} />
+              <Route path="/docs" element={<DocumentationView />} />
+              {/* Supervisor-only routes */}
+              <Route path="/historical-import" element={isSupervisor ? <HistoricalUploadView /> : <Navigate to="/" replace />} />
+              <Route path="/supervisor" element={isSupervisor ? <SupervisorView /> : <Navigate to="/" replace />} />
+              <Route path="/admin" element={isSupervisor ? <AdminView /> : <Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+        </div>
+        <ChatPopup isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+      </div>
+    </HashRouter>
   );
 }

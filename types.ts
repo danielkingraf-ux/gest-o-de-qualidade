@@ -1,4 +1,33 @@
 
+export type UserRole = 'analista' | 'supervisor';
+
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  name: string;
+  role: UserRole;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EditRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface EditRequest {
+  id: string;
+  inspection_id: string;
+  requested_by: string;
+  reason: string;
+  proposed_changes: Record<string, any>;
+  status: EditRequestStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  // Joined
+  inspections?: InspectionRecord;
+  requester_profile?: UserProfile;
+}
+
 export enum ProcessType {
   OFFSET = 'OFFSET',
   UV = 'UV',
@@ -78,6 +107,9 @@ export interface InspectionRecord {
   machines?: Machine;
   operators?: Operator;
   analysts?: Analyst;
-  process_data?: any; // For flexible process-specific metrics
+  process_data?: any;
   escolha?: EscolhaData;
+  created_by_user_id?: string;
+  edited_at?: string | null;
+  edited_by_user_id?: string | null;
 }

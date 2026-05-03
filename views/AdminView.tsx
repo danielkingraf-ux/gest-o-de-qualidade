@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Machine, Operator, Analyst, DefectType } from '../types';
+import { Machine, Operator, Analyst, DefectType, UserProfile, UserRole } from '../types';
 import { useToast } from '../contexts/ToastContext';
+import { useUser } from '../contexts/UserContext';
 
-type Tab = 'machines' | 'operators' | 'analysts' | 'defects';
+type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users';
 
 export default function AdminView() {
     const [activeTab, setActiveTab] = useState<Tab>('machines');
@@ -14,6 +15,7 @@ export default function AdminView() {
         { id: 'operators', label: 'Operadores', icon: 'groups' },
         { id: 'analysts', label: 'Analistas', icon: 'shield_person' },
         { id: 'defects', label: 'Defeitos', icon: 'error' },
+        { id: 'users', label: 'Usuários', icon: 'manage_accounts' },
     ];
 
     return (
@@ -50,6 +52,7 @@ export default function AdminView() {
                 {activeTab === 'operators' && <OperatorsManager />}
                 {activeTab === 'analysts' && <AnalystsManager />}
                 {activeTab === 'defects' && <DefectTypesManager />}
+                {activeTab === 'users' && <UsersManager />}
             </div>
         </div>
     );
@@ -714,6 +717,171 @@ function DefectTypesManager() {
                 onToggleActive={toggleActive}
                 onDelete={handleDelete}
             />
+        </div>
+    );
+}
+
+// -----------------------------------------------------------------------------
+// USERS (perfis de acesso ao sistema)
+// -----------------------------------------------------------------------------
+
+function UsersManager() {
+    const [users, setUsers] = useState<UserProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState<Partial<UserProfile> | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const { showToast } = useToast();
+    const { refreshProfile } = useUser();
+
+    const fetchUsers = useCallback(async () => {
+        setLoading(true);
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .order('name');
+        if (error) showToast('Erro ao carregar usuários', 'error');
+        else setUsers(data || []);
+        setLoading(false);
+    }, [showToast]);
+
+    useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editing?.name || !editing?.role) return;
+        setIsSaving(true);
+        try {
+            if (editing.id) {
+                const { error } = await supabase
+                    .from('user_profiles')
+                    .update({ name: editing.name, role: editing.role, active: editing.active })
+                    .eq('id', editing.id);
+                if (error) throw error;
+            }
+            showToast('Usuário atualizado', 'success');
+            setEditing(null);
+            fetchUsers();
+            refreshProfile();
+        } catch (err: any) {
+            showToast(`Erro: ${err.message}`, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const toggleActive = async (id: string, current: boolean) => {
+        const { error } = await supabase
+            .from('user_profiles')
+            .update({ active: !current })
+            .eq('id', id);
+        if (error) showToast('Erro ao atualizar', 'error');
+        else fetchUsers();
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">manage_accounts</span>
+                    Controle de Acesso
+                </h2>
+                <p className="text-xs text-slate-400 font-medium">Usuários são criados automaticamente no primeiro login</p>
+            </div>
+
+            {editing && (
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome de Exibição</label>
+                        <input
+                            required
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.name ?? ''}
+                            onChange={e => setEditing({ ...editing, name: e.target.value })}
+                            placeholder="Ex: Maria Souza"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nível de Acesso</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.role ?? 'analista'}
+                            onChange={e => setEditing({ ...editing, role: e.target.value as UserRole })}
+                        >
+                            <option value="analista">Analista</option>
+                            <option value="supervisor">Supervisão</option>
+                        </select>
+                    </div>
+                    <div className="flex items-end gap-3">
+                        <button type="submit" disabled={isSaving}
+                            className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">
+                            {isSaving ? '...' : 'Salvar'}
+                        </button>
+                        <button type="button" onClick={() => setEditing(null)}
+                            className="px-6 h-14 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500">
+                            Voltar
+                        </button>
+                    </div>
+                </form>
+            )}
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        <tr>
+                            <th className="px-6 py-4">Usuário</th>
+                            <th className="px-6 py-4">Nível</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4 text-right w-32">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {loading ? (
+                            <tr><td colSpan={4} className="px-6 py-12 text-center">
+                                <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+                            </td></tr>
+                        ) : users.length === 0 ? (
+                            <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs italic">
+                                Nenhum usuário cadastrado. Usuários aparecem aqui após o primeiro login.
+                            </td></tr>
+                        ) : users.map(u => (
+                            <tr key={u.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
+                                <td className="px-6 py-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`size-10 rounded-full flex items-center justify-center text-white text-sm font-black ${u.role === 'supervisor' ? 'bg-amber-500' : 'bg-primary'}`}>
+                                            {u.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-sm font-black text-slate-700 dark:text-white uppercase">{u.name}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-3">
+                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.role === 'supervisor'
+                                        ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                        : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                                        {u.role === 'supervisor' ? 'Supervisão' : 'Analista'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-3">
+                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'}`}>
+                                        {u.active ? 'Ativo' : 'Inativo'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-3 text-right">
+                                    <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => setEditing(u)} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all" title="Editar nível">
+                                            <span className="material-symbols-outlined text-lg">edit</span>
+                                        </button>
+                                        <button onClick={() => toggleActive(u.id, u.active)}
+                                            className={`p-2 rounded-xl transition-all ${u.active ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
+                                            title={u.active ? 'Desativar acesso' : 'Ativar acesso'}>
+                                            <span className="material-symbols-outlined text-xl">{u.active ? 'block' : 'check_circle'}</span>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

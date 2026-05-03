@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../services/supabase';
 import { InspectionStatus, ProcessType, Machine, Operator, Analyst } from '../types';
 import { useToast } from '../contexts/ToastContext';
+import { useUser } from '../contexts/UserContext';
 
 // --- Sub-componentes ---
 
@@ -57,6 +58,7 @@ const DefectCounter: React.FC<{
 
 export default function FinishingView() {
     const { showToast } = useToast();
+    const { profile } = useUser();
     const rowIdRef = useRef(0);
     const nextRowId = useCallback(() => `row-${rowIdRef.current++}`, []);
 
@@ -170,6 +172,7 @@ export default function FinishingView() {
                 rework_count: defects.metrics.rejected,
                 process_type: ProcessType.ACABAMENTO,
                 created_at: new Date().toISOString(),
+                created_by_user_id: profile?.user_id ?? null,
                 observations: JSON.stringify({
                     header, tests, defects, all_operator_ids: validOperatorIds,
                     all_analyst_ids: validAnalystIds, is_finishing_laudo: true,

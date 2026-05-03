@@ -3,9 +3,15 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { reportService } from '../services/reportService';
-import { authService } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 import { ProcessType } from '../types';
+import { useUser } from '../contexts/UserContext';
+
+const EDIT_WINDOW_MINUTES = 30;
+const isWithinEditWindow = (timestamp: string) => {
+  const created = new Date(timestamp).getTime();
+  return Date.now() - created < EDIT_WINDOW_MINUTES * 60 * 1000;
+};
 
 const StatCard = ({ label, value, icon, colorClass, bgClass }: { label: string, value: string, icon: string, colorClass: string, bgClass: string }) => (
   <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
@@ -138,12 +144,14 @@ const CATEGORY_ORDER: Array<ProcessType | 'ALL'> = ['ALL', ProcessType.OFFSET, P
 
 export default function RecordsView() {
   const { showToast } = useToast();
+  const { isSupervisor, profile } = useUser();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os Status');
   const [categoryFilter, setCategoryFilter] = useState<ProcessType | 'ALL'>('ALL');
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [editRequestRecord, setEditRequestRecord] = useState<any>(null);
+  const [editRequestReason, setEditRequestReason] = useState('');
 
   // Master Data (for mapping IDs to names)
   const [operatorsList, setOperatorsList] = useState<any[]>([]);
@@ -215,9 +223,7 @@ export default function RecordsView() {
     };
     loadMasterData();
 
-    authService.getCurrentUser().then(user => {
-      setCurrentUser(user);
-    });
+    // user identity comes from UserContext
   }, []);
 
   const handleViewDetails = (record: any) => {
@@ -305,6 +311,26 @@ export default function RecordsView() {
       machine_id: record.machine_id
     });
     setIsEditModalOpen(true);
+  };
+
+  const submitEditRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editRequestRecord || !editRequestReason.trim()) return;
+    try {
+      const { error } = await supabase.from('edit_requests').insert({
+        inspection_id: editRequestRecord.id,
+        requested_by: profile?.user_id,
+        reason: editRequestReason.trim(),
+        proposed_changes: {},
+        status: 'pending',
+      });
+      if (error) throw error;
+      showToast('Solicitação enviada para aprovação da supervisão', 'success');
+      setEditRequestRecord(null);
+      setEditRequestReason('');
+    } catch (err: any) {
+      showToast(`Erro ao enviar: ${err.message}`, 'error');
+    }
   };
 
   const saveEdit = async (e: React.FormEvent) => {
@@ -568,7 +594,8 @@ export default function RecordsView() {
                             <span className="material-symbols-outlined text-xl">visibility</span>
                           </button>
 
-                          {authService.isAdmin(currentUser) && (
+                          {/* Supervisor: edit + delete sem restrição */}
+                          {isSupervisor && (
                             <>
                               <button
                                 onClick={() => handleEdit(record)}
@@ -585,6 +612,26 @@ export default function RecordsView() {
                                 <span className="material-symbols-outlined text-xl">delete</span>
                               </button>
                             </>
+                          )}
+                          {/* Analista: edição direta nos primeiros 30min, depois solicita */}
+                          {!isSupervisor && record.created_by_user_id === profile?.user_id && (
+                            isWithinEditWindow(record.created_at) ? (
+                              <button
+                                onClick={() => handleEdit(record)}
+                                className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
+                                title={`Editar (janela de ${EDIT_WINDOW_MINUTES}min)`}
+                              >
+                                <span className="material-symbols-outlined text-xl">edit</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setEditRequestRecord(record); setEditRequestReason(''); }}
+                                className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
+                                title="Solicitar alteração (aprovação necessária)"
+                              >
+                                <span className="material-symbols-outlined text-xl">rate_review</span>
+                              </button>
+                            )
                           )}
                           <button
                             onClick={() => {
@@ -841,6 +888,57 @@ export default function RecordsView() {
         confirmText="Excluir Definitivamente"
         type="danger"
       />
+
+      {/* Modal: Solicitar Alteração (analista fora da janela de 30min) */}
+      {editRequestRecord && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={submitEditRequest}
+            className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md p-8 space-y-6 border border-slate-200 dark:border-slate-800"
+          >
+            <div className="flex items-center gap-3">
+              <div className="size-12 rounded-2xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-500">
+                <span className="material-symbols-outlined">rate_review</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Solicitar Alteração</h3>
+                <p className="text-xs text-slate-400">OP {editRequestRecord.op} • aguarda aprovação da supervisão</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Motivo da alteração *
+              </label>
+              <textarea
+                required
+                rows={4}
+                className="px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-medium resize-none focus:ring-2 focus:ring-primary/20 outline-none"
+                placeholder="Descreva o que precisa ser alterado e o motivo..."
+                value={editRequestReason}
+                onChange={e => setEditRequestReason(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                className="flex-1 h-12 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
+              >
+                Enviar Solicitação
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditRequestRecord(null)}
+                className="px-6 h-12 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div >
   );
 }

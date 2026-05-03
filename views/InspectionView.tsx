@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../services/supabase';
 import { InspectionStatus, ProcessType, Machine, Operator, Analyst, EscolhaData } from '../types';
 import { useToast } from '../contexts/ToastContext';
+import { useUser } from '../contexts/UserContext';
 
 // --- Sub-componentes ---
 
@@ -121,6 +122,7 @@ const OffsetEscolhaCard: React.FC<{ value: EscolhaData; onChange: (partial: Part
 
 export default function InspectionView() {
   const { showToast } = useToast();
+  const { profile } = useUser();
   const rowIdRef = useRef(0);
   const nextRowId = useCallback(() => `row-${rowIdRef.current++}`, []);
 
@@ -247,10 +249,10 @@ export default function InspectionView() {
       let dataToSave: any = {
         op: selectedOP,
         machine_id: selectedMachineId,
-        operator_id: validOperatorIds[0], // Primary operator for FK compatibility
-        analyst_id: validAnalystIds[0], // Primary analyst for FK compatibility
-        // process_type removed due to schema missing
-        created_at: new Date().toISOString()
+        operator_id: validOperatorIds[0],
+        analyst_id: validAnalystIds[0],
+        created_at: new Date().toISOString(),
+        created_by_user_id: profile?.user_id ?? null,
       };
 
       // Montar payload específico por aba
