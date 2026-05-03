@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
-import { authService } from '../services/authService';
 import { useToast } from '../contexts/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -53,13 +52,11 @@ export default function ShiftLogView() {
     }, []);
 
     const handleDeleteClick = async (id: string, userId: string) => {
-        const currentUser = await authService.getCurrentUser();
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-        if (!currentUser || (currentUser.id !== userId && !currentUser.email?.includes('admin'))) {
-            if (currentUser?.id !== userId) {
-                showToast('Você só pode excluir suas próprias mensagens.', 'warning');
-                return;
-            }
+        if (!currentUser || currentUser.id !== userId) {
+            showToast('Você só pode excluir suas próprias mensagens.', 'warning');
+            return;
         }
 
         setLogToDelete(id);
@@ -109,7 +106,7 @@ export default function ShiftLogView() {
         if (!content.trim()) return;
 
         try {
-            const user = await authService.getCurrentUser();
+            const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Usuário não autenticado');
 
             const { error } = await supabase.from('shift_logs').insert([

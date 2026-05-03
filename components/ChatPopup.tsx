@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
-import { authService } from '../services/authService';
 import { Analyst } from '../types';
 
 interface ShiftLog {
@@ -28,7 +27,7 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        authService.getCurrentUser().then(setCurrentUser);
+        supabase.auth.getUser().then(({ data: { user } }) => setCurrentUser(user));
         fetchAnalysts();
         fetchMessages();
         fetchReadReceipts();
