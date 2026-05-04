@@ -31,11 +31,20 @@ export default function DashboardView() {
                 try { return JSON.parse(obs); } catch { return {}; }
             };
 
+            // Normaliza defeitos — suporta objeto {cor:2} (manual) e array [{name,count}] (CSV)
+            const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
+                if (!raw) return [];
+                if (Array.isArray(raw)) return raw.filter((d: any) => (d.count || 0) > 0);
+                return Object.entries(raw)
+                    .filter(([_, count]) => (count as number) > 0)
+                    .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
+            };
+
             // Enriquecer cada inspeção com defeitos vindos do observations JSON
             const enriched = (inspections || []).map((insp: any) => {
                 const obs = parseObs(insp.observations);
-                const defects: any[] = obs.defects || [];
-                const totalDef = obs.totalDefects ?? defects.reduce((a: number, d: any) => a + (d.count || 0), 0);
+                const defects = normalizeDefects(obs.defects);
+                const totalDef: number = obs.totalDefects ?? defects.reduce((a: number, d: any) => a + (d.count || 0), 0);
                 return {
                     ...insp,
                     defects,

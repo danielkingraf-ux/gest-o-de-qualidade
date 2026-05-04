@@ -179,12 +179,23 @@ export default function RecordsView() {
 
       if (inspError) throw inspError;
 
+      // Normaliza defeitos — suporta objeto {cor:2} (manual) e array [{name,count}] (CSV importado)
+      const normalizeDefectsRaw = (raw: any): Array<{ name: string; count: number; icon?: string }> => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw.filter((d: any) => (d.count || 0) > 0);
+        return Object.entries(raw)
+          .filter(([_, count]) => (count as number) > 0)
+          .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
+      };
+
       // Map data — defeitos ficam dentro do JSON de observations
       const formatted = (inspData || []).map(insp => {
         const parsedObservations = parseObservations(insp.observations);
-        const displayProcessType = normalizeProcessType(insp.process_type || parsedObservations.process_type);
-        const defects: any[] = parsedObservations.defects || [];
-        const total_defects = parsedObservations.totalDefects
+        const displayProcessType = normalizeProcessType(
+          (insp as any).process_type || parsedObservations.process_type
+        );
+        const defects = normalizeDefectsRaw(parsedObservations.defects);
+        const total_defects: number = parsedObservations.totalDefects
           ?? defects.reduce((acc: number, d: any) => acc + (d.count || 0), 0);
         return {
           ...insp,
@@ -193,7 +204,8 @@ export default function RecordsView() {
           totalDefects: total_defects,
           displayProcessType,
           process_type: displayProcessType,
-          isLegacy: parsedObservations.legacy === true || parsedObservations.is_historical === true,
+          isHistorical: parsedObservations.is_historical === true,
+          isLegacy: parsedObservations.legacy === true,
           escolha: mapEscolhaFromObservations(parsedObservations)
         };
       });
@@ -251,12 +263,28 @@ export default function RecordsView() {
     return ids.map(id => list.find(item => item.id === id)?.name || 'Desconhecido').join(', ');
   };
 
+  // Normaliza defeitos — suporta objeto {cor:2} (manual) e array [{name,count}] (CSV)
+  const normalizeDefects = (raw: any): Array<{ name: string; count: number; icon?: string; category?: string }> => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) {
+      return raw.filter((d: any) => (d.count || 0) > 0).map((d: any) => ({
+        name: d.name || d.id || '',
+        count: d.count || 0,
+        icon: d.icon,
+      }));
+    }
+    // Objeto simples {cor: 2, manchas: 1}
+    return Object.entries(raw)
+      .filter(([_, count]) => (count as number) > 0)
+      .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
+  };
+
   const getDefectsList = (record: any) => {
     try {
       const obs = record.observations ? JSON.parse(record.observations) : {};
 
       // Finishing records have categorized defects
-      if (obs.is_finishing_laudo && obs.defects) {
+      if (obs.is_finishing_laudo && obs.defects && !Array.isArray(obs.defects)) {
         const categories = ['critical', 'major', 'minor'];
         const flattened: any[] = [];
         categories.forEach(cat => {
@@ -271,11 +299,7 @@ export default function RecordsView() {
         return flattened;
       }
 
-      const defects = obs.defects || {};
-      // Filter only defects with count > 0
-      return Object.entries(defects)
-        .filter(([_, count]) => (count as number) > 0)
-        .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count }));
+      return normalizeDefects(obs.defects);
     } catch (e) {
       return [];
     }
@@ -358,6 +382,7 @@ export default function RecordsView() {
     }
   };
 
+  // Exibe todos os registros (históricos e manuais); oculta só os marcados como 'legacy' (formato antigo sem dados válidos)
   const visibleRecords = useMemo(() => records.filter(record => !record.isLegacy), [records]);
 
   const filteredRecords = useMemo(() => {
