@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
-import { ProcessType, Analyst, InspectionStatus } from '../types';
+import { ProcessType, Analyst, InspectionStatus, Order } from '../types';
 
 const DEFECT_COLUMNS = [
     { key: 'manchas', label: 'Manchas', icon: 'texture' },
@@ -79,6 +79,8 @@ export default function FinishingAnalysisView() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [selectedOrderId, setSelectedOrderId] = useState('');
 
     // Filters
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -102,11 +104,13 @@ export default function FinishingAnalysisView() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [aRes] = await Promise.all([
-                supabase.from('analysts').select('*').eq('active', true).order('name')
+            const [aRes, ordRes] = await Promise.all([
+                supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
+                supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
             ]);
 
             if (aRes.data) setAnalysts(aRes.data);
+            if (ordRes.data) setOrders(ordRes.data);
         } catch (err) {
             console.error('Erro ao buscar dados:', err);
             showToast('Erro ao carregar dados', 'error');
@@ -121,15 +125,17 @@ export default function FinishingAnalysisView() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.op || !formData.laudo_numero || !formData.analyst_id) {
+        if (!selectedOrderId || !formData.laudo_numero || !formData.analyst_id) {
             showToast('OP, Nº do Laudo e Analista são obrigatórios', 'warning');
             return;
         }
+        const selectedOrder = orders.find(o => o.id === selectedOrderId);
 
         setIsSaving(true);
         try {
             const dataToSave = {
-                op: formData.op,
+                op: selectedOrder?.op ?? '',
+                order_id: selectedOrderId,
                 analyst_id: formData.analyst_id,
                 status: InspectionStatus.APPROVED,
                 samples_count: formData.amostragem,
@@ -149,6 +155,7 @@ export default function FinishingAnalysisView() {
             if (error) throw error;
 
             showToast('Análise salva com sucesso!', 'success');
+            setSelectedOrderId('');
             setFormData({
                 op: '',
                 laudo_numero: '',
@@ -207,12 +214,14 @@ export default function FinishingAnalysisView() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         <div className="space-y-1">
                             <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Ordem Proc. (OP)</label>
-                            <input
-                                value={formData.op}
-                                onChange={e => setFormData(p => ({ ...p, op: e.target.value.toUpperCase() }))}
+                            <select
+                                value={selectedOrderId}
+                                onChange={e => setSelectedOrderId(e.target.value)}
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
-                                placeholder="00000"
-                            />
+                            >
+                                <option value="">Selecionar OP...</option>
+                                {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+                            </select>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Nº do Laudo</label>

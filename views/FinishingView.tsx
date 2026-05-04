@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
-import { InspectionStatus, ProcessType, Machine, Operator, Analyst } from '../types';
+import { InspectionStatus, ProcessType, Machine, Operator, Analyst, Order } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 
@@ -67,6 +67,8 @@ export default function FinishingView() {
     const [machines, setMachines] = useState<Machine[]>([]);
     const [operators, setOperators] = useState<Operator[]>([]);
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [selectedOrderId, setSelectedOrderId] = useState('');
 
     const [header, setHeader] = useState({
         op: '',
@@ -109,14 +111,16 @@ export default function FinishingView() {
     useEffect(() => {
         async function fetchData() {
             try {
-                const [mRes, oRes, aRes] = await Promise.all([
+                const [mRes, oRes, aRes, ordRes] = await Promise.all([
                     supabase.from('machines').select('*').eq('active', true).order('name'),
                     supabase.from('operators').select('*').eq('active', true).order('name'),
-                    supabase.from('analysts').select('*').eq('active', true).order('name')
+                    supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
+                    supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
                 ]);
                 if (mRes.data) setMachines(mRes.data);
                 if (oRes.data) setOperators(oRes.data);
                 if (aRes.data) setAnalysts(aRes.data);
+                if (ordRes.data) setOrders(ordRes.data);
             } catch (err) {
                 console.error('Erro ao carregar dados:', err);
             } finally {
@@ -147,10 +151,11 @@ export default function FinishingView() {
     }, []);
 
     const handleSave = useCallback(async (andNew: boolean) => {
-        if (!header.op || !header.machine_id || !header.reportNumber) {
+        if (!selectedOrderId || !header.machine_id || !header.reportNumber) {
             showToast('OP, Máquina e Número do Laudo são obrigatórios', 'warning');
             return;
         }
+        const selectedOrder = orders.find(o => o.id === selectedOrderId);
 
         const validOperatorIds = selectedOperatorRows.map(r => r.value).filter(id => id.trim() !== '');
         const validAnalystIds = selectedAnalystRows.map(r => r.value).filter(id => id.trim() !== '');
@@ -163,7 +168,8 @@ export default function FinishingView() {
         setIsSaving(true);
         try {
             const dataToSave = {
-                op: header.op,
+                op: selectedOrder?.op ?? header.op,
+                order_id: selectedOrderId,
                 machine_id: header.machine_id,
                 operator_id: validOperatorIds[0],
                 analyst_id: validAnalystIds[0],
@@ -190,7 +196,7 @@ export default function FinishingView() {
         } finally {
             setIsSaving(false);
         }
-    }, [header, tests, defects, selectedOperatorRows, selectedAnalystRows, resetAll, showToast]);
+    }, [header, tests, defects, selectedOperatorRows, selectedAnalystRows, selectedOrderId, orders, resetAll, showToast]);
 
     const updateHeader = (field: string, value: any) => setHeader(prev => ({ ...prev, [field]: value }));
 
@@ -225,11 +231,22 @@ export default function FinishingView() {
                     </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Ordem de Produção (OP)</label>
-                        <input value={header.op} onChange={e => updateHeader('op', e.target.value.toUpperCase())} className="w-full h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-bold text-sm" placeholder="OP" />
+                        <select
+                            value={selectedOrderId}
+                            onChange={e => {
+                                const ord = orders.find(o => o.id === e.target.value);
+                                setSelectedOrderId(e.target.value);
+                                if (ord) updateHeader('cliente', ord.cliente);
+                            }}
+                            className="w-full h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-bold text-sm"
+                        >
+                            <option value="">Selecionar OP...</option>
+                            {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+                        </select>
                     </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Cliente</label>
-                        <input value={header.cliente} onChange={e => updateHeader('cliente', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-bold text-sm" placeholder="Cliente" />
+                        <input value={header.cliente} onChange={e => updateHeader('cliente', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-bold text-sm" placeholder="(preenchido automaticamente)" />
                     </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Equipamento</label>

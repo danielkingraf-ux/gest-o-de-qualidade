@@ -509,7 +509,7 @@ function AnalystsManager() {
                     Equipe de Qualidade
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', email: '', active: true })}
+                    onClick={() => setEditing({ name: '', email: '', tipo: 'impressao', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Analista
@@ -517,7 +517,7 @@ function AnalystsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome do Analista</label>
                         <input
@@ -537,6 +537,18 @@ function AnalystsManager() {
                             onChange={e => setEditing({ ...editing, email: e.target.value })}
                             placeholder="Ex: beatriz@kingraf.com"
                         />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Área de Atuação</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.tipo ?? 'impressao'}
+                            onChange={e => setEditing({ ...editing, tipo: e.target.value as any })}
+                        >
+                            <option value="impressao">Impressão</option>
+                            <option value="acabamento">Acabamento</option>
+                            <option value="ambos">Ambos</option>
+                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving} className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest">{isSaving ? '...' : 'Salvar'}</button>
@@ -561,6 +573,17 @@ function AnalystsManager() {
                         )
                     },
                     { key: 'email', label: 'Contato' },
+                    {
+                        key: 'tipo', label: 'Área', render: a => {
+                            const map: Record<string, { label: string; color: string }> = {
+                                impressao: { label: 'Impressão', color: 'bg-blue-50 text-blue-600 border border-blue-100' },
+                                acabamento: { label: 'Acabamento', color: 'bg-purple-50 text-purple-600 border border-purple-100' },
+                                ambos: { label: 'Ambos', color: 'bg-amber-50 text-amber-600 border border-amber-100' },
+                            };
+                            const t = map[a.tipo] ?? map['impressao'];
+                            return <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${t.color}`}>{t.label}</span>;
+                        }
+                    },
                     {
                         key: 'active', label: 'Status', render: a => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${a.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'

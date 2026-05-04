@@ -14,6 +14,8 @@ import FinishingAnalysisView from './views/FinishingAnalysisView';
 import ReportsView from './views/ReportsView';
 import HistoricalUploadView from './views/HistoricalUploadView';
 import SupervisorView from './views/SupervisorView';
+import OrdersView from './views/OrdersView';
+import OPTraceView from './views/OPTraceView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
 import { UserProvider, useUser } from './contexts/UserContext';
@@ -110,6 +112,8 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
     { path: '/finishing-analysis', label: 'Análise de Amostragem', icon: 'table_chart', roles: ['analista', 'supervisor'] },
     { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['analista', 'supervisor'] },
     { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true, roles: ['analista', 'supervisor'] },
+    { path: '/orders', label: 'Ordens de Produção', icon: 'receipt_long', roles: ['analista', 'supervisor'] },
+    { path: '/op-trace', label: 'Rastreio por OP', icon: 'route', roles: ['analista', 'supervisor'] },
     { path: '/records', label: 'Registros', icon: 'analytics', roles: ['analista', 'supervisor'] },
     { path: '/historical-import', label: 'Importação ODS', icon: 'history', roles: ['supervisor'] },
     { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['supervisor'] },
@@ -469,6 +473,8 @@ function AppShell({ session }: { session: any }) {
               <Route path="/finishing-analysis" element={<FinishingAnalysisView />} />
               <Route path="/reports" element={<ReportsView />} />
               <Route path="/shift-log" element={<ShiftLogView />} />
+              <Route path="/orders" element={<OrdersView />} />
+              <Route path="/op-trace" element={<OPTraceView />} />
               <Route path="/records" element={<RecordsView />} />
               <Route path="/docs" element={<DocumentationView />} />
               {/* Supervisor-only routes */}

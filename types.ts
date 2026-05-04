@@ -66,12 +66,30 @@ export interface Operator {
   created_at: string;
 }
 
+export type AnalystTipo = 'impressao' | 'acabamento' | 'ambos';
+
 export interface Analyst {
   id: string;
   name: string;
   email: string;
+  tipo: AnalystTipo;
   active: boolean;
   created_at: string;
+}
+
+export type OrderStatus = 'em_producao' | 'concluido' | 'suspenso';
+
+export interface Order {
+  id: string;
+  op: string;
+  cliente: string;
+  produto: string;
+  descricao?: string;
+  qtd_total: number;
+  status: OrderStatus;
+  created_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DefectType {

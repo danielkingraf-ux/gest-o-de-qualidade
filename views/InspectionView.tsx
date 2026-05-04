@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
-import { InspectionStatus, ProcessType, Machine, Operator, Analyst, EscolhaData } from '../types';
+import { InspectionStatus, ProcessType, Machine, Operator, Analyst, EscolhaData, Order } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 
@@ -132,9 +132,10 @@ export default function InspectionView() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
 
   // Estados Genéricos (Topo)
-  const [selectedOP, setSelectedOP] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
@@ -176,10 +177,11 @@ export default function InspectionView() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [mRes, oRes, aRes] = await Promise.all([
+        const [mRes, oRes, aRes, ordRes] = await Promise.all([
           supabase.from('machines').select('*').eq('active', true).order('name'),
           supabase.from('operators').select('*').eq('active', true).order('name'),
-          supabase.from('analysts').select('*').eq('active', true).order('name')
+          supabase.from('analysts').select('*').eq('active', true).in('tipo', ['impressao', 'ambos']).order('name'),
+          supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
         ]);
         if (mRes.data) {
           setMachines(mRes.data);
@@ -193,6 +195,7 @@ export default function InspectionView() {
           setAnalysts(aRes.data);
           if (aRes.data.length > 0) setSelectedAnalystRows([{ rowId: nextRowId(), value: aRes.data[0].id }]);
         }
+        if (ordRes.data) setOrders(ordRes.data);
       } catch (err) {
         showToast('Erro ao carregar dados mestres', 'error');
       } finally {
@@ -230,10 +233,11 @@ export default function InspectionView() {
 
   const handleSave = useCallback(async (andNew: boolean) => {
     // Validate required fields
-    if (!selectedOP || !selectedMachineId) {
-      showToast('Preencha os campos fixos do cabeçalho', 'warning');
+    if (!selectedOrderId || !selectedMachineId) {
+      showToast('Selecione a Ordem de Produção e a Máquina', 'warning');
       return;
     }
+    const selectedOrder = orders.find(o => o.id === selectedOrderId);
 
     // Filter out empty selections
     const validOperatorIds = selectedOperatorRows.map(r => r.value).filter(id => id.trim() !== '');
@@ -247,7 +251,8 @@ export default function InspectionView() {
     setIsSaving(true);
     try {
       let dataToSave: any = {
-        op: selectedOP,
+        op: selectedOrder?.op ?? '',
+        order_id: selectedOrderId,
         machine_id: selectedMachineId,
         operator_id: validOperatorIds[0],
         analyst_id: validAnalystIds[0],
@@ -297,7 +302,7 @@ export default function InspectionView() {
       showToast('Registro salvo com sucesso!', 'success');
       if (andNew) {
         resetAll();
-        setSelectedOP('');
+        setSelectedOrderId('');
       }
     } catch (err: any) {
       showToast(`Erro ao salvar: ${err.message}`, 'error');
@@ -361,13 +366,16 @@ export default function InspectionView() {
       <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="space-y-1">
           <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ordem de Produção (OP)</label>
-          <input
-            type="text"
-            value={selectedOP}
-            onChange={(e) => setSelectedOP(e.target.value.toUpperCase())}
-            className="w-full h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-1 focus:ring-primary/20 outline-none"
-            placeholder="00000"
-          />
+          <select
+            value={selectedOrderId}
+            onChange={(e) => setSelectedOrderId(e.target.value)}
+            className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-1 focus:ring-primary/20"
+          >
+            <option value="">Selecionar OP...</option>
+            {orders.map(o => (
+              <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1">
           <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Máquina</label>
