@@ -309,7 +309,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOP, selectedMachineId, selectedOperatorRows, selectedAnalystRows, activeTab, offsetData, uvData, hotStampingData, resetAll, showToast]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, activeTab, offsetData, uvData, hotStampingData, orders, resetAll, showToast]);
 
   // Atalhos de Teclado
   useEffect(() => {

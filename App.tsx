@@ -302,23 +302,23 @@ export default function App() {
   useEffect(() => {
     let settled = false;
 
-    // Fallback: if Supabase doesn't respond (paused project, network issue), unblock the UI
-    const timeout = setTimeout(() => {
+    // 1. Lê sessão local do storage imediatamente (sem rede)
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (!settled) {
         settled = true;
+        setSession(session);
         setLoading(false);
       }
-    }, 5000);
+    });
 
+    // 2. Fica ouvindo mudanças (login/logout)
     const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
-      if (!settled) settled = true;
-      clearTimeout(timeout);
+      settled = true;
       setSession(session);
       setLoading(false);
     });
 
     return () => {
-      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -326,9 +326,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-6 animate-pulse">
-          <img src="/logo-symbol.png" alt="Carregando..." className="w-24 h-24 object-contain animate-bounce" />
-        </div>
+        <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
       </div>
     );
   }
@@ -436,9 +434,7 @@ function AppShell({ session }: { session: any }) {
   if (profileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-6 animate-pulse">
-          <img src="/logo-symbol.png" alt="Carregando..." className="w-24 h-24 object-contain animate-bounce" />
-        </div>
+        <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
       </div>
     );
   }
