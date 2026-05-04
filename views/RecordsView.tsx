@@ -174,29 +174,26 @@ export default function RecordsView() {
       // Fetch inspections with machine info
       const { data: inspData, error: inspError } = await supabase
         .from('inspections')
-        .select(`
-          *,
-          machines(name, code),
-          operators(name),
-          analysts(name),
-          inspection_defects(
-            count,
-            defect_types(name)
-          )
-        `)
+        .select(`*, machines(name, code), operators(name), analysts(name)`)
         .order('created_at', { ascending: false });
 
       if (inspError) throw inspError;
 
-      // Map data to include total defects count
+      // Map data — defeitos ficam dentro do JSON de observations
       const formatted = (inspData || []).map(insp => {
         const parsedObservations = parseObservations(insp.observations);
         const displayProcessType = normalizeProcessType(insp.process_type || parsedObservations.process_type);
+        const defects: any[] = parsedObservations.defects || [];
+        const total_defects = parsedObservations.totalDefects
+          ?? defects.reduce((acc: number, d: any) => acc + (d.count || 0), 0);
         return {
           ...insp,
-          total_defects: (insp.inspection_defects || []).reduce((acc: number, d: any) => acc + (d.count || 0), 0),
+          defects,
+          total_defects,
+          totalDefects: total_defects,
           displayProcessType,
-          isLegacy: parsedObservations.legacy === true,
+          process_type: displayProcessType,
+          isLegacy: parsedObservations.legacy === true || parsedObservations.is_historical === true,
           escolha: mapEscolhaFromObservations(parsedObservations)
         };
       });

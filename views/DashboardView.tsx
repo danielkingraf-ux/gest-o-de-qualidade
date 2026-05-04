@@ -21,23 +21,30 @@ export default function DashboardView() {
             // Fetch inspections with related data
             const { data: inspections, error: inspError } = await supabase
                 .from('inspections')
-                .select(`
-          *,
-          machines(name),
-          inspection_defects(count, defect_types(name))
-        `)
+                .select(`*, machines(name), operators(name), analysts(name)`)
                 .order('created_at', { ascending: true });
 
             if (inspError) throw inspError;
+
             const parseObs = (obs?: string) => {
                 if (!obs) return {};
-                try {
-                    return JSON.parse(obs);
-                } catch {
-                    return {};
-                }
+                try { return JSON.parse(obs); } catch { return {}; }
             };
-            const cleaned = (inspections || []).filter((insp: any) => {
+
+            // Enriquecer cada inspeção com defeitos vindos do observations JSON
+            const enriched = (inspections || []).map((insp: any) => {
+                const obs = parseObs(insp.observations);
+                const defects: any[] = obs.defects || [];
+                const totalDef = obs.totalDefects ?? defects.reduce((a: number, d: any) => a + (d.count || 0), 0);
+                return {
+                    ...insp,
+                    defects,
+                    total_defects: totalDef,
+                    process_type: insp.process_type || obs.process_type || 'OFFSET',
+                };
+            });
+
+            const cleaned = enriched.filter((insp: any) => {
                 const obs = parseObs(insp.observations);
                 return obs.is_spreadsheet_analysis !== true && insp.status;
             });
@@ -47,11 +54,11 @@ export default function DashboardView() {
             const { data: opsData } = await supabase.from('operators').select('id, name');
             setOperators(opsData || []);
 
-            // Pre-process defects for Pareto
+            // Pre-process defects for Pareto — lê do observations
             const defectMap: Record<string, number> = {};
-            inspections?.forEach(insp => {
-                insp.inspection_defects?.forEach((d: any) => {
-                    const typeName = d.defect_types?.name || 'Outros';
+            enriched.forEach((insp: any) => {
+                (insp.defects || []).forEach((d: any) => {
+                    const typeName = d.name || 'Outros';
                     defectMap[typeName] = (defectMap[typeName] || 0) + (d.count || 0);
                 });
             });
@@ -79,10 +86,7 @@ export default function DashboardView() {
         const rejected = data.filter(i => i.status === 'REJECTED').length;
         const restricted = data.filter(i => i.status === 'RESTRICTED').length;
 
-        const totalDefects = data.reduce((acc, curr) => {
-            const defectsCount = curr.inspection_defects?.reduce((a: number, b: any) => a + (b.count || 0), 0) || 0;
-            return acc + defectsCount;
-        }, 0);
+        const totalDefects = data.reduce((acc, curr) => acc + (curr.total_defects || 0), 0);
 
         const approvalRate = total > 0 ? (approved / total) * 100 : 0;
 
@@ -97,7 +101,7 @@ export default function DashboardView() {
         const opMap: Record<string, number> = {};
 
         data.forEach(insp => {
-            const defCount = insp.inspection_defects?.reduce((a: number, b: any) => a + (b.count || 0), 0) || 0;
+            const defCount = insp.total_defects || 0;
 
             // Machine
             const machName = insp.machines?.name || 'N/A';

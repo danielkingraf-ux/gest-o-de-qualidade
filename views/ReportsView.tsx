@@ -38,10 +38,10 @@ const getDefectsFromRecord = (record: InspectionRecord) => {
   const obs = parseObservations(record.observations);
   const defects: Array<{ name: string; count: number }> = [];
 
-  if (record.inspection_defects && record.inspection_defects.length > 0) {
-    record.inspection_defects.forEach(d => {
-      const name = d.defect_types?.name || 'Outros';
-      defects.push({ name, count: d.count || 0 });
+  // Defeitos ficam no campo defects (populado via observations JSON)
+  if ((record as any).defects && (record as any).defects.length > 0) {
+    (record as any).defects.forEach((d: any) => {
+      defects.push({ name: d.name || 'Outros', count: d.count || 0 });
     });
     return defects;
   }
@@ -101,13 +101,25 @@ const ReportsView = () => {
       try {
         const { data: inspections, error } = await supabase
           .from('inspections')
-          .select('*, machines(name), operators(name), inspection_defects(count, defect_types(name))')
+          .select('*, machines(name), operators(name), analysts(name)')
           .order('created_at', { ascending: true });
         if (error) throw error;
 
         const { data: ops } = await supabase.from('operators').select('id, name');
 
-        const cleaned = (inspections || []).filter((r: InspectionRecord) => !!r.status);
+        // Enriquecer com defeitos e process_type vindos do observations JSON
+        const cleaned = (inspections || [])
+          .filter((r: any) => !!r.status)
+          .map((r: any) => {
+            const obs = parseObservations(r.observations);
+            const defects = obs.defects || [];
+            return {
+              ...r,
+              defects,
+              total_defects: obs.totalDefects ?? defects.reduce((a: number, d: any) => a + (d.count || 0), 0),
+              process_type: r.process_type || obs.process_type || 'OFFSET',
+            };
+          });
         setRecords(cleaned);
         setOperators(ops || []);
       } catch (err: any) {
