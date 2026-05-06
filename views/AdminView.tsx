@@ -1,10 +1,27 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Machine, Operator, Analyst, DefectType } from '../types';
+import { Machine, Operator, Analyst, DefectType, ProductionArea } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
 type Tab = 'machines' | 'operators' | 'analysts' | 'defects';
+
+const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
+    { value: 'producao_inicial', label: 'Produção inicial' },
+    { value: 'produto_acabado', label: 'Produto acabado' },
+    { value: 'ambos', label: 'Ambos' },
+];
+
+const AREA_BADGES: Record<ProductionArea, { label: string; className: string }> = {
+    producao_inicial: { label: 'Produção inicial', className: 'bg-blue-50 text-blue-600 border border-blue-100' },
+    produto_acabado: { label: 'Produto acabado', className: 'bg-violet-50 text-violet-600 border border-violet-100' },
+    ambos: { label: 'Ambos', className: 'bg-amber-50 text-amber-600 border border-amber-100' },
+};
+
+function AreaBadge({ area }: { area?: ProductionArea }) {
+    const badge = AREA_BADGES[area ?? 'producao_inicial'] ?? AREA_BADGES.producao_inicial;
+    return <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${badge.className}`}>{badge.label}</span>;
+}
 
 export default function AdminView() {
     const [activeTab, setActiveTab] = useState<Tab>('machines');
@@ -220,7 +237,7 @@ function MachinesManager() {
                     Gestão de Máquinas
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', code: '', active: true })}
+                    onClick={() => setEditing({ name: '', code: '', area: 'producao_inicial', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Nova Máquina
@@ -228,7 +245,7 @@ function MachinesManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome do Equipamento</label>
                         <input
@@ -249,6 +266,16 @@ function MachinesManager() {
                             onChange={e => setEditing({ ...editing, code: e.target.value })}
                             placeholder="Ex: PR-01"
                         />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Área de uso</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            value={editing.area ?? 'producao_inicial'}
+                            onChange={e => setEditing({ ...editing, area: e.target.value as ProductionArea })}
+                        >
+                            {AREA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button
@@ -283,6 +310,7 @@ function MachinesManager() {
                         )
                     },
                     { key: 'code', label: 'TAG/ID' },
+                    { key: 'area', label: 'Área', render: m => <AreaBadge area={m.area} /> },
                     {
                         key: 'active', label: 'Situação', render: m => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${m.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
@@ -370,7 +398,7 @@ function OperatorsManager() {
                     Frente de Trabalho
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', code: '', active: true })}
+                    onClick={() => setEditing({ name: '', code: '', area: 'producao_inicial', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Operador
@@ -378,7 +406,7 @@ function OperatorsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome Completo</label>
                         <input
@@ -397,6 +425,16 @@ function OperatorsManager() {
                             onChange={e => setEditing({ ...editing, code: e.target.value })}
                             placeholder="Ex: 50123"
                         />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Área de atuação</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.area ?? 'producao_inicial'}
+                            onChange={e => setEditing({ ...editing, area: e.target.value as ProductionArea })}
+                        >
+                            {AREA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving} className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">{isSaving ? '...' : 'Salvar'}</button>
@@ -421,6 +459,7 @@ function OperatorsManager() {
                         )
                     },
                     { key: 'code', label: 'RE / Registro' },
+                    { key: 'area', label: 'Área', render: o => <AreaBadge area={o.area} /> },
                     {
                         key: 'active', label: 'Status', render: o => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${o.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'

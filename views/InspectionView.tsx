@@ -175,8 +175,8 @@ export default function InspectionView() {
     async function fetchData() {
       try {
         const [mRes, oRes, aRes] = await Promise.all([
-          supabase.from('machines').select('*').eq('active', true).order('name'),
-          supabase.from('operators').select('*').eq('active', true).order('name'),
+          supabase.from('machines').select('*').eq('active', true).in('area', ['producao_inicial', 'ambos']).order('name'),
+          supabase.from('operators').select('*').eq('active', true).in('area', ['producao_inicial', 'ambos']).order('name'),
           supabase.from('analysts').select('*').eq('active', true).order('name')
         ]);
         if (mRes.data) {
@@ -198,7 +198,7 @@ export default function InspectionView() {
       }
     }
     fetchData();
-  }, [showToast]);
+  }, [showToast, nextRowId]);
 
   const resetAll = useCallback(() => {
     // ... manter lógica anterior de reset ...

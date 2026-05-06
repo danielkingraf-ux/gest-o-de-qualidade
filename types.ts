@@ -25,6 +25,7 @@ export interface Machine {
   id: string;
   name: string;
   code: string;
+  area?: ProductionArea;
   active: boolean;
   created_at: string;
 }
@@ -33,14 +34,19 @@ export interface Operator {
   id: string;
   name: string;
   code: string;
+  area?: ProductionArea;
   active: boolean;
   created_at: string;
 }
+
+export type ProductionArea = 'producao_inicial' | 'produto_acabado' | 'ambos';
+export type AnalystTipo = 'impressao' | 'acabamento' | 'ambos';
 
 export interface Analyst {
   id: string;
   name: string;
   email: string;
+  tipo?: AnalystTipo;
   active: boolean;
   created_at: string;
 }
