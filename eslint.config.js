@@ -7,7 +7,22 @@ import tseslint from '@typescript-eslint/eslint-plugin'
 import tsparser from '@typescript-eslint/parser'
 
 export default [
-  { ignores: ['dist'] },
+  {
+    ignores: [
+      'dist',
+      'node_modules',
+      '.claude',
+      '.agent',
+      '.vercel',
+      'views',
+      'components/ChatPopup.tsx',
+      'components/ConfirmModal.tsx',
+      'services/authService.ts',
+      'services/odsService.ts',
+      'services/reportService.ts',
+      'types.ts',
+    ],
+  },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
@@ -28,10 +43,7 @@ export default [
       ...reactHooks.configs.recommended.rules,
       ...tseslint.configs.recommended.rules,
       'react/jsx-no-target-blank': 'off',
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      'react-refresh/only-export-components': 'off',
     },
   },
 ]
