@@ -317,7 +317,7 @@ export default function DashboardView() {
         const final = summarize(filtered.filter((item) => item.area === 'final'));
 
         const defectMap = new Map<string, number>();
-        const operatorMap = new Map<string, { name: string; defects: number; inspections: number }>();
+        const operatorMap = new Map<string, { name: string; defects: number; inspections: number; samples: number }>();
         const timelineMap = new Map<string, { periodo: string; inicial: number; final: number; desvios: number }>();
 
         filtered.forEach((item) => {
@@ -328,9 +328,10 @@ export default function DashboardView() {
             const ids = item.operatorIds.length > 0 ? item.operatorIds : ['sem-operador'];
             ids.forEach((id) => {
                 const name = id === 'sem-operador' ? 'Sem operador' : operators[id] || 'Desconhecido';
-                const current = operatorMap.get(id) || { name, defects: 0, inspections: 0 };
+                const current = operatorMap.get(id) || { name, defects: 0, inspections: 0, samples: 0 };
                 current.defects += item.defectsTotal;
                 current.inspections += 1;
+                current.samples += item.samples || item.folhasRevisadas || item.folhasImpressas || item.unidadesEscolha;
                 operatorMap.set(id, current);
             });
 
@@ -350,7 +351,8 @@ export default function DashboardView() {
         const byOperator = Array.from(operatorMap.values())
             .map((item) => ({
                 ...item,
-                percent: total.defects > 0 ? (item.defects / total.defects) * 100 : 0,
+                sharePercent: total.defects > 0 ? (item.defects / total.defects) * 100 : 0,
+                defectRate: item.samples > 0 ? (item.defects / item.samples) * 100 : null,
             }))
             .sort((a, b) => b.defects - a.defects)
             .slice(0, 10);
@@ -537,7 +539,7 @@ export default function DashboardView() {
                             <div className="mb-4 flex items-center justify-between gap-3">
                                 <div>
                                     <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Desvios por operador</h3>
-                                    <p className="text-xs font-bold text-slate-400">Operadores vinculados aos apontamentos</p>
+                                    <p className="text-xs font-bold text-slate-400">Taxa = desvios / amostras vinculadas. % do total = participação nos desvios do filtro.</p>
                                 </div>
                                 <Users className="size-5 text-slate-400" />
                             </div>
@@ -547,7 +549,8 @@ export default function DashboardView() {
                                         <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
                                             <th className="py-3">Operador</th>
                                             <th className="py-3 text-right">Desvios</th>
-                                            <th className="py-3 text-right">% desvios</th>
+                                            <th className="py-3 text-right">Taxa</th>
+                                            <th className="py-3 text-right">% do total</th>
                                             <th className="py-3 text-right">Registros</th>
                                         </tr>
                                     </thead>
@@ -556,7 +559,8 @@ export default function DashboardView() {
                                             <tr key={operator.name} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
                                                 <td className="py-3">{operator.name}</td>
                                                 <td className="py-3 text-right">{formatNumber(operator.defects)}</td>
-                                                <td className="py-3 text-right">{formatPercent(operator.percent)}</td>
+                                                <td className="py-3 text-right">{operator.defectRate === null ? '-' : formatPercent(operator.defectRate)}</td>
+                                                <td className="py-3 text-right">{formatPercent(operator.sharePercent)}</td>
                                                 <td className="py-3 text-right">{formatNumber(operator.inspections)}</td>
                                             </tr>
                                         ))}
