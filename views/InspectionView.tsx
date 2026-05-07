@@ -32,7 +32,7 @@ const MetricInput: React.FC<{
 
 type ApprovalRuleMode = 'percent' | 'quantity';
 type ApprovalRule = { mode: ApprovalRuleMode; restrictedLimit: number; rejectLimit: number };
-type ProductionMetrics = { printedSheets: number; expectedUnits: number; scrapUnits: number };
+type ProductionMetrics = { printedSheets: number; expectedUnits: number };
 type PilhasData = {
   pilhas_total: number;
   pilhas_verificadas: number;
@@ -60,7 +60,7 @@ const getStatusText = (status: InspectionStatus) => {
   return 'Aprovado';
 };
 
-const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR');
+const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR'); // v2
 
 export default function InspectionView() {
   const { showToast } = useToast();
@@ -83,7 +83,7 @@ export default function InspectionView() {
   const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [activeTab, setActiveTab] = useState<ProcessType>(ProcessType.OFFSET);
-  const [productionMetrics, setProductionMetrics] = useState<ProductionMetrics>({ printedSheets: 0, expectedUnits: 0, scrapUnits: 0 });
+  const [productionMetrics, setProductionMetrics] = useState<ProductionMetrics>({ printedSheets: 0, expectedUnits: 0 });
   const [approvalRule, setApprovalRule] = useState<ApprovalRule>(() => {
     try {
       const saved = localStorage.getItem(APPROVAL_RULE_STORAGE_KEY);
@@ -139,7 +139,7 @@ export default function InspectionView() {
   // Derived
   const currentOrder = useMemo(() => orders.find(o => o.id === selectedOrderId) ?? null, [orders, selectedOrderId]);
   const numeroRodada = currentOrder ? (currentOrder.rodadas_realizadas ?? 0) + 1 : 1;
-  const realProducedUnits = Math.max(0, productionMetrics.expectedUnits - productionMetrics.scrapUnits);
+  const realProducedUnits = productionMetrics.expectedUnits;
 
   const failureBasis = useMemo(() => {
     if (activeTab === ProcessType.OFFSET) {
@@ -241,7 +241,7 @@ export default function InspectionView() {
     });
     setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
     setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
-    setProductionMetrics({ printedSheets: 0, expectedUnits: 0, scrapUnits: 0 });
+    setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
     setPilhasData({ pilhas_total: 0, pilhas_verificadas: 0, pilhas_aprovadas: 0, pilhas_segregadas_escolha: 0, pilhas_reprovadas: 0 });
     setUnidadesPorFolha(1);
     setFolhasPorPilha(500);
@@ -369,7 +369,6 @@ export default function InspectionView() {
           production_metrics: {
             printed_sheets: productionMetrics.printedSheets,
             expected_units: productionMetrics.expectedUnits,
-            scrap_units: productionMetrics.scrapUnits,
             real_produced_units: realProducedUnits,
             failures: activeFailureCount,
             failure_rate: failureRate,
@@ -390,7 +389,6 @@ export default function InspectionView() {
           production_metrics: {
             printed_sheets: productionMetrics.printedSheets,
             expected_units: productionMetrics.expectedUnits,
-            scrap_units: productionMetrics.scrapUnits,
             real_produced_units: realProducedUnits,
             failures: activeFailureCount,
             failure_rate: failureRate,
@@ -627,10 +625,6 @@ export default function InspectionView() {
             <div className="space-y-1">
               <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Quantidade OP (unidades) *</label>
               <input type="number" min={0} value={productionMetrics.expectedUnits} onChange={(e) => updateProductionMetric('expectedUnits', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ajustes / refugos</label>
-              <input type="number" min={0} value={productionMetrics.scrapUnits} onChange={(e) => updateProductionMetric('scrapUnits', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
             </div>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
