@@ -1,11 +1,28 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Machine, Operator, Analyst, DefectType, UserProfile, UserRole } from '../types';
+import { Machine, Operator, Analyst, DefectType, UserProfile, UserRole, ProductionArea } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 
 type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users';
+
+const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
+    { value: 'producao_inicial', label: 'Produção inicial' },
+    { value: 'produto_acabado', label: 'Produto acabado' },
+    { value: 'ambos', label: 'Ambos' },
+];
+
+const AREA_BADGES: Record<ProductionArea, { label: string; className: string }> = {
+    producao_inicial: { label: 'Produção inicial', className: 'bg-blue-50 text-blue-600 border border-blue-100' },
+    produto_acabado: { label: 'Produto acabado', className: 'bg-violet-50 text-violet-600 border border-violet-100' },
+    ambos: { label: 'Ambos', className: 'bg-amber-50 text-amber-600 border border-amber-100' },
+};
+
+function AreaBadge({ area }: { area?: ProductionArea }) {
+    const badge = AREA_BADGES[area ?? 'producao_inicial'] ?? AREA_BADGES.producao_inicial;
+    return <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${badge.className}`}>{badge.label}</span>;
+}
 
 export default function AdminView() {
     const [activeTab, setActiveTab] = useState<Tab>('machines');
@@ -119,21 +136,24 @@ function ManagerTable({
                                     <button
                                         onClick={() => onEdit(item)}
                                         className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all"
-                                        title="Editar"
+                                        aria-label="Editar"
+                                        data-tooltip="Editar"
                                     >
                                         <span className="material-symbols-outlined text-lg">edit</span>
                                     </button>
                                     <button
                                         onClick={() => onToggleActive(item.id, item.active)}
                                         className={`p-2 rounded-xl transition-all ${item.active ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
-                                        title={item.active ? 'Desativar' : 'Ativar'}
+                                        aria-label={item.active ? 'Desativar' : 'Ativar'}
+                                        data-tooltip={item.active ? 'Desativar' : 'Ativar'}
                                     >
                                         <span className="material-symbols-outlined text-xl">{item.active ? 'block' : 'check_circle'}</span>
                                     </button>
                                     <button
                                         onClick={() => onDelete(item.id)}
                                         className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
-                                        title="Excluir"
+                                        aria-label="Excluir"
+                                        data-tooltip="Excluir"
                                     >
                                         <span className="material-symbols-outlined text-xl">delete</span>
                                     </button>
@@ -223,7 +243,7 @@ function MachinesManager() {
                     Gestão de Máquinas
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', code: '', active: true })}
+                    onClick={() => setEditing({ name: '', code: '', area: 'producao_inicial', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Nova Máquina
@@ -231,7 +251,7 @@ function MachinesManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome do Equipamento</label>
                         <input
@@ -252,6 +272,16 @@ function MachinesManager() {
                             onChange={e => setEditing({ ...editing, code: e.target.value })}
                             placeholder="Ex: PR-01"
                         />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Área de uso</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            value={editing.area ?? 'producao_inicial'}
+                            onChange={e => setEditing({ ...editing, area: e.target.value as ProductionArea })}
+                        >
+                            {AREA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button
@@ -286,6 +316,7 @@ function MachinesManager() {
                         )
                     },
                     { key: 'code', label: 'TAG/ID' },
+                    { key: 'area', label: 'Área', render: m => <AreaBadge area={m.area} /> },
                     {
                         key: 'active', label: 'Situação', render: m => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${m.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
@@ -373,7 +404,7 @@ function OperatorsManager() {
                     Frente de Trabalho
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', code: '', active: true })}
+                    onClick={() => setEditing({ name: '', code: '', area: 'producao_inicial', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Operador
@@ -381,7 +412,7 @@ function OperatorsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome Completo</label>
                         <input
@@ -400,6 +431,16 @@ function OperatorsManager() {
                             onChange={e => setEditing({ ...editing, code: e.target.value })}
                             placeholder="Ex: 50123"
                         />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Área de atuação</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.area ?? 'producao_inicial'}
+                            onChange={e => setEditing({ ...editing, area: e.target.value as ProductionArea })}
+                        >
+                            {AREA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving} className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">{isSaving ? '...' : 'Salvar'}</button>
@@ -424,6 +465,7 @@ function OperatorsManager() {
                         )
                     },
                     { key: 'code', label: 'RE / Registro' },
+                    { key: 'area', label: 'Área', render: o => <AreaBadge area={o.area} /> },
                     {
                         key: 'active', label: 'Status', render: o => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${o.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
@@ -751,7 +793,7 @@ function DefectTypesManager() {
 function UsersManager() {
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
-    const [editing, setEditing] = useState<Partial<UserProfile> | null>(null);
+    const [editing, setEditing] = useState<Partial<UserProfile> & { email?: string; password?: string } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const { showToast } = useToast();
     const { refreshProfile } = useUser();
@@ -780,8 +822,31 @@ function UsersManager() {
                     .update({ name: editing.name, role: editing.role, active: editing.active })
                     .eq('id', editing.id);
                 if (error) throw error;
+                showToast('Usuário atualizado', 'success');
+            } else {
+                if (!editing.email) {
+                    showToast('Email é obrigatório', 'warning');
+                    setIsSaving(false);
+                    return;
+                }
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch(
+                    'https://juatgymcjvnofllfennk.supabase.co/functions/v1/create-user',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${session?.access_token}`,
+                        },
+                        body: JSON.stringify({ email: editing.email, name: editing.name, role: editing.role, password: editing.password }),
+                    }
+                );
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.error || 'Erro ao criar usuário');
+                }
+                showToast('Usuário criado. Email de confirmação enviado.', 'success');
             }
-            showToast('Usuário atualizado', 'success');
             setEditing(null);
             fetchUsers();
             refreshProfile();
@@ -808,11 +873,43 @@ function UsersManager() {
                     <span className="material-symbols-outlined text-primary">manage_accounts</span>
                     Controle de Acesso
                 </h2>
-                <p className="text-xs text-slate-400 font-medium">Usuários são criados automaticamente no primeiro login</p>
+                <button
+                    onClick={() => setEditing({ name: '', email: '', role: 'analista' as UserRole, active: true })}
+                    className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                >
+                    <span className="material-symbols-outlined text-sm">add</span> Novo Usuário
+                </button>
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                    {!editing.id && (
+                        <>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email</label>
+                                <input
+                                    required
+                                    type="email"
+                                    className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                                    value={editing.email ?? ''}
+                                    onChange={e => setEditing({ ...editing, email: e.target.value })}
+                                    placeholder="Ex: joao@kingraf.com.br"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Senha Inicial</label>
+                                <input
+                                    required
+                                    type="text"
+                                    className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                                    value={editing.password ?? ''}
+                                    onChange={e => setEditing({ ...editing, password: e.target.value })}
+                                    placeholder="Ex: Kingraf@2026"
+                                />
+                            </div>
+                        </>
+                    )}
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome de Exibição</label>
                         <input
@@ -837,7 +934,7 @@ function UsersManager() {
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving}
                             className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">
-                            {isSaving ? '...' : 'Salvar'}
+                            {isSaving ? '...' : 'Confirmar'}
                         </button>
                         <button type="button" onClick={() => setEditing(null)}
                             className="px-6 h-14 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500">
@@ -890,12 +987,13 @@ function UsersManager() {
                                 </td>
                                 <td className="px-6 py-3 text-right">
                                     <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => setEditing(u)} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all" title="Editar nível">
+                                        <button onClick={() => setEditing(u)} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all" aria-label="Editar nível" data-tooltip="Editar nível">
                                             <span className="material-symbols-outlined text-lg">edit</span>
                                         </button>
                                         <button onClick={() => toggleActive(u.id, u.active)}
                                             className={`p-2 rounded-xl transition-all ${u.active ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
-                                            title={u.active ? 'Desativar acesso' : 'Ativar acesso'}>
+                                            aria-label={u.active ? 'Desativar acesso' : 'Ativar acesso'}
+                                            data-tooltip={u.active ? 'Desativar acesso' : 'Ativar acesso'}>
                                             <span className="material-symbols-outlined text-xl">{u.active ? 'block' : 'check_circle'}</span>
                                         </button>
                                     </div>
