@@ -114,6 +114,14 @@ const parseObservations = (observations?: string) => {
   }
 };
 
+const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter((d: any) => (d.count || 0) > 0);
+  return Object.entries(raw)
+    .filter(([, count]) => (count as number) > 0)
+    .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
+};
+
 const isSpreadsheetAnalysis = (record: any) => {
   const obs = parseObservations(record.observations);
   return obs.is_spreadsheet_analysis === true;
@@ -179,23 +187,12 @@ export default function RecordsView() {
 
       if (inspError) throw inspError;
 
-      // Normaliza defeitos — suporta objeto {cor:2} (manual) e array [{name,count}] (CSV importado)
-      const normalizeDefectsRaw = (raw: any): Array<{ name: string; count: number; icon?: string }> => {
-        if (!raw) return [];
-        if (Array.isArray(raw)) return raw.filter((d: any) => (d.count || 0) > 0);
-        return Object.entries(raw)
-          .filter(([_, count]) => (count as number) > 0)
-          .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
-      };
-
       // Map data — defeitos ficam dentro do JSON de observations
       const formatted = (inspData || []).map(insp => {
         const parsedObservations = parseObservations(insp.observations);
-        const displayProcessType = normalizeProcessType(
-          (insp as any).process_type || parsedObservations.process_type
-        );
-        const defects = normalizeDefectsRaw(parsedObservations.defects);
-        const total_defects: number = parsedObservations.totalDefects
+        const displayProcessType = normalizeProcessType(insp.process_type || parsedObservations.process_type);
+        const defects = normalizeDefects(parsedObservations.defects);
+        const total_defects = parsedObservations.totalDefects
           ?? defects.reduce((acc: number, d: any) => acc + (d.count || 0), 0);
         return {
           ...insp,
@@ -204,8 +201,7 @@ export default function RecordsView() {
           totalDefects: total_defects,
           displayProcessType,
           process_type: displayProcessType,
-          isHistorical: parsedObservations.is_historical === true,
-          isLegacy: parsedObservations.legacy === true,
+          isLegacy: parsedObservations.legacy === true || parsedObservations.is_historical === true,
           escolha: mapEscolhaFromObservations(parsedObservations)
         };
       });
@@ -263,28 +259,12 @@ export default function RecordsView() {
     return ids.map(id => list.find(item => item.id === id)?.name || 'Desconhecido').join(', ');
   };
 
-  // Normaliza defeitos — suporta objeto {cor:2} (manual) e array [{name,count}] (CSV)
-  const normalizeDefects = (raw: any): Array<{ name: string; count: number; icon?: string; category?: string }> => {
-    if (!raw) return [];
-    if (Array.isArray(raw)) {
-      return raw.filter((d: any) => (d.count || 0) > 0).map((d: any) => ({
-        name: d.name || d.id || '',
-        count: d.count || 0,
-        icon: d.icon,
-      }));
-    }
-    // Objeto simples {cor: 2, manchas: 1}
-    return Object.entries(raw)
-      .filter(([_, count]) => (count as number) > 0)
-      .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
-  };
-
   const getDefectsList = (record: any) => {
     try {
       const obs = record.observations ? JSON.parse(record.observations) : {};
 
       // Finishing records have categorized defects
-      if (obs.is_finishing_laudo && obs.defects && !Array.isArray(obs.defects)) {
+      if (obs.is_finishing_laudo && obs.defects) {
         const categories = ['critical', 'major', 'minor'];
         const flattened: any[] = [];
         categories.forEach(cat => {
@@ -305,13 +285,27 @@ export default function RecordsView() {
     }
   };
 
+  const canEditRecord = (record: any) => {
+    if (isSupervisor) return true;
+    return record.created_by_user_id === profile?.user_id && isWithinEditWindow(record.created_at);
+  };
+
   const handleDeleteClick = (id: string) => {
+    if (!isSupervisor) {
+      showToast('Analistas não podem excluir registros. Solicite à supervisão.', 'warning');
+      return;
+    }
     setRecordToDelete(id);
     setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = async () => {
     if (!recordToDelete) return;
+    if (!isSupervisor) {
+      showToast('Exclusão permitida somente para supervisão', 'error');
+      setRecordToDelete(null);
+      return;
+    }
 
     try {
       const { error } = await supabase.from('inspections').delete().eq('id', recordToDelete);
@@ -326,6 +320,10 @@ export default function RecordsView() {
   };
 
   const handleEdit = (record: any) => {
+    if (!canEditRecord(record)) {
+      showToast('Edição direta permitida somente até 30 minutos para o próprio registro. Após isso, solicite à supervisão.', 'warning');
+      return;
+    }
     setEditingRecord({
       ...record,
       // Ensure machine is just the ID for the select
@@ -357,6 +355,12 @@ export default function RecordsView() {
   const saveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRecord) return;
+    if (!canEditRecord(editingRecord)) {
+      showToast('Edição bloqueada. Analistas só podem editar o próprio registro em até 30 minutos.', 'error');
+      setIsEditModalOpen(false);
+      setEditingRecord(null);
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -365,6 +369,8 @@ export default function RecordsView() {
         .update({
           op: editingRecord.op,
           status: editingRecord.status,
+          edited_at: new Date().toISOString(),
+          edited_by_user_id: profile?.user_id ?? null,
           // Note: Updating machine_id or other relations might need a full refetch or careful state update
           // For simplicity, we trigger a refetch or simple optimistic update
         })
@@ -382,7 +388,6 @@ export default function RecordsView() {
     }
   };
 
-  // Exibe todos os registros (históricos e manuais); oculta só os marcados como 'legacy' (formato antigo sem dados válidos)
   const visibleRecords = useMemo(() => records.filter(record => !record.isLegacy), [records]);
 
   const filteredRecords = useMemo(() => {
@@ -611,7 +616,8 @@ export default function RecordsView() {
                           <button
                             onClick={() => handleViewDetails(record)}
                             className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                            title="Ver Detalhes"
+                            aria-label="Ver Detalhes"
+                            data-tooltip="Ver Detalhes"
                           >
                             <span className="material-symbols-outlined text-xl">visibility</span>
                           </button>
@@ -622,14 +628,16 @@ export default function RecordsView() {
                               <button
                                 onClick={() => handleEdit(record)}
                                 className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
-                                title="Editar Registro"
+                                aria-label="Editar Registro"
+                                data-tooltip="Editar Registro"
                               >
                                 <span className="material-symbols-outlined text-xl">edit</span>
                               </button>
                               <button
                                 onClick={() => handleDeleteClick(record.id)}
                                 className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
-                                title="Excluir Registro"
+                                aria-label="Excluir Registro"
+                                data-tooltip="Excluir Registro"
                               >
                                 <span className="material-symbols-outlined text-xl">delete</span>
                               </button>
@@ -641,7 +649,8 @@ export default function RecordsView() {
                               <button
                                 onClick={() => handleEdit(record)}
                                 className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
-                                title={`Editar (janela de ${EDIT_WINDOW_MINUTES}min)`}
+                                aria-label={`Editar (janela de ${EDIT_WINDOW_MINUTES}min)`}
+                                data-tooltip={`Editar (janela de ${EDIT_WINDOW_MINUTES}min)`}
                               >
                                 <span className="material-symbols-outlined text-xl">edit</span>
                               </button>
@@ -649,7 +658,8 @@ export default function RecordsView() {
                               <button
                                 onClick={() => { setEditRequestRecord(record); setEditRequestReason(''); }}
                                 className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
-                                title="Solicitar alteração (aprovação necessária)"
+                                aria-label="Solicitar alteração (aprovação necessária)"
+                                data-tooltip="Solicitar alteração"
                               >
                                 <span className="material-symbols-outlined text-xl">rate_review</span>
                               </button>
@@ -664,7 +674,8 @@ export default function RecordsView() {
                               }
                             }}
                             className="p-2 text-slate-400 hover:text-primary transition-colors rounded-lg"
-                            title="Exportar PDF"
+                            aria-label="Exportar PDF"
+                            data-tooltip="Exportar PDF"
                           >
                             <span className="material-symbols-outlined text-xl">download</span>
                           </button>

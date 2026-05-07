@@ -54,6 +54,7 @@ export interface Machine {
   id: string;
   name: string;
   code: string;
+  area: ProductionArea;
   active: boolean;
   created_at: string;
 }
@@ -62,11 +63,13 @@ export interface Operator {
   id: string;
   name: string;
   code: string;
+  area: ProductionArea;
   active: boolean;
   created_at: string;
 }
 
 export type AnalystTipo = 'impressao' | 'acabamento' | 'ambos';
+export type ProductionArea = 'producao_inicial' | 'produto_acabado' | 'ambos';
 
 export interface Analyst {
   id: string;

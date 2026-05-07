@@ -112,8 +112,8 @@ export default function FinishingView() {
         async function fetchData() {
             try {
                 const [mRes, oRes, aRes, ordRes] = await Promise.all([
-                    supabase.from('machines').select('*').eq('active', true).order('name'),
-                    supabase.from('operators').select('*').eq('active', true).order('name'),
+                    supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
+                    supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                     supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
                     supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
                 ]);

@@ -1,7 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../services/supabase';
-import { InspectionRecord, Order, ProcessType, InspectionStatus } from '../types';
+import { InspectionStatus, Order, ProcessType } from '../types';
 import { useToast } from '../contexts/ToastContext';
+
+type AreaKey = 'initial' | 'final';
+
+type TraceInspection = {
+    id: string;
+    op: string;
+    status: InspectionStatus;
+    processType: string;
+    area: AreaKey;
+    createdAt: string;
+    samples: number;
+    rework: number;
+    totalDefects: number;
+    defects: Array<{ name: string; count: number }>;
+    machineName: string;
+    operatorName: string;
+    analystName: string;
+    observationsText: string;
+};
 
 const PROCESS_LABELS: Record<string, string> = {
     OFFSET: 'Offset',
@@ -11,34 +30,126 @@ const PROCESS_LABELS: Record<string, string> = {
     ACABAMENTO: 'Acabamento',
 };
 
-const PROCESS_ICONS: Record<string, string> = {
-    OFFSET: 'print',
-    UV: 'wb_sunny',
-    HOT_STAMPING: 'bolt',
-    ESCOLHAS: 'fact_check',
-    ACABAMENTO: 'layers',
+const STATUS_LABELS: Record<string, string> = {
+    APPROVED: 'Aprovado',
+    RESTRICTED: 'Aprovado c/ restrição',
+    REJECTED: 'Reprovado',
 };
 
 const STATUS_STYLE: Record<InspectionStatus, { bg: string; text: string; border: string; icon: string }> = {
-    [InspectionStatus.APPROVED]:   { bg: 'bg-emerald-50 dark:bg-emerald-950/20', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-800', icon: 'check_circle' },
-    [InspectionStatus.RESTRICTED]: { bg: 'bg-amber-50 dark:bg-amber-950/20',    text: 'text-amber-700 dark:text-amber-300',    border: 'border-amber-200 dark:border-amber-800',   icon: 'warning' },
-    [InspectionStatus.REJECTED]:   { bg: 'bg-rose-50 dark:bg-rose-950/20',      text: 'text-rose-700 dark:text-rose-300',      border: 'border-rose-200 dark:border-rose-800',     icon: 'cancel' },
+    [InspectionStatus.APPROVED]: { bg: 'bg-emerald-50 dark:bg-emerald-950/20', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-800', icon: 'check_circle' },
+    [InspectionStatus.RESTRICTED]: { bg: 'bg-amber-50 dark:bg-amber-950/20', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800', icon: 'warning' },
+    [InspectionStatus.REJECTED]: { bg: 'bg-rose-50 dark:bg-rose-950/20', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800', icon: 'cancel' },
 };
 
-function fpy(inspections: InspectionRecord[]): number {
-    if (!inspections.length) return 0;
-    const approved = inspections.filter(i => i.status === InspectionStatus.APPROVED).length;
-    return Math.round((approved / inspections.length) * 100);
-}
+const asNumber = (value: any) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
 
-function totalDefects(inspections: InspectionRecord[]): number {
-    return inspections.reduce((sum, i) => sum + (i.totalDefects || 0), 0);
-}
+const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
+
+const parseObservations = (value: any) => {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return {};
+    }
+};
+
+const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
+    if (!raw) return [];
+
+    if (Array.isArray(raw)) {
+        return raw
+            .map((item) => ({
+                name: String(item?.name || item?.label || 'Outros').replace(/_/g, ' '),
+                count: asNumber(item?.count ?? item?.value ?? item?.qty),
+            }))
+            .filter((item) => item.count > 0);
+    }
+
+    if (typeof raw === 'object') {
+        const groups = ['critical', 'major', 'minor'];
+        const hasGroups = groups.some((group) => raw[group] && typeof raw[group] === 'object');
+
+        if (hasGroups) {
+            return groups
+                .flatMap((group) =>
+                    Object.entries(raw[group] || {}).map(([name, count]) => ({
+                        name: name.replace(/_/g, ' '),
+                        count: asNumber(count),
+                    }))
+                )
+                .filter((item) => item.count > 0);
+        }
+
+        return Object.entries(raw)
+            .map(([name, count]) => ({ name: name.replace(/_/g, ' '), count: asNumber(count) }))
+            .filter((item) => item.count > 0);
+    }
+
+    return [];
+};
+
+const getArea = (record: any, obs: any): AreaKey => {
+    if (
+        record.process_type === ProcessType.ACABAMENTO ||
+        obs.process_type === ProcessType.ACABAMENTO ||
+        obs.process_area === 'produto_acabado' ||
+        obs.is_spreadsheet_analysis === true ||
+        obs.is_finishing_laudo === true
+    ) {
+        return 'final';
+    }
+    return 'initial';
+};
+
+const getObservationText = (obs: any, original?: string) => {
+    if (!original) return '';
+    if (!original.trim().startsWith('{')) return original;
+    return obs.escolha?.observacoes || obs.observacoes || obs.restriction_reason || '';
+};
+
+const normalizeInspection = (record: any): TraceInspection => {
+    const obs = parseObservations(record.observations);
+    const defects = normalizeDefects(obs.defects);
+    const total = asNumber(obs.totalDefects) || defects.reduce((sum, defect) => sum + defect.count, 0);
+    const processType = record.process_type || obs.process_type || ProcessType.OFFSET;
+
+    return {
+        id: record.id,
+        op: record.op,
+        status: record.status,
+        processType,
+        area: getArea(record, obs),
+        createdAt: record.created_at || record.timestamp,
+        samples: asNumber(record.samples_count),
+        rework: asNumber(record.rework_count),
+        totalDefects: total,
+        defects,
+        machineName: record.machines?.name || 'N/A',
+        operatorName: record.operators?.name || 'N/A',
+        analystName: record.analysts?.name || 'N/A',
+        observationsText: getObservationText(obs, record.observations),
+    };
+};
+
+const fpy = (items: TraceInspection[]) => {
+    if (!items.length) return 0;
+    const approved = items.filter((item) => item.status === InspectionStatus.APPROVED).length;
+    return Math.round((approved / items.length) * 100);
+};
+
+const sum = (items: TraceInspection[], key: 'samples' | 'rework' | 'totalDefects') =>
+    items.reduce((total, item) => total + item[key], 0);
 
 export default function OPTraceView() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-    const [inspections, setInspections] = useState<InspectionRecord[]>([]);
+    const [inspections, setInspections] = useState<TraceInspection[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(true);
     const [loadingInsp, setLoadingInsp] = useState(false);
     const [search, setSearch] = useState('');
@@ -50,264 +161,295 @@ export default function OPTraceView() {
             .from('orders')
             .select('*')
             .order('created_at', { ascending: false });
-        if (error) showToast('Erro ao carregar OPs', 'error');
-        else setOrders(data || []);
+
+        if (error) {
+            showToast('Erro ao carregar OPs', 'error');
+        } else {
+            setOrders(data || []);
+        }
         setLoadingOrders(false);
     }, [showToast]);
 
-    useEffect(() => { fetchOrders(); }, [fetchOrders]);
+    useEffect(() => {
+        fetchOrders();
+    }, [fetchOrders]);
 
     const selectOrder = useCallback(async (order: Order) => {
         setSelectedOrder(order);
         setLoadingInsp(true);
-        // Load by order_id OR by op text (backward compat)
+
         const { data, error } = await supabase
             .from('inspections')
             .select('*, machines(name), operators(name), analysts(name, tipo)')
             .or(`order_id.eq.${order.id},op.eq.${order.op}`)
-            .order('timestamp', { ascending: true });
-        if (error) showToast('Erro ao carregar inspeções', 'error');
-        else setInspections(data || []);
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            showToast('Erro ao carregar inspeções da OP', 'error');
+            setInspections([]);
+        } else {
+            setInspections((data || []).map(normalizeInspection));
+        }
         setLoadingInsp(false);
     }, [showToast]);
 
-    const filteredOrders = orders.filter(o =>
-        !search ||
-        o.op.toLowerCase().includes(search.toLowerCase()) ||
-        o.cliente.toLowerCase().includes(search.toLowerCase()) ||
-        o.produto.toLowerCase().includes(search.toLowerCase())
-    );
-
-    // Group inspections by process type
-    const grouped = Object.values(ProcessType).reduce((acc, pt) => {
-        acc[pt] = inspections.filter(i => i.process_type === pt);
-        return acc;
-    }, {} as Record<ProcessType, InspectionRecord[]>);
-
-    const fpyGeral = fpy(inspections);
-    const defectsTotal = totalDefects(inspections);
-
-    // Pareto: aggregate defects
-    const defectMap: Record<string, { name: string; count: number }> = {};
-    inspections.forEach(i => {
-        (i.defects || []).forEach(d => {
-            if (!defectMap[d.name]) defectMap[d.name] = { name: d.name, count: 0 };
-            defectMap[d.name].count += d.count;
+    const filteredOrders = useMemo(() => {
+        const value = search.trim().toLowerCase();
+        return orders.filter((order) => {
+            if (!value) return true;
+            return (
+                String(order.op || '').toLowerCase().includes(value) ||
+                String(order.cliente || '').toLowerCase().includes(value) ||
+                String(order.produto || '').toLowerCase().includes(value)
+            );
         });
-    });
-    const pareto = Object.values(defectMap).sort((a, b) => b.count - a.count).slice(0, 5);
+    }, [orders, search]);
+
+    const grouped = useMemo(() => ({
+        initial: inspections.filter((item) => item.area === 'initial'),
+        final: inspections.filter((item) => item.area === 'final'),
+    }), [inspections]);
+
+    const defectPareto = useMemo(() => {
+        const map = new Map<string, number>();
+        inspections.forEach((inspection) => {
+            inspection.defects.forEach((defect) => {
+                map.set(defect.name, (map.get(defect.name) || 0) + defect.count);
+            });
+        });
+
+        return Array.from(map.entries())
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8);
+    }, [inspections]);
+
+    const totals = {
+        fpy: fpy(inspections),
+        defects: sum(inspections, 'totalDefects'),
+        samples: sum(inspections, 'samples'),
+        rework: sum(inspections, 'rework'),
+    };
 
     return (
-        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 animate-fade-in pb-20">
-            {/* Header */}
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5 mb-1">
-                    <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
-                    Rastreabilidade • Kingraf
+        <div className="mx-auto max-w-7xl animate-fade-in space-y-4 p-4 pb-20 md:p-6">
+            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    <span className="size-1.5 rounded-full bg-primary" />
+                    Rastreabilidade por ordem de produção
                 </p>
-                <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Rastreio por OP</h1>
-                <p className="text-xs text-slate-500 font-medium mt-1">Visualize toda a jornada de qualidade de uma Ordem de Produção, do início ao fim.</p>
+                <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 dark:text-white">Rastreio por OP</h1>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                    Consulte tudo que foi registrado na OP, separado entre Processo Inicial e Produto Acabado.
+                </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* LEFT — OP list */}
-                <div className="lg:col-span-1 space-y-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="space-y-3 lg:col-span-1">
                     <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
+                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-slate-400">search</span>
                         <input
                             type="text"
                             value={search}
-                            onChange={e => setSearch(e.target.value)}
+                            onChange={(event) => setSearch(event.target.value)}
                             placeholder="Buscar OP, cliente, produto..."
-                            className="w-full h-12 pl-12 pr-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20"
+                            className="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900"
                         />
                     </div>
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm max-h-[70vh] overflow-y-auto">
+
+                    <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         {loadingOrders ? (
                             <div className="p-8 text-center">
                                 <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
                             </div>
                         ) : filteredOrders.length === 0 ? (
-                            <div className="p-8 text-center text-slate-400 text-xs">Nenhuma OP encontrada</div>
-                        ) : filteredOrders.map(o => (
+                            <div className="p-8 text-center text-xs text-slate-400">Nenhuma OP encontrada</div>
+                        ) : filteredOrders.map((order) => (
                             <button
-                                key={o.id}
-                                onClick={() => selectOrder(o)}
-                                className={`w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 transition-all hover:bg-primary/5 ${selectedOrder?.id === o.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'}`}
+                                key={order.id}
+                                onClick={() => selectOrder(order)}
+                                className={`w-full border-b border-l-4 border-slate-100 p-4 text-left transition hover:bg-primary/5 dark:border-slate-800 ${selectedOrder?.id === order.id ? 'border-l-primary bg-primary/10' : 'border-l-transparent'}`}
                             >
-                                <div className="flex items-center justify-between">
-                                    <p className="text-sm font-black text-slate-800 dark:text-white uppercase">{o.op}</p>
-                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${o.status === 'em_producao' ? 'bg-blue-100 text-blue-600' : o.status === 'concluido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                                        {o.status === 'em_producao' ? 'Produção' : o.status === 'concluido' ? 'Concluído' : 'Suspenso'}
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-sm font-black uppercase text-slate-800 dark:text-white">{order.op}</p>
+                                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${order.status === 'em_producao' ? 'bg-blue-100 text-blue-600' : order.status === 'concluido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                        {order.status === 'em_producao' ? 'Produção' : order.status === 'concluido' ? 'Concluído' : 'Suspenso'}
                                     </span>
                                 </div>
-                                <p className="text-[10px] text-slate-500 font-medium mt-0.5">{o.cliente}</p>
-                                <p className="text-[10px] text-slate-400 font-medium">{o.produto}</p>
+                                <p className="mt-0.5 text-[10px] font-medium text-slate-500">{order.cliente || 'Sem cliente'}</p>
+                                <p className="text-[10px] font-medium text-slate-400">{order.produto || 'Sem produto'}</p>
                             </button>
                         ))}
                     </div>
                 </div>
 
-                {/* RIGHT — timeline */}
-                <div className="lg:col-span-2 space-y-4">
+                <div className="space-y-4 lg:col-span-2">
                     {!selectedOrder ? (
-                        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-16 text-center text-slate-400 shadow-sm">
-                            <span className="material-symbols-outlined text-6xl opacity-20 block mb-3">route</span>
-                            <p className="text-sm font-black uppercase tracking-widest">Selecione uma OP à esquerda</p>
-                            <p className="text-xs font-medium mt-1 opacity-60">para visualizar toda sua jornada de qualidade</p>
-                        </div>
+                        <EmptyState title="Selecione uma OP à esquerda" subtitle="O histórico completo de qualidade aparecerá aqui." icon="route" />
                     ) : loadingInsp ? (
-                        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-16 text-center shadow-sm">
-                            <span className="material-symbols-outlined animate-spin text-primary text-3xl">progress_activity</span>
+                        <div className="rounded-lg border border-slate-200 bg-white p-16 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                            <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
                         </div>
                     ) : (
                         <>
-                            {/* OP summary card */}
-                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{selectedOrder.cliente}</p>
-                                        <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase">{selectedOrder.op}</h2>
-                                        <p className="text-sm text-slate-500 font-medium">{selectedOrder.produto}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{selectedOrder.cliente || 'Sem cliente'}</p>
+                                        <h2 className="text-2xl font-black uppercase text-slate-900 dark:text-white">{selectedOrder.op}</h2>
+                                        <p className="text-sm font-medium text-slate-500">{selectedOrder.produto || 'Sem produto'}</p>
                                     </div>
-                                    <div className="flex gap-4 flex-wrap">
-                                        <div className="text-center">
-                                            <p className={`text-3xl font-black ${fpyGeral >= 80 ? 'text-emerald-500' : fpyGeral >= 60 ? 'text-amber-500' : 'text-rose-500'}`}>{fpyGeral}%</p>
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">FPY Geral</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-3xl font-black text-slate-800 dark:text-white">{inspections.length}</p>
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Inspeções</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-3xl font-black text-rose-500">{defectsTotal}</p>
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Defeitos</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-3xl font-black text-slate-800 dark:text-white">{selectedOrder.qtd_total.toLocaleString('pt-BR')}</p>
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Unidades</p>
-                                        </div>
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                        <Kpi label="FPY" value={`${totals.fpy}%`} tone={totals.fpy >= 80 ? 'emerald' : totals.fpy >= 60 ? 'amber' : 'rose'} />
+                                        <Kpi label="Registros" value={formatNumber(inspections.length)} />
+                                        <Kpi label="Desvios" value={formatNumber(totals.defects)} tone="rose" />
+                                        <Kpi label="Qtd OP" value={formatNumber(selectedOrder.qtd_total || 0)} />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Timeline by process */}
-                            {Object.values(ProcessType).map((pt) => {
-                                const ptInsp = grouped[pt];
-                                if (ptInsp.length === 0) return null;
-                                const ptFpy = fpy(ptInsp);
-                                return (
-                                    <div key={pt} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-                                        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                                                    <span className="material-symbols-outlined text-[20px]">{PROCESS_ICONS[pt]}</span>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-black text-slate-800 dark:text-white uppercase">{PROCESS_LABELS[pt]}</p>
-                                                    <p className="text-[10px] text-slate-400 font-medium">{ptInsp.length} inspeção{ptInsp.length !== 1 ? 'ões' : ''}</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className={`text-xl font-black ${ptFpy >= 80 ? 'text-emerald-500' : ptFpy >= 60 ? 'text-amber-500' : 'text-rose-500'}`}>{ptFpy}%</p>
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">FPY</p>
-                                            </div>
-                                        </div>
-                                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            {ptInsp.map((insp) => {
-                                                const st = STATUS_STYLE[insp.status];
-                                                return (
-                                                    <div key={insp.id} className={`p-4 ${st.bg} border-l-4 ${st.border.replace('border-', 'border-l-')}`}>
-                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className={`material-symbols-outlined text-2xl ${st.text}`}>{st.icon}</span>
-                                                                <div>
-                                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                                        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${st.bg} ${st.text} ${st.border}`}>
-                                                                            {insp.status}
-                                                                        </span>
-                                                                        {(insp as any).analysts?.name && (
-                                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                                                                                <span className="material-symbols-outlined text-[12px]">person</span>
-                                                                                {(insp as any).analysts.name}
-                                                                            </span>
-                                                                        )}
-                                                                        {(insp as any).machines?.name && (
-                                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                                                                                <span className="material-symbols-outlined text-[12px]">precision_manufacturing</span>
-                                                                                {(insp as any).machines.name}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                                                                        {new Date(insp.timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                                        {' · '}{insp.samples_count || 0} amostras
-                                                                        {insp.totalDefects > 0 && <span className="text-rose-500 font-bold"> · {insp.totalDefects} defeito{insp.totalDefects !== 1 ? 's' : ''}</span>}
-                                                                    </p>
-                                                                </div>
+                            {inspections.length === 0 ? (
+                                <EmptyState title="Nenhum registro para esta OP" subtitle="Quando a inspeção ou a análise de amostragem for salva, aparecerá aqui." icon="assignment" />
+                            ) : (
+                                <>
+                                    <ProcessSection title="Processo Inicial" icon="print" inspections={grouped.initial} />
+                                    <ProcessSection title="Produto Acabado" icon="inventory_2" inspections={grouped.final} />
+
+                                    {defectPareto.length > 0 && (
+                                        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                            <h3 className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                                <span className="material-symbols-outlined text-primary">bar_chart</span>
+                                                Principais desvios desta OP
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {defectPareto.map((defect, index) => {
+                                                    const pct = totals.defects > 0 ? Math.round((defect.count / totals.defects) * 100) : 0;
+                                                    return (
+                                                        <div key={defect.name}>
+                                                            <div className="mb-1 flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                                                <span>{index + 1}. {defect.name}</span>
+                                                                <span className="text-rose-500">{defect.count} ({pct}%)</span>
                                                             </div>
-                                                            {/* Defects chips */}
-                                                            {insp.defects?.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {insp.defects.map(d => (
-                                                                        <span key={d.id} className="text-[9px] font-black uppercase tracking-widest bg-rose-100 dark:bg-rose-950/30 text-rose-600 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                                            <span className="material-symbols-outlined text-[10px]">{d.icon || 'error'}</span>
-                                                                            {d.name}: {d.count}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            )}
+                                                            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                                                <div className="h-full rounded-full bg-rose-400" style={{ width: `${pct}%` }} />
+                                                            </div>
                                                         </div>
-                                                        {insp.observations && (
-                                                            <p className="text-[11px] text-slate-500 mt-2 pl-9 italic">"{insp.observations}"</p>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
-
-                            {/* Pareto */}
-                            {pareto.length > 0 && (
-                                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
-                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary">bar_chart</span>
-                                        Top Defeitos desta OP
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {pareto.map((d, i) => {
-                                            const pct = defectsTotal > 0 ? Math.round((d.count / defectsTotal) * 100) : 0;
-                                            return (
-                                                <div key={d.name}>
-                                                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">
-                                                        <span>{i + 1}. {d.name}</span>
-                                                        <span className="text-rose-500">{d.count} ({pct}%)</span>
-                                                    </div>
-                                                    <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                                        <div
-                                                            className="h-full rounded-full bg-rose-400 transition-all"
-                                                            style={{ width: `${pct}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {inspections.length === 0 && (
-                                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-400 shadow-sm">
-                                    <span className="material-symbols-outlined text-5xl opacity-20 block mb-2">assignment</span>
-                                    <p className="text-xs font-black uppercase tracking-widest">Nenhuma inspeção registrada para esta OP</p>
-                                </div>
+                                    )}
+                                </>
                             )}
                         </>
                     )}
                 </div>
             </div>
+        </div>
+    );
+}
+
+function Kpi({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'emerald' | 'amber' | 'rose' }) {
+    const color = {
+        slate: 'text-slate-900 dark:text-white',
+        emerald: 'text-emerald-500',
+        amber: 'text-amber-500',
+        rose: 'text-rose-500',
+    }[tone];
+
+    return (
+        <div className="min-w-[88px] rounded-lg bg-slate-50 p-3 text-center dark:bg-slate-950">
+            <p className={`text-xl font-black ${color}`}>{value}</p>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+        </div>
+    );
+}
+
+function ProcessSection({ title, icon, inspections }: { title: string; icon: string; inspections: TraceInspection[] }) {
+    if (inspections.length === 0) {
+        return (
+            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-3 text-slate-400">
+                    <span className="material-symbols-outlined">{icon}</span>
+                    <p className="text-xs font-black uppercase tracking-widest">{title}: sem registros</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <span className="material-symbols-outlined text-[20px]">{icon}</span>
+                    </div>
+                    <div>
+                        <p className="text-sm font-black uppercase text-slate-800 dark:text-white">{title}</p>
+                        <p className="text-[10px] font-medium text-slate-400">{inspections.length} registro{inspections.length !== 1 ? 's' : ''}</p>
+                    </div>
+                </div>
+                <Kpi label="FPY" value={`${fpy(inspections)}%`} tone={fpy(inspections) >= 80 ? 'emerald' : fpy(inspections) >= 60 ? 'amber' : 'rose'} />
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {inspections.map((inspection) => {
+                    const style = STATUS_STYLE[inspection.status] || STATUS_STYLE[InspectionStatus.RESTRICTED];
+                    return (
+                        <div key={inspection.id} className={`border-l-4 p-4 ${style.bg} ${style.border.replace('border-', 'border-l-')}`}>
+                            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                                <div className="flex gap-3">
+                                    <span className={`material-symbols-outlined text-2xl ${style.text}`}>{style.icon}</span>
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${style.bg} ${style.text} ${style.border}`}>
+                                                {STATUS_LABELS[inspection.status] || inspection.status}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-500">
+                                                {PROCESS_LABELS[inspection.processType] || inspection.processType}
+                                            </span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] font-medium text-slate-400">
+                                            {new Date(inspection.createdAt).toLocaleString('pt-BR')} · {formatNumber(inspection.samples)} amostras · {formatNumber(inspection.rework)} revisão
+                                        </p>
+                                        <p className="mt-1 text-[10px] font-bold text-slate-500">
+                                            Máquina: {inspection.machineName} · Operador: {inspection.operatorName} · Analista: {inspection.analystName}
+                                        </p>
+                                        {inspection.observationsText && (
+                                            <p className="mt-2 text-[11px] italic text-slate-500">"{inspection.observationsText}"</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="sm:text-right">
+                                    <p className="text-lg font-black text-rose-500">{formatNumber(inspection.totalDefects)}</p>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">desvios</p>
+                                </div>
+                            </div>
+
+                            {inspection.defects.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-1 pl-0 sm:pl-9">
+                                    {inspection.defects.map((defect) => (
+                                        <span key={`${inspection.id}-${defect.name}`} className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-rose-600 dark:bg-rose-950/30">
+                                            {defect.name}: {defect.count}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function EmptyState({ title, subtitle, icon }: { title: string; subtitle: string; icon: string }) {
+    return (
+        <div className="rounded-lg border border-slate-200 bg-white p-16 text-center text-slate-400 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <span className="material-symbols-outlined mb-3 block text-6xl opacity-20">{icon}</span>
+            <p className="text-sm font-black uppercase tracking-widest">{title}</p>
+            <p className="mt-1 text-xs font-medium opacity-70">{subtitle}</p>
         </div>
     );
 }

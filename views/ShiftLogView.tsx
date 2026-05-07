@@ -277,7 +277,8 @@ export default function ShiftLogView() {
                                                         <button
                                                             onClick={() => handleDeleteClick(log.id, log.user_id)}
                                                             className="opacity-0 group-hover:opacity-100 p-1 hover:bg-rose-500 rounded-lg transition-all text-rose-500 hover:text-white"
-                                                            title="Excluir"
+                                                            aria-label="Excluir"
+                                                            data-tooltip="Excluir"
                                                         >
                                                             <span className="material-symbols-outlined text-[14px]">delete</span>
                                                         </button>
