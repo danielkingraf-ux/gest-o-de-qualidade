@@ -61,6 +61,114 @@ const getStatusText = (status: InspectionStatus) => {
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR'); // v2
 
+type OccurrenceEntry = { folha: number | null; faca: number | null };
+
+const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
+  { key: 'manchas', label: 'Manchas', icon: 'texture' },
+  { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
+  { key: 'fiapos', label: 'Fiapos', icon: 'straighten' },
+  { key: 'registro', label: 'Registro', icon: 'grid_view' },
+  { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
+  { key: 'falha_texto', label: 'Falha Texto', icon: 'format_color_text' },
+  { key: 'texto_fechado', label: 'Texto Fechado', icon: 'block' },
+];
+
+const emptyOccurrences = (): Record<string, OccurrenceEntry[]> =>
+  Object.fromEntries(UNIT_DEFECT_KEYS.map(d => [d.key, [] as OccurrenceEntry[]]));
+
+const DetailedDefectCounter: React.FC<{
+  name: string;
+  icon: string;
+  occurrences: OccurrenceEntry[];
+  unidadesPorFolha: number;
+  onAdd: (entry: OccurrenceEntry) => void;
+  onRemove: (index: number) => void;
+}> = ({ name, icon, occurrences, unidadesPorFolha, onAdd, onRemove }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [folhaInput, setFolhaInput] = useState('');
+  const [facaInput, setFacaInput] = useState('1');
+  const count = occurrences.length;
+
+  const addPositioned = () => {
+    const folha = folhaInput.trim() ? Number(folhaInput) : null;
+    const faca = Number(facaInput) || 1;
+    onAdd({ folha, faca });
+    setFolhaInput('');
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 overflow-hidden">
+      <div className="flex items-center gap-2 p-3">
+        <span className="material-symbols-outlined text-slate-400 text-base">{icon}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 flex-1 min-w-0 truncate">{name}</span>
+        <span className={`text-sm font-black w-7 text-center tabular-nums ${count > 0 ? 'text-rose-600' : 'text-slate-800 dark:text-white'}`}>{count}</span>
+        <button
+          type="button"
+          onClick={() => count > 0 && onRemove(count - 1)}
+          disabled={count === 0}
+          className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs disabled:opacity-40"
+        >-</button>
+        <button
+          type="button"
+          onClick={() => onAdd({ folha: null, faca: null })}
+          className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs"
+        >+</button>
+        <button
+          type="button"
+          onClick={() => setExpanded(e => !e)}
+          className={`size-6 rounded flex items-center justify-center transition-colors ${expanded ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+        >
+          <span className="material-symbols-outlined text-sm">{expanded ? 'expand_less' : 'expand_more'}</span>
+        </button>
+      </div>
+      {expanded && (
+        <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2">
+          {count > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {occurrences.map((occ, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
+                >
+                  {occ.folha !== null ? `F${occ.folha}·${occ.faca}` : '—'}
+                  <button type="button" onClick={() => onRemove(i)} className="text-rose-400 hover:text-rose-600 leading-none">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="number"
+              min={1}
+              placeholder="Nº Folha"
+              value={folhaInput}
+              onChange={(e) => setFolhaInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addPositioned()}
+              className="h-8 w-24 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
+            />
+            <select
+              value={facaInput}
+              onChange={(e) => setFacaInput(e.target.value)}
+              className="h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none"
+            >
+              {Array.from({ length: unidadesPorFolha }, (_, i) => i + 1).map(n => (
+                <option key={n} value={n}>Faca {n}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addPositioned}
+              className="h-8 px-3 rounded-lg bg-primary text-white text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-colors"
+            >
+              + Registrar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function InspectionView() {
   const { showToast } = useToast();
   const { profile, isSupervisor } = useUser();
@@ -94,12 +202,10 @@ export default function InspectionView() {
 
   // Defects per tab
   const [offsetData, setOffsetData] = useState({
-    defects: {
-      cor: 0, manchas: 0, pintas: 0, fiapos: 0, registro: 0,
-      falha_verniz: 0, falha_texto: 0, texto_fechado: 0
-    } as Record<string, number>,
+    defects: { cor: 0 } as Record<string, number>,
     metrics: { rework: 0, samples: 5 },
   });
+  const [offsetOccurrences, setOffsetOccurrences] = useState<Record<string, OccurrenceEntry[]>>(emptyOccurrences);
 
   const [uvData, setUvData] = useState({
     process: 'APPLIED' as 'APPLIED' | 'NA',
@@ -141,18 +247,22 @@ export default function InspectionView() {
 
   const failureBasis = useMemo(() => {
     if (activeTab === ProcessType.OFFSET) {
-      const colorFailures = Number(offsetData.defects.cor) || 0;
-      const unitFailures = sumDefects({ ...offsetData.defects, cor: 0 }) + offsetData.metrics.rework;
-      const colorRate = productionMetrics.printedSheets > 0 ? (colorFailures / productionMetrics.printedSheets) * 100 : 0;
+      const colorFolhas = Number(offsetData.defects.cor) || 0;
+      const colorUnidades = colorFolhas * unidadesPorFolha;
+      const occurrenceCount = (Object.values(offsetOccurrences) as OccurrenceEntry[][]).reduce((sum, occ) => sum + occ.length, 0);
+      const unitFailures = occurrenceCount + offsetData.metrics.rework;
+      const totalFailures = colorUnidades + unitFailures;
+      const colorRate = productionMetrics.printedSheets > 0 ? (colorFolhas / productionMetrics.printedSheets) * 100 : 0;
       const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-      return { colorFailures, unitFailures, totalFailures: colorFailures + unitFailures, colorRate, unitRate, combinedRate: colorRate + unitRate };
+      const combinedRate = realProducedUnits > 0 ? (totalFailures / realProducedUnits) * 100 : 0;
+      return { colorFolhas, colorUnidades, unitFailures, totalFailures, colorRate, unitRate, combinedRate };
     }
     const unitFailures = activeTab === ProcessType.UV
       ? sumDefects(uvData.defects) + uvData.metrics.rejected
       : sumDefects(hotStampingData.defects) + hotStampingData.metrics.rejected;
     const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-    return { colorFailures: 0, unitFailures, totalFailures: unitFailures, colorRate: 0, unitRate, combinedRate: unitRate };
-  }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected]);
+    return { colorFolhas: 0, colorUnidades: 0, unitFailures, totalFailures: unitFailures, colorRate: 0, unitRate, combinedRate: unitRate };
+  }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, offsetOccurrences, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected, unidadesPorFolha]);
 
   const saldo = useMemo(() => {
     const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
@@ -233,10 +343,8 @@ export default function InspectionView() {
   }, [showToast, nextRowId]);
 
   const resetAll = useCallback(() => {
-    setOffsetData({
-      defects: { cor: 0, manchas: 0, pintas: 0, fiapos: 0, registro: 0, falha_verniz: 0, falha_texto: 0, texto_fechado: 0 },
-      metrics: { rework: 0, samples: 5 },
-    });
+    setOffsetData({ defects: { cor: 0 }, metrics: { rework: 0, samples: 5 } });
+    setOffsetOccurrences(emptyOccurrences());
     setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
     setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
@@ -316,9 +424,9 @@ export default function InspectionView() {
       };
 
       if (activeTab === ProcessType.OFFSET) {
-        const defeitosUnidade: Record<string, number> = {};
-        for (const [k, v] of Object.entries(offsetData.defects)) {
-          if (k !== 'cor') defeitosUnidade[k] = v;
+        const defeitosUnidade: Record<string, { count: number; occurrences: OccurrenceEntry[] }> = {};
+        for (const [k, occ] of Object.entries(offsetOccurrences) as [string, OccurrenceEntry[]][]) {
+          defeitosUnidade[k] = { count: occ.length, occurrences: occ };
         }
         dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
@@ -344,8 +452,8 @@ export default function InspectionView() {
           },
           saldo_unidades: saldo,
           metricas_falha: {
-            cor_folhas_com_defeito: failureBasis.colorFailures,
-            cor_unidades_equivalentes: failureBasis.colorFailures * unidadesPorFolha,
+            cor_folhas_com_defeito: failureBasis.colorFolhas,
+            cor_unidades_equivalentes: failureBasis.colorUnidades,
             taxa_cor_por_folha: failureBasis.colorRate,
             falhas_por_unidade: failureBasis.unitFailures,
             taxa_unidade: failureBasis.unitRate,
@@ -425,7 +533,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, offsetOccurrences, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -640,7 +748,7 @@ export default function InspectionView() {
             </div>
           </div>
           <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:bg-slate-950">
-            Cor: {fmt(failureBasis.colorFailures)} por folha ({failureBasis.colorRate.toFixed(2)}%) · Demais falhas: {fmt(failureBasis.unitFailures)} por unidade ({failureBasis.unitRate.toFixed(2)}%)
+            Cor: {fmt(failureBasis.colorFolhas)} folhas ({failureBasis.colorRate.toFixed(2)}%) · Demais falhas: {fmt(failureBasis.unitFailures)} unidades ({failureBasis.unitRate.toFixed(2)}%)
           </div>
         </div>
 
@@ -731,23 +839,16 @@ export default function InspectionView() {
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Contagem por Unidade</p>
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Manchas, Pintas e demais</h3>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { key: 'manchas', label: 'Manchas', icon: 'texture' },
-                  { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
-                  { key: 'fiapos', label: 'Fiapos', icon: 'straighten' },
-                  { key: 'registro', label: 'Registro', icon: 'grid_view' },
-                  { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
-                  { key: 'falha_texto', label: 'Falha Texto', icon: 'format_color_text' },
-                  { key: 'texto_fechado', label: 'Texto Fechado', icon: 'block' },
-                ].map(d => (
-                  <DefectCounter
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                {UNIT_DEFECT_KEYS.map(d => (
+                  <DetailedDefectCounter
                     key={d.key}
                     name={d.label}
                     icon={d.icon}
-                    count={offsetData.defects[d.key]}
-                    onUpdate={(delta) => setOffsetData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: Math.max(0, prev.defects[d.key] + delta) } }))}
-                    onSet={(val) => setOffsetData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: val } }))}
+                    occurrences={offsetOccurrences[d.key] ?? []}
+                    unidadesPorFolha={unidadesPorFolha}
+                    onAdd={(entry) => setOffsetOccurrences(prev => ({ ...prev, [d.key]: [...(prev[d.key] ?? []), entry] }))}
+                    onRemove={(idx) => setOffsetOccurrences(prev => ({ ...prev, [d.key]: prev[d.key].filter((_, i) => i !== idx) }))}
                   />
                 ))}
               </div>
