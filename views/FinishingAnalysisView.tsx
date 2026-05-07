@@ -85,6 +85,7 @@ export default function FinishingAnalysisView() {
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [selectedOrderId, setSelectedOrderId] = useState('');
+    const [orderFilter, setOrderFilter] = useState('');
     const [selectedMachineId, setSelectedMachineId] = useState('');
     const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
@@ -114,7 +115,7 @@ export default function FinishingAnalysisView() {
                 supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
-                supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
+                supabase.from('orders').select('*').order('op')
             ]);
 
             if (mRes.data) {
@@ -133,11 +134,18 @@ export default function FinishingAnalysisView() {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedMachineId, selectedMonth, selectedOperatorId, selectedYear, showToast]);
+    }, [selectedMachineId, selectedOperatorId, showToast]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const filteredOrders = orders.filter(order => {
+        const term = orderFilter.trim().toLowerCase();
+        if (!term) return true;
+        return [order.op, order.cliente, order.produto]
+            .some(value => String(value || '').toLowerCase().includes(term));
+    });
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -178,6 +186,7 @@ export default function FinishingAnalysisView() {
 
             showToast('Análise salva com sucesso!', 'success');
             setSelectedOrderId('');
+            setOrderFilter('');
             setSelectedMachineId(machines[0]?.id ?? '');
             setSelectedOperatorId(operators[0]?.id ?? '');
             setFormData({
@@ -236,15 +245,21 @@ export default function FinishingAnalysisView() {
             <section className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <form onSubmit={handleSave} className="space-y-6">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-                        <div className="space-y-1">
+                        <div className="space-y-1 lg:col-span-2">
                             <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Ordem Proc. (OP)</label>
+                            <input
+                                value={orderFilter}
+                                onChange={e => setOrderFilter(e.target.value)}
+                                className="mb-2 w-full h-9 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs focus:ring-2 focus:ring-violet-500/20 transition-all"
+                                placeholder="Filtrar OP, cliente ou produto"
+                            />
                             <select
                                 value={selectedOrderId}
                                 onChange={e => setSelectedOrderId(e.target.value)}
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
                             >
                                 <option value="">Selecionar OP...</option>
-                                {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+                                {filteredOrders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente} {o.status !== 'em_producao' ? `(${o.status})` : ''}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1">
