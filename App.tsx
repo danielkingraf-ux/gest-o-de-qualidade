@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ToastProvider, useToast } from './contexts/ToastContext';
+import AdminView from './views/AdminView';
 import {
   AlertLevel,
   MasterItem,
@@ -902,132 +903,7 @@ function AlertsView({ alerts, user, onCreated }: { alerts: ShiftAlert[]; user: S
   );
 }
 
-function AdminView({ master, onChanged, user }: { master: MasterData; onChanged: () => void; user: SessionUser }) {
-  return (
-    <section className="space-y-5">
-      <div className="bg-white border border-slate-200 rounded-2xl p-5">
-        <p className="text-xs font-black uppercase tracking-widest text-primary">Base operacional</p>
-        <h1 className="text-2xl font-black text-slate-900">Cadastros rapidos</h1>
-        <p className="text-sm text-slate-500">Cadastre os itens minimos para iniciar novas analises.</p>
-      </div>
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <MasterPanel title="Maquinas" items={master.machines} onCreate={qualityService.createMachine} onChanged={onChanged} />
-        <MasterPanel title="Operadores" items={master.operators} onCreate={qualityService.createOperator} onChanged={onChanged} />
-        <AnalystPanel user={user} items={master.analysts} onChanged={onChanged} />
-      </div>
-    </section>
-  );
-}
 
-function MasterPanel({ title, items, onCreate, onChanged }: { title: string; items: MasterItem[]; onCreate: (name: string) => Promise<unknown>; onChanged: () => void }) {
-  const { showToast } = useToast();
-  const [name, setName] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!name.trim()) return;
-    setSaving(true);
-    try {
-      await onCreate(name);
-      setName('');
-      onChanged();
-      showToast('Cadastro criado', 'success');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Erro no cadastro', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
-      <h2 className="font-black text-slate-900">{title}</h2>
-      <form onSubmit={submit} className="flex gap-2">
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome" className="min-w-0 flex-1 h-11 rounded-lg border border-slate-200 px-3 font-bold" />
-        <button disabled={saving} className="h-11 px-4 rounded-lg bg-primary text-white font-black">+</button>
-      </form>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.id} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <p className="font-bold text-slate-900">{item.name}</p>
-            <p className="text-xs text-slate-400">{item.code || item.email || item.id}</p>
-          </div>
-        ))}
-        {items.length === 0 && <EmptyState label="Nenhum item cadastrado." />}
-      </div>
-    </div>
-  );
-}
-
-function AnalystPanel({ user, items, onChanged }: { user: SessionUser; items: MasterItem[]; onChanged: () => void }) {
-  const { showToast } = useToast();
-  const [saving, setSaving] = useState(false);
-  const [manualName, setManualName] = useState('');
-  const [manualEmail, setManualEmail] = useState('');
-
-  const createCurrent = async () => {
-    if (!user.email) {
-      showToast('Usuario sem e-mail.', 'warning');
-      return;
-    }
-    setSaving(true);
-    try {
-      await qualityService.ensureAnalyst(user.email, user.user_metadata?.full_name || user.user_metadata?.name);
-      onChanged();
-      showToast('Analista vinculado', 'success');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Erro ao vincular analista', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const createManual = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!manualName.trim() || !manualEmail.trim()) {
-      showToast('Informe nome e e-mail do analista.', 'warning');
-      return;
-    }
-    setSaving(true);
-    try {
-      await qualityService.createAnalyst(manualName, manualEmail);
-      setManualName('');
-      setManualEmail('');
-      onChanged();
-      showToast('Analista criado', 'success');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Erro ao criar analista', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-black text-slate-900">Analistas</h2>
-        <button onClick={createCurrent} disabled={saving} className="h-10 px-3 rounded-lg bg-primary text-white text-xs font-black uppercase">Vincular login</button>
-      </div>
-      <form onSubmit={createManual} className="space-y-2">
-        <input value={manualName} onChange={(event) => setManualName(event.target.value)} placeholder="Nome do analista" className="w-full h-11 rounded-lg border border-slate-200 px-3 font-bold" />
-        <div className="flex gap-2">
-          <input value={manualEmail} onChange={(event) => setManualEmail(event.target.value)} placeholder="email@empresa.com" className="min-w-0 flex-1 h-11 rounded-lg border border-slate-200 px-3 font-bold" />
-          <button disabled={saving} className="h-11 px-4 rounded-lg bg-primary text-white font-black">+</button>
-        </div>
-      </form>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.id} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <p className="font-bold text-slate-900">{item.name}</p>
-            <p className="text-xs text-slate-400">{item.email}</p>
-          </div>
-        ))}
-        {items.length === 0 && <EmptyState label="Nenhum analista cadastrado." />}
-      </div>
-    </div>
-  );
-}
 
 function AppShell({ user }: { user: SessionUser }) {
   const { showToast } = useToast();
@@ -1076,7 +952,7 @@ function AppShell({ user }: { user: SessionUser }) {
     if (view === 'new') return <WizardView master={master} user={user} initialOp={draftOp} onSaved={refresh} />;
     if (view === 'trace') return <TraceabilityView records={records} onNewFromOp={openNewFromOp} />;
     if (view === 'alerts') return <AlertsView alerts={alerts} user={user} onCreated={refresh} />;
-    return <AdminView master={master} user={user} onChanged={refresh} />;
+    return <AdminView />;
   }, [alerts, draftOp, loading, master, records, refresh, user, view]);
 
   return (

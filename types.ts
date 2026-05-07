@@ -59,6 +59,17 @@ export interface DefectType {
   created_at: string;
 }
 
+export type UserRole = 'admin' | 'supervisor' | 'quality_analyst' | 'operator';
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  active: boolean;
+  created_at: string;
+}
+
 export interface EscolhaData {
   op_total_unidades: number;
   folhas_impressas_total: number;

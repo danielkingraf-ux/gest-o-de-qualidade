@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Machine, Operator, Analyst, DefectType, ProductionArea } from '../types';
+import { Machine, Operator, Analyst, DefectType, ProductionArea, User, UserRole } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
-type Tab = 'machines' | 'operators' | 'analysts' | 'defects';
+type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users';
 
 const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
     { value: 'producao_inicial', label: 'Produção inicial' },
@@ -30,6 +30,7 @@ export default function AdminView() {
         { id: 'machines', label: 'Máquinas', icon: 'settings' },
         { id: 'operators', label: 'Operadores', icon: 'groups' },
         { id: 'analysts', label: 'Analistas', icon: 'shield_person' },
+        { id: 'users', label: 'Usuários', icon: 'person' },
         { id: 'defects', label: 'Defeitos', icon: 'error' },
     ];
 
@@ -66,6 +67,7 @@ export default function AdminView() {
                 {activeTab === 'machines' && <MachinesManager />}
                 {activeTab === 'operators' && <OperatorsManager />}
                 {activeTab === 'analysts' && <AnalystsManager />}
+                {activeTab === 'users' && <UsersManager />}
                 {activeTab === 'defects' && <DefectTypesManager />}
             </div>
         </div>
@@ -745,6 +747,251 @@ function DefectTypesManager() {
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${d.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
                                 }`}>
                                 {d.active ? 'Habilitado' : 'Suspenso'}
+                            </span>
+                        )
+                    }
+                ]}
+                onEdit={setEditing}
+                onToggleActive={toggleActive}
+                onDelete={handleDelete}
+            />
+        </div>
+    );
+}
+
+// -----------------------------------------------------------------------------
+// USERS
+// -----------------------------------------------------------------------------
+
+const ROLE_OPTIONS: Array<{ value: UserRole; label: string; color: string }> = [
+    { value: 'admin', label: 'Administrador', color: 'bg-red-50 text-red-600 border-red-100' },
+    { value: 'supervisor', label: 'Supervisor', color: 'bg-orange-50 text-orange-600 border-orange-100' },
+    { value: 'quality_analyst', label: 'Analista de Qualidade', color: 'bg-blue-50 text-blue-600 border-blue-100' },
+    { value: 'operator', label: 'Operador', color: 'bg-green-50 text-green-600 border-green-100' },
+];
+
+function UsersManager() {
+    const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [editing, setEditing] = useState<Partial<User> | null>(null);
+    const { showToast } = useToast();
+
+    const fetchUsers = useCallback(async () => {
+        setLoading(true);
+        const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
+        if (error) {
+            showToast('Erro ao carregar usuários', 'error');
+            console.error(error);
+        } else {
+            setUsers(data || []);
+        }
+        setLoading(false);
+    }, [showToast]);
+
+    useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editing?.email || !editing?.name || !editing?.role) {
+            showToast('Email, Nome e Nível são obrigatórios', 'warning');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const payload: any = { ...editing };
+            delete payload.created_at;
+
+            if (editing.id) {
+                const { id, ...updateData } = payload;
+                const { error } = await supabase.from('user_profiles').update(updateData).eq('id', id);
+                if (error) throw error;
+                showToast('Usuário atualizado com sucesso', 'success');
+            } else {
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch(
+                    'https://juatgymcjvnofllfennk.supabase.co/functions/v1/create-user',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${session?.access_token}`,
+                        },
+                        body: JSON.stringify({
+                            email: editing.email,
+                            name: editing.name,
+                            role: editing.role,
+                        }),
+                    }
+                );
+
+                const result = await res.json();
+                if (!res.ok) {
+                    if (result.error?.includes('already exists')) {
+                        showToast('Esse email já está cadastrado', 'warning');
+                    } else {
+                        throw new Error(result.error || 'Erro ao criar usuário');
+                    }
+                    setIsSaving(false);
+                    return;
+                }
+
+                showToast('Usuário cadastrado. Um email de confirmação foi enviado.', 'success');
+            }
+
+            setEditing(null);
+            fetchUsers();
+        } catch (error: any) {
+            showToast(`Erro: ${error.message || 'Erro desconhecido'}`, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const toggleActive = async (id: string, current: boolean) => {
+        try {
+            const { error } = await supabase.from('user_profiles').update({ active: !current }).eq('id', id);
+            if (error) throw error;
+            showToast(current ? 'Usuário desativado' : 'Usuário ativado', 'success');
+            fetchUsers();
+        } catch (error: any) {
+            showToast('Erro ao atualizar status', 'error');
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('Deseja realmente excluir este usuário? Isso não pode ser desfeito.')) return;
+        try {
+            const { error: profileError } = await supabase.from('user_profiles').delete().eq('id', id);
+            if (profileError) throw profileError;
+            showToast('Usuário excluído', 'info');
+            fetchUsers();
+        } catch (error: any) {
+            showToast('Erro ao excluir usuário', 'error');
+        }
+    };
+
+    const getRoleBadge = (role: UserRole) => {
+        const roleOption = ROLE_OPTIONS.find(r => r.value === role);
+        return roleOption ? roleOption.color : 'bg-slate-50 text-slate-600 border-slate-100';
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">person</span>
+                    Gerenciamento de Usuários
+                </h2>
+                <button
+                    onClick={() => setEditing({ email: '', name: '', role: 'operator', active: true })}
+                    className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                >
+                    <span className="material-symbols-outlined text-sm">add</span> Novo Usuário
+                </button>
+            </div>
+
+            {editing && (
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-5 gap-6 animate-slide-in">
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Email</label>
+                        <input
+                            required
+                            type="email"
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            value={editing.email}
+                            onChange={e => setEditing({ ...editing, email: e.target.value })}
+                            placeholder="ex: usuario@kingraf.com"
+                            disabled={!!editing.id}
+                            autoFocus
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome Completo</label>
+                        <input
+                            required
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            value={editing.name}
+                            onChange={e => setEditing({ ...editing, name: e.target.value })}
+                            placeholder="Ex: João Silva"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nível de Acesso</label>
+                        <select
+                            required
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            value={editing.role || 'operator'}
+                            onChange={e => setEditing({ ...editing, role: e.target.value as UserRole })}
+                        >
+                            {ROLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2 pt-6">
+                        <input
+                            type="checkbox"
+                            id="active"
+                            checked={editing.active ?? true}
+                            onChange={e => setEditing({ ...editing, active: e.target.checked })}
+                            className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer"
+                        />
+                        <label htmlFor="active" className="text-xs font-black uppercase tracking-widest text-slate-600 cursor-pointer">
+                            Ativo
+                        </label>
+                    </div>
+                    <div className="flex items-end gap-3">
+                        <button
+                            type="submit"
+                            disabled={isSaving}
+                            className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                        >
+                            {isSaving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : 'Confirmar'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="px-6 h-14 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                        >
+                            Voltar
+                        </button>
+                    </div>
+                </form>
+            )}
+
+            <ManagerTable
+                loading={loading}
+                items={users}
+                emptyMessage="Nenhum usuário cadastrado no sistema."
+                columns={[
+                    {
+                        key: 'name', label: 'Usuário', render: u => (
+                            <div className="flex items-center gap-3">
+                                <div className="size-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-primary">
+                                    <span className="material-symbols-outlined text-[20px]">account_circle</span>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-black text-slate-700 dark:text-white uppercase">{u.name}</span>
+                                    <span className="text-[10px] text-slate-500">{u.email}</span>
+                                </div>
+                            </div>
+                        )
+                    },
+                    {
+                        key: 'role', label: 'Nível de Acesso', render: u => {
+                            const roleOption = ROLE_OPTIONS.find(r => r.value === u.role);
+                            return (
+                                <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getRoleBadge(u.role)}`}>
+                                    {roleOption?.label || u.role}
+                                </span>
+                            );
+                        }
+                    },
+                    {
+                        key: 'active', label: 'Status', render: u => (
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                }`}>
+                                {u.active ? 'Ativo' : 'Inativo'}
                             </span>
                         )
                     }
