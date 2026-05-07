@@ -63,14 +63,15 @@ const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR'); // v2
 
 type FacaCount = Record<number, number>;
 
-const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
+const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string; hasDescription?: boolean }[] = [
   { key: 'manchas', label: 'Manchas', icon: 'texture' },
   { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
   { key: 'fiapos', label: 'Fiapos', icon: 'straighten' },
-  { key: 'registro', label: 'Registro', icon: 'grid_view' },
+  { key: 'registro', label: 'Fora de Registro', icon: 'grid_view' },
   { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
   { key: 'falha_texto', label: 'Falha Texto', icon: 'format_color_text' },
   { key: 'texto_fechado', label: 'Texto Fechado', icon: 'block' },
+  { key: 'outros', label: 'Outros', icon: 'more_horiz', hasDescription: true },
 ];
 
 const emptyFacaCounts = (): Record<string, FacaCount> =>
@@ -85,7 +86,9 @@ const FacaDefectCounter: React.FC<{
   facaCounts: FacaCount;
   unidadesPorFolha: number;
   onUpdate: (faca: number, count: number) => void;
-}> = ({ name, icon, facaCounts, unidadesPorFolha, onUpdate }) => {
+  descricao?: string;
+  onDescricaoChange?: (v: string) => void;
+}> = ({ name, icon, facaCounts, unidadesPorFolha, onUpdate, descricao, onDescricaoChange }) => {
   const [modal, setModal] = useState<{ faca: number; value: string } | null>(null);
   const total = facaTotal(facaCounts);
 
@@ -139,6 +142,20 @@ const FacaDefectCounter: React.FC<{
           );
         })}
       </div>
+
+      {/* Campo de descrição (somente para "Outros") */}
+      {onDescricaoChange !== undefined && (
+        <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700">
+          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Descreva o defeito</label>
+          <textarea
+            value={descricao ?? ''}
+            onChange={e => onDescricaoChange(e.target.value)}
+            placeholder="Ex: risco no substrato, brilho excessivo, folha amassada..."
+            rows={2}
+            className="mt-1 w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-primary/20 resize-none"
+          />
+        </div>
+      )}
 
       {/* Modal */}
       {modal && (
@@ -229,6 +246,7 @@ export default function InspectionView() {
     metrics: { rework: 0, samples: 5 },
   });
   const [offsetFacaCounts, setOffsetFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts);
+  const [offsetDescricoes, setOffsetDescricoes] = useState<Record<string, string>>({});
 
   const [uvData, setUvData] = useState({
     process: 'APPLIED' as 'APPLIED' | 'NA',
@@ -368,6 +386,7 @@ export default function InspectionView() {
   const resetAll = useCallback(() => {
     setOffsetData({ defects: { cor: 0 }, metrics: { rework: 0, samples: 5 } });
     setOffsetFacaCounts(emptyFacaCounts());
+    setOffsetDescricoes({});
     setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
     setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
@@ -447,9 +466,11 @@ export default function InspectionView() {
       };
 
       if (activeTab === ProcessType.OFFSET) {
-        const defeitosUnidade: Record<string, { count: number; por_faca: FacaCount }> = {};
+        const defeitosUnidade: Record<string, { count: number; por_faca: FacaCount; descricao?: string }> = {};
         for (const [k, fc] of Object.entries(offsetFacaCounts) as [string, FacaCount][]) {
-          defeitosUnidade[k] = { count: facaTotal(fc), por_faca: fc };
+          const entry: { count: number; por_faca: FacaCount; descricao?: string } = { count: facaTotal(fc), por_faca: fc };
+          if (offsetDescricoes[k]) entry.descricao = offsetDescricoes[k];
+          defeitosUnidade[k] = entry;
         }
         dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
@@ -556,7 +577,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, offsetFacaCounts, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, offsetFacaCounts, offsetDescricoes, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -874,6 +895,10 @@ export default function InspectionView() {
                       ...prev,
                       [d.key]: { ...prev[d.key], [faca]: count }
                     }))}
+                    {...(d.hasDescription ? {
+                      descricao: offsetDescricoes[d.key] ?? '',
+                      onDescricaoChange: (v: string) => setOffsetDescricoes(prev => ({ ...prev, [d.key]: v })),
+                    } : {})}
                   />
                 ))}
               </div>
