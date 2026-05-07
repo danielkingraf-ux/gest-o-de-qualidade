@@ -63,6 +63,19 @@ const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR'); // v2
 
 type FacaCount = Record<number, number>;
 
+const UV_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
+  { key: 'uv_cor', label: 'Cor', icon: 'palette' },
+  { key: 'uv_registro', label: 'Fora de Registro', icon: 'grid_view' },
+  { key: 'uv_falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
+  { key: 'uv_acabamento_aspero', label: 'Acab. Áspero', icon: 'texture' },
+];
+
+const HS_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
+  { key: 'hs_falha', label: 'Falha Hotfilm', icon: 'stars' },
+  { key: 'hs_enchimento', label: 'Enchimento Texto', icon: 'format_color_fill' },
+  { key: 'hs_ausencia', label: 'Ausência', icon: 'visibility_off' },
+];
+
 const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string; hasDescription?: boolean }[] = [
   { key: 'manchas', label: 'Manchas', icon: 'texture' },
   { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
@@ -229,7 +242,6 @@ export default function InspectionView() {
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
-  const [activeTab, setActiveTab] = useState<ProcessType>(ProcessType.OFFSET);
   const [productionMetrics, setProductionMetrics] = useState<ProductionMetrics>({ printedSheets: 0, expectedUnits: 0 });
   const [approvalRule, setApprovalRule] = useState<ApprovalRule>(() => {
     try {
@@ -248,17 +260,15 @@ export default function InspectionView() {
   const [offsetFacaCounts, setOffsetFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts);
   const [offsetDescricoes, setOffsetDescricoes] = useState<Record<string, string>>({});
 
-  const [uvData, setUvData] = useState({
-    process: 'APPLIED' as 'APPLIED' | 'NA',
-    defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 } as Record<string, number>,
-    metrics: { rejected: 0, samples: 5 }
-  });
+  const [uvApplicable, setUvApplicable] = useState(false);
+  const [uvFacaCounts, setUvFacaCounts] = useState<Record<string, FacaCount>>(
+    () => Object.fromEntries(UV_DEFECT_KEYS.map(d => [d.key, {} as FacaCount]))
+  );
 
-  const [hotStampingData, setHotStampingData] = useState({
-    process: 'APPLIED' as 'APPLIED' | 'NA',
-    defects: { falha: 0, enchimento_texto: 0, ausencia: 0 } as Record<string, number>,
-    metrics: { rejected: 0, samples: 5 }
-  });
+  const [hotStampingApplicable, setHotStampingApplicable] = useState(false);
+  const [hotStampingFacaCounts, setHotStampingFacaCounts] = useState<Record<string, FacaCount>>(
+    () => Object.fromEntries(HS_DEFECT_KEYS.map(d => [d.key, {} as FacaCount]))
+  );
 
   // Production tracking
   const [unidadesPorFolha, setUnidadesPorFolha] = useState(1);
@@ -287,23 +297,18 @@ export default function InspectionView() {
   const realProducedUnits = productionMetrics.expectedUnits;
 
   const failureBasis = useMemo(() => {
-    if (activeTab === ProcessType.OFFSET) {
-      const colorFolhas = Number(offsetData.defects.cor) || 0;
-      const colorUnidades = colorFolhas * unidadesPorFolha;
-      const occurrenceCount = (Object.values(offsetFacaCounts) as FacaCount[]).reduce((sum, fc) => sum + facaTotal(fc), 0);
-      const unitFailures = occurrenceCount + offsetData.metrics.rework;
-      const totalFailures = colorUnidades + unitFailures;
-      const colorRate = productionMetrics.printedSheets > 0 ? (colorFolhas / productionMetrics.printedSheets) * 100 : 0;
-      const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-      const combinedRate = realProducedUnits > 0 ? (totalFailures / realProducedUnits) * 100 : 0;
-      return { colorFolhas, colorUnidades, unitFailures, totalFailures, colorRate, unitRate, combinedRate };
-    }
-    const unitFailures = activeTab === ProcessType.UV
-      ? sumDefects(uvData.defects) + uvData.metrics.rejected
-      : sumDefects(hotStampingData.defects) + hotStampingData.metrics.rejected;
+    const colorFolhas = Number(offsetData.defects.cor) || 0;
+    const colorUnidades = colorFolhas * unidadesPorFolha;
+    const offsetCount = (Object.values(offsetFacaCounts) as FacaCount[]).reduce((sum, fc) => sum + facaTotal(fc), 0);
+    const uvCount = uvApplicable ? (Object.values(uvFacaCounts) as FacaCount[]).reduce((sum, fc) => sum + facaTotal(fc), 0) : 0;
+    const hsCount = hotStampingApplicable ? (Object.values(hotStampingFacaCounts) as FacaCount[]).reduce((sum, fc) => sum + facaTotal(fc), 0) : 0;
+    const unitFailures = offsetCount + uvCount + hsCount + offsetData.metrics.rework;
+    const totalFailures = colorUnidades + unitFailures;
+    const colorRate = productionMetrics.printedSheets > 0 ? (colorFolhas / productionMetrics.printedSheets) * 100 : 0;
     const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-    return { colorFolhas: 0, colorUnidades: 0, unitFailures, totalFailures: unitFailures, colorRate: 0, unitRate, combinedRate: unitRate };
-  }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, offsetFacaCounts, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected, unidadesPorFolha]);
+    const combinedRate = realProducedUnits > 0 ? (totalFailures / realProducedUnits) * 100 : 0;
+    return { colorFolhas, colorUnidades, unitFailures, totalFailures, colorRate, unitRate, combinedRate };
+  }, [offsetData.defects, offsetData.metrics.rework, offsetFacaCounts, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingFacaCounts, productionMetrics.printedSheets, realProducedUnits, unidadesPorFolha]);
 
   const saldo = useMemo(() => {
     const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
@@ -387,8 +392,10 @@ export default function InspectionView() {
     setOffsetData({ defects: { cor: 0 }, metrics: { rework: 0, samples: 5 } });
     setOffsetFacaCounts(emptyFacaCounts());
     setOffsetDescricoes({});
-    setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
-    setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
+    setUvApplicable(false);
+    setUvFacaCounts(Object.fromEntries(UV_DEFECT_KEYS.map(d => [d.key, {} as FacaCount])));
+    setHotStampingApplicable(false);
+    setHotStampingFacaCounts(Object.fromEntries(HS_DEFECT_KEYS.map(d => [d.key, {} as FacaCount])));
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
     setFolhasData({ folhas_verificadas: 0, folhas_aprovadas: 0, folhas_escolha: 0, folhas_reprovadas: 0 });
     setUnidadesPorFolha(1);
@@ -465,20 +472,28 @@ export default function InspectionView() {
         created_by_user_id: profile?.user_id ?? null,
       };
 
-      if (activeTab === ProcessType.OFFSET) {
+      {
         const defeitosUnidade: Record<string, { count: number; por_faca: FacaCount; descricao?: string }> = {};
         for (const [k, fc] of Object.entries(offsetFacaCounts) as [string, FacaCount][]) {
           const entry: { count: number; por_faca: FacaCount; descricao?: string } = { count: facaTotal(fc), por_faca: fc };
           if (offsetDescricoes[k]) entry.descricao = offsetDescricoes[k];
           defeitosUnidade[k] = entry;
         }
+        const defeitosUV: Record<string, { count: number; por_faca: FacaCount }> = {};
+        for (const [k, fc] of Object.entries(uvFacaCounts) as [string, FacaCount][]) {
+          defeitosUV[k] = { count: facaTotal(fc), por_faca: fc };
+        }
+        const defeitosHS: Record<string, { count: number; por_faca: FacaCount }> = {};
+        for (const [k, fc] of Object.entries(hotStampingFacaCounts) as [string, FacaCount][]) {
+          defeitosHS[k] = { count: facaTotal(fc), por_faca: fc };
+        }
         dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
-        dataToSave.samples_count = offsetData.metrics.samples;
+        dataToSave.samples_count = 0;
         dataToSave.observations = JSON.stringify({
           schema_version: 2,
           process_area: 'producao_inicial',
-          process_type: activeTab,
+          process_type: ProcessType.OFFSET,
           all_operator_ids: validOperatorIds,
           all_analyst_ids: validAnalystIds,
           numero_rodada: numeroRodada,
@@ -494,6 +509,8 @@ export default function InspectionView() {
             por_folha: { cor: offsetData.defects.cor },
             por_unidade: defeitosUnidade,
           },
+          verniz_uv: { aplicavel: uvApplicable, defeitos: defeitosUV },
+          hot_stamping: { aplicavel: hotStampingApplicable, defeitos: defeitosHS },
           saldo_unidades: saldo,
           metricas_falha: {
             cor_folhas_com_defeito: failureBasis.colorFolhas,
@@ -509,52 +526,12 @@ export default function InspectionView() {
           status_final: calculatedStatus,
           observacoes_analista: observacoesAnalista,
         });
-      } else if (activeTab === ProcessType.UV) {
-        dataToSave.status = calculatedStatus;
-        dataToSave.samples_count = uvData.metrics.samples;
-        dataToSave.rework_count = uvData.metrics.rejected;
-        dataToSave.observations = JSON.stringify({
-          process: uvData.process,
-          defects: uvData.defects,
-          production_metrics: {
-            printed_sheets: productionMetrics.printedSheets,
-            expected_units: productionMetrics.expectedUnits,
-            real_produced_units: realProducedUnits,
-            failures: activeFailureCount,
-            failure_rate: failureRate,
-          },
-          approval_rule: approvalRule,
-          process_type: activeTab,
-          process_area: 'producao_inicial',
-          all_operator_ids: validOperatorIds,
-          all_analyst_ids: validAnalystIds,
-        });
-      } else if (activeTab === ProcessType.HOT_STAMPING) {
-        dataToSave.status = calculatedStatus;
-        dataToSave.samples_count = hotStampingData.metrics.samples;
-        dataToSave.rework_count = hotStampingData.metrics.rejected;
-        dataToSave.observations = JSON.stringify({
-          process: hotStampingData.process,
-          defects: hotStampingData.defects,
-          production_metrics: {
-            printed_sheets: productionMetrics.printedSheets,
-            expected_units: productionMetrics.expectedUnits,
-            real_produced_units: realProducedUnits,
-            failures: activeFailureCount,
-            failure_rate: failureRate,
-          },
-          approval_rule: approvalRule,
-          process_type: activeTab,
-          process_area: 'producao_inicial',
-          all_operator_ids: validOperatorIds,
-          all_analyst_ids: validAnalystIds,
-        });
       }
 
       const { data: inserted, error } = await supabase.from('inspections').insert([dataToSave]).select('id').single();
       if (error) throw error;
 
-      if (!andNew && activeTab === ProcessType.OFFSET) {
+      if (!andNew) {
         setSavedInspectionId(inserted.id);
         if (calculatedStatus === InspectionStatus.REJECTED || saldo.aprovadas < selectedOrder.qtd_total) {
           setReimpressaoQtd(Math.max(0, selectedOrder.qtd_total - saldo.aprovadas));
@@ -577,7 +554,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, offsetFacaCounts, offsetDescricoes, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, offsetData, offsetFacaCounts, offsetDescricoes, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingFacaCounts, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -631,21 +608,9 @@ export default function InspectionView() {
             Inspeção de produção
           </p>
         </div>
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
-          {[
-            { id: ProcessType.OFFSET, label: 'OFF-SET', icon: 'print' },
-            { id: ProcessType.UV, label: 'UV', icon: 'flare' },
-            { id: ProcessType.HOT_STAMPING, label: 'HOT STAMPING', icon: 'stars' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 h-9 rounded-lg text-[10px] font-black tracking-widest transition-all ${activeTab === tab.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
-            >
-              <span className="material-symbols-outlined text-base">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 px-4 h-9 rounded-xl bg-primary/10 border border-primary/20">
+          <span className="material-symbols-outlined text-primary text-base">print</span>
+          <span className="text-[10px] font-black tracking-widest text-primary">OFF-SET · UV · HOT STAMPING</span>
         </div>
       </div>
 
@@ -829,9 +794,8 @@ export default function InspectionView() {
       {/* Conteúdo das Abas */}
       <main className="animate-slide-in">
 
-        {/* ABA: OFF-SET */}
-        {activeTab === ProcessType.OFFSET && (
-          <div className="space-y-6">
+        {/* Conteúdo unificado: OFFSET + UV + Hot Stamping */}
+        <div className="space-y-6">
 
             {/* Status indicators */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -902,10 +866,87 @@ export default function InspectionView() {
                   />
                 ))}
               </div>
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-                <MetricInput label="Qtd Cartucho Reprovado" icon="restart_alt" value={offsetData.metrics.rework} onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, rework: v } }))} />
-                <MetricInput label="Total Amostras (unid.)" icon="science" value={offsetData.metrics.samples} onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))} />
+              <div className="mt-4 max-w-xs">
+                <MetricInput label="Cartuchos Reprovados" icon="restart_alt" value={offsetData.metrics.rework} onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, rework: v } }))} />
               </div>
+            </div>
+
+            {/* Verniz UV */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Extensão do processo</p>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Verniz UV</h3>
+                </div>
+                <div className="flex gap-2">
+                  {([false, true] as const).map(v => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => setUvApplicable(v)}
+                      className={`px-4 h-8 rounded-lg text-[10px] font-black tracking-widest transition-all ${uvApplicable === v ? (v ? 'bg-primary text-white' : 'bg-slate-600 text-white') : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
+                    >
+                      {v ? 'APLICÁVEL' : 'NÃO APLICÁVEL'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {uvApplicable && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  {UV_DEFECT_KEYS.map(d => (
+                    <FacaDefectCounter
+                      key={d.key}
+                      name={d.label}
+                      icon={d.icon}
+                      facaCounts={uvFacaCounts[d.key] ?? {}}
+                      unidadesPorFolha={unidadesPorFolha}
+                      onUpdate={(faca, count) => setUvFacaCounts(prev => ({ ...prev, [d.key]: { ...prev[d.key], [faca]: count } }))}
+                    />
+                  ))}
+                </div>
+              )}
+              {!uvApplicable && (
+                <p className="text-xs font-bold text-slate-400 italic">Verniz UV não aplicado neste lote — não entra no cálculo de falhas.</p>
+              )}
+            </div>
+
+            {/* Hot Stamping */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Extensão do processo</p>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Hot Stamping</h3>
+                </div>
+                <div className="flex gap-2">
+                  {([false, true] as const).map(v => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => setHotStampingApplicable(v)}
+                      className={`px-4 h-8 rounded-lg text-[10px] font-black tracking-widest transition-all ${hotStampingApplicable === v ? (v ? 'bg-primary text-white' : 'bg-slate-600 text-white') : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
+                    >
+                      {v ? 'APLICÁVEL' : 'NÃO APLICÁVEL'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {hotStampingApplicable && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {HS_DEFECT_KEYS.map(d => (
+                    <FacaDefectCounter
+                      key={d.key}
+                      name={d.label}
+                      icon={d.icon}
+                      facaCounts={hotStampingFacaCounts[d.key] ?? {}}
+                      unidadesPorFolha={unidadesPorFolha}
+                      onUpdate={(faca, count) => setHotStampingFacaCounts(prev => ({ ...prev, [d.key]: { ...prev[d.key], [faca]: count } }))}
+                    />
+                  ))}
+                </div>
+              )}
+              {!hotStampingApplicable && (
+                <p className="text-xs font-bold text-slate-400 italic">Hot Stamping não aplicado neste lote — não entra no cálculo de falhas.</p>
+              )}
             </div>
 
             {/* Distribuição de Pilhas */}
@@ -988,69 +1029,7 @@ export default function InspectionView() {
                 className="mt-2 w-full h-20 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-primary/20 resize-none"
               />
             </div>
-          </div>
-        )}
-
-        {/* ABA: UV */}
-        {activeTab === ProcessType.UV && (
-          <div className="space-y-8">
-            <div className="flex gap-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 w-fit">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-500 mr-4 self-center">Processo:</label>
-              {(['APPLIED', 'NA'] as const).map(v => (
-                <button key={v} onClick={() => setUvData(prev => ({ ...prev, process: v }))} className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${uvData.process === v ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                  {v === 'APPLIED' ? 'APLICADO' : 'NÃO APLICÁVEL'}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { key: 'cor', label: 'Cor', icon: 'palette' },
-                { key: 'registro', label: 'Registro', icon: 'grid_view' },
-                { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
-                { key: 'acabamento_aspero', label: 'Acab. Áspero', icon: 'texture' },
-              ].map(d => (
-                <DefectCounter key={d.key} name={d.label} icon={d.icon} count={uvData.defects[d.key]}
-                  onUpdate={(delta) => setUvData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: Math.max(0, prev.defects[d.key] + delta) } }))}
-                  onSet={(val) => setUvData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: val } }))}
-                />
-              ))}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-              <MetricInput label="Reprovados" icon="cancel" value={uvData.metrics.rejected} onChange={(v) => setUvData(prev => ({ ...prev, metrics: { ...prev.metrics, rejected: v } }))} />
-              <MetricInput label="Amostras" icon="science" value={uvData.metrics.samples} onChange={(v) => setUvData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))} />
-            </div>
-          </div>
-        )}
-
-        {/* ABA: HOT STAMPING */}
-        {activeTab === ProcessType.HOT_STAMPING && (
-          <div className="space-y-8">
-            <div className="flex gap-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 w-fit">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-500 mr-4 self-center">Processo:</label>
-              {(['APPLIED', 'NA'] as const).map(v => (
-                <button key={v} onClick={() => setHotStampingData(prev => ({ ...prev, process: v }))} className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${hotStampingData.process === v ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                  {v === 'APPLIED' ? 'APLICADO' : 'NÃO APLICÁVEL'}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { key: 'falha', label: 'Falha', icon: 'warning' },
-                { key: 'enchimento_texto', label: 'Enchimento Texto', icon: 'format_color_fill' },
-                { key: 'ausencia', label: 'Ausência', icon: 'visibility_off' },
-              ].map(d => (
-                <DefectCounter key={d.key} name={d.label} icon={d.icon} count={hotStampingData.defects[d.key]}
-                  onUpdate={(delta) => setHotStampingData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: Math.max(0, prev.defects[d.key] + delta) } }))}
-                  onSet={(val) => setHotStampingData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: val } }))}
-                />
-              ))}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-              <MetricInput label="Reprovados" icon="cancel" value={hotStampingData.metrics.rejected} onChange={(v) => setHotStampingData(prev => ({ ...prev, metrics: { ...prev.metrics, rejected: v } }))} />
-              <MetricInput label="Amostras" icon="science" value={hotStampingData.metrics.samples} onChange={(v) => setHotStampingData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))} />
-            </div>
-          </div>
-        )}
+        </div>
       </main>
 
       {/* Formulário de Reimpressão (pós-save) */}
