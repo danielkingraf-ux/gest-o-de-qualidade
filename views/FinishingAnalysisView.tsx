@@ -86,6 +86,7 @@ export default function FinishingAnalysisView() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [selectedOrderId, setSelectedOrderId] = useState('');
     const [orderFilter, setOrderFilter] = useState('');
+    const [newOrder, setNewOrder] = useState({ op: '', cliente: '', produto: '', qtd_total: '' });
     const [selectedMachineId, setSelectedMachineId] = useState('');
     const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
@@ -146,6 +147,10 @@ export default function FinishingAnalysisView() {
         return [order.op, order.cliente, order.produto]
             .some(value => String(value || '').toLowerCase().includes(term));
     });
+
+    const updateNewOrder = (field: keyof typeof newOrder, value: string) => {
+        setNewOrder(prev => ({ ...prev, [field]: field === 'op' ? value.toUpperCase() : value }));
+    };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -255,12 +260,49 @@ export default function FinishingAnalysisView() {
                             />
                             <select
                                 value={selectedOrderId}
-                                onChange={e => setSelectedOrderId(e.target.value)}
+                                onChange={e => {
+                                    setSelectedOrderId(e.target.value);
+                                    if (e.target.value) setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
+                                }}
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
                             >
                                 <option value="">Selecionar OP...</option>
                                 {filteredOrders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente} {o.status !== 'em_producao' ? `(${o.status})` : ''}</option>)}
                             </select>
+                        </div>
+                        <div className="space-y-1 lg:col-span-2">
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Cadastrar nova OP</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <input
+                                    value={newOrder.op}
+                                    onChange={e => {
+                                        setSelectedOrderId('');
+                                        updateNewOrder('op', e.target.value);
+                                    }}
+                                    className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-black text-xs focus:ring-2 focus:ring-violet-500/20"
+                                    placeholder="Nova OP"
+                                />
+                                <input
+                                    value={newOrder.cliente}
+                                    onChange={e => updateNewOrder('cliente', e.target.value)}
+                                    className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs focus:ring-2 focus:ring-violet-500/20"
+                                    placeholder="Cliente"
+                                />
+                                <input
+                                    value={newOrder.produto}
+                                    onChange={e => updateNewOrder('produto', e.target.value)}
+                                    className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs focus:ring-2 focus:ring-violet-500/20"
+                                    placeholder="Produto"
+                                />
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={newOrder.qtd_total}
+                                    onChange={e => updateNewOrder('qtd_total', e.target.value)}
+                                    className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs focus:ring-2 focus:ring-violet-500/20"
+                                    placeholder="Qtd. total"
+                                />
+                            </div>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Máquina</label>
