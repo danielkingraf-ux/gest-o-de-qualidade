@@ -33,12 +33,11 @@ const MetricInput: React.FC<{
 type ApprovalRuleMode = 'percent' | 'quantity';
 type ApprovalRule = { mode: ApprovalRuleMode; restrictedLimit: number; rejectLimit: number };
 type ProductionMetrics = { printedSheets: number; expectedUnits: number };
-type PilhasData = {
-  pilhas_total: number;
-  pilhas_verificadas: number;
-  pilhas_aprovadas: number;
-  pilhas_segregadas_escolha: number;
-  pilhas_reprovadas: number;
+type FolhasData = {
+  folhas_verificadas: number;
+  folhas_aprovadas: number;
+  folhas_escolha: number;
+  folhas_reprovadas: number;
 };
 
 const DEFAULT_APPROVAL_RULE: ApprovalRule = { mode: 'percent', restrictedLimit: 2, rejectLimit: 5 };
@@ -117,12 +116,11 @@ export default function InspectionView() {
   // Production tracking
   const [unidadesPorFolha, setUnidadesPorFolha] = useState(1);
   const [folhasPorPilha, setFolhasPorPilha] = useState(500);
-  const [pilhasData, setPilhasData] = useState<PilhasData>({
-    pilhas_total: 0,
-    pilhas_verificadas: 0,
-    pilhas_aprovadas: 0,
-    pilhas_segregadas_escolha: 0,
-    pilhas_reprovadas: 0,
+  const [folhasData, setFolhasData] = useState<FolhasData>({
+    folhas_verificadas: 0,
+    folhas_aprovadas: 0,
+    folhas_escolha: 0,
+    folhas_reprovadas: 0,
   });
   const [observacoesAnalista, setObservacoesAnalista] = useState('');
 
@@ -158,12 +156,12 @@ export default function InspectionView() {
 
   const saldo = useMemo(() => {
     const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
-    const em_escolha = pilhasData.pilhas_segregadas_escolha * folhasPorPilha * unidadesPorFolha;
-    const reprovadas = pilhasData.pilhas_reprovadas * folhasPorPilha * unidadesPorFolha;
-    const aprovadas = pilhasData.pilhas_aprovadas * folhasPorPilha * unidadesPorFolha;
+    const em_escolha = folhasData.folhas_escolha * unidadesPorFolha;
+    const reprovadas = folhasData.folhas_reprovadas * unidadesPorFolha;
+    const aprovadas = folhasData.folhas_aprovadas * unidadesPorFolha;
     const divergencia = rodadas - (aprovadas + em_escolha + reprovadas);
     return { rodadas, aprovadas, em_escolha, reprovadas, divergencia, alerta_divergencia: divergencia !== 0 };
-  }, [productionMetrics.printedSheets, unidadesPorFolha, folhasPorPilha, pilhasData]);
+  }, [productionMetrics.printedSheets, unidadesPorFolha, folhasData]);
 
   const activeFailureCount = failureBasis.totalFailures;
   const calculatedStatus = useMemo(
@@ -242,7 +240,7 @@ export default function InspectionView() {
     setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
     setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
-    setPilhasData({ pilhas_total: 0, pilhas_verificadas: 0, pilhas_aprovadas: 0, pilhas_segregadas_escolha: 0, pilhas_reprovadas: 0 });
+    setFolhasData({ folhas_verificadas: 0, folhas_aprovadas: 0, folhas_escolha: 0, folhas_reprovadas: 0 });
     setUnidadesPorFolha(1);
     setFolhasPorPilha(500);
     setObservacoesAnalista('');
@@ -338,7 +336,7 @@ export default function InspectionView() {
             quantidade_rodada_folhas: productionMetrics.printedSheets,
             quantidade_rodada_unidades: saldo.rodadas,
             folhas_por_pilha: folhasPorPilha,
-            ...pilhasData,
+            ...folhasData,
           },
           defeitos: {
             por_folha: { cor: offsetData.defects.cor },
@@ -427,7 +425,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, pilhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -764,24 +762,16 @@ export default function InspectionView() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rastreabilidade</p>
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Distribuição de Pilhas</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Distribuição de Folhas</h3>
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-lg">1 pilha = {fmt(folhasPorPilha * unidadesPorFolha)} unid.</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-lg">1 folha = {fmt(unidadesPorFolha)} unid.</span>
               </div>
 
-              {pilhasData.pilhas_verificadas > 0 && pilhasData.pilhas_verificadas < pilhasData.pilhas_total && (
-                <div className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                  <span className="material-symbols-outlined text-amber-500 text-sm">warning</span>
-                  <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest">Inspeção parcial — {pilhasData.pilhas_verificadas}/{pilhasData.pilhas_total} pilhas verificadas</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <MetricInput label="Total na bancada" icon="layers" value={pilhasData.pilhas_total} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_total: v }))} />
-                <MetricInput label="Verificadas" icon="search" value={pilhasData.pilhas_verificadas} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_verificadas: Math.min(v, pilhasData.pilhas_total || v) }))} />
-                <MetricInput label="Aprovadas" icon="check_circle" value={pilhasData.pilhas_aprovadas} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_aprovadas: v }))} />
-                <MetricInput label="P/ Escolha" icon="filter_list" value={pilhasData.pilhas_segregadas_escolha} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_segregadas_escolha: v }))} />
-                <MetricInput label="Reprovadas" icon="cancel" value={pilhasData.pilhas_reprovadas} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_reprovadas: v }))} />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <MetricInput label="Verificadas" icon="search" value={folhasData.folhas_verificadas} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_verificadas: v }))} />
+                <MetricInput label="Aprovadas" icon="check_circle" value={folhasData.folhas_aprovadas} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_aprovadas: v }))} />
+                <MetricInput label="P/ Escolha" icon="filter_list" value={folhasData.folhas_escolha} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_escolha: v }))} />
+                <MetricInput label="Reprovadas" icon="cancel" value={folhasData.folhas_reprovadas} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_reprovadas: v }))} />
               </div>
             </div>
 

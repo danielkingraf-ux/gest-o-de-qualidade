@@ -128,11 +128,10 @@ export interface ProducaoTracking {
   quantidade_rodada_folhas: number;
   quantidade_rodada_unidades: number;
   folhas_por_pilha: number;
-  pilhas_total: number;
-  pilhas_verificadas: number;
-  pilhas_aprovadas: number;
-  pilhas_segregadas_escolha: number;
-  pilhas_reprovadas: number;
+  folhas_verificadas: number;
+  folhas_aprovadas: number;
+  folhas_escolha: number;
+  folhas_reprovadas: number;
 }
 
 export interface DefeitosTracking {
