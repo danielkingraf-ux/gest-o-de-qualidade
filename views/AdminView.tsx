@@ -526,7 +526,8 @@ function AnalystsManager() {
             setEditing(null);
             fetchAnalysts();
         } catch (error: any) {
-            showToast('Erro ao salvar', 'error');
+            console.error('[AnalystsManager] erro ao salvar:', error);
+            showToast(`Erro ao salvar: ${error?.message ?? 'Erro desconhecido'}`, 'error');
         } finally {
             setIsSaving(false);
         }
