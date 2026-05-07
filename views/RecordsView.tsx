@@ -587,8 +587,11 @@ export default function RecordsView() {
                       record.total_defects > 0 ? 'bg-amber-50/50 dark:bg-amber-950/10' : ''
                       }`}>
                       {record.total_defects > 0 && (
-                        <td className={`absolute left-0 top-0 bottom-0 w-1 ${record.total_defects > 5 ? 'bg-rose-500' : 'bg-amber-500'
-                          }`}></td>
+                        <span
+                          aria-hidden="true"
+                          className={`absolute left-0 top-0 bottom-0 w-1 ${record.total_defects > 5 ? 'bg-rose-500' : 'bg-amber-500'
+                            }`}
+                        />
                       )}
                       <td className="px-6 py-4 text-sm whitespace-nowrap">{formatDate(record.created_at)}</td>
                       <td className="px-6 py-4 text-sm font-bold uppercase tracking-tighter">{record.op}</td>

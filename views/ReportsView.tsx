@@ -41,6 +41,26 @@ type NormalizedRecord = InspectionRecord & {
   operatorNames: string[];
 };
 
+type AreaSummary = {
+  records: NormalizedRecord[];
+  inspections: number;
+  defects: number;
+  samples: number;
+  rework: number;
+  approved: number;
+  rejected: number;
+  restricted: number;
+};
+
+type OpTraceSummary = {
+  op: string;
+  initial: number;
+  final: number;
+  initialDefects: number;
+  finalDefects: number;
+  latest: string;
+};
+
 const asNumber = (value: any) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -113,6 +133,17 @@ const formatWeekKey = (date: Date) => {
 };
 
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
+
+const createAreaSummary = (records: NormalizedRecord[]): AreaSummary => ({
+  records,
+  inspections: records.length,
+  defects: records.reduce((sum, record) => sum + record.total_defects, 0),
+  samples: records.reduce((sum, record) => sum + asNumber(record.samples_count), 0),
+  rework: records.reduce((sum, record) => sum + asNumber(record.rework_count), 0),
+  approved: records.filter((record) => record.status === 'APPROVED').length,
+  rejected: records.filter((record) => record.status === 'REJECTED').length,
+  restricted: records.filter((record) => record.status === 'RESTRICTED').length,
+});
 
 const ReportsView = () => {
   const { showToast } = useToast();
@@ -276,6 +307,8 @@ const ReportsView = () => {
     return {
       filtered,
       totals,
+      initialSummary: createAreaSummary(filtered.filter((record) => record.area === 'initial')),
+      finalSummary: createAreaSummary(filtered.filter((record) => record.area === 'final')),
       topMachines: toSortedArray(byMachine).slice(0, 10),
       topOperators: toSortedArray(byOperator).slice(0, 10),
       topDefects: toSortedArray(byDefect).slice(0, 10),
@@ -284,6 +317,40 @@ const ReportsView = () => {
       annual: toSeries(annual).slice(-5),
     };
   }, [areaFilter, normalizedRecords, opFilter, periodPreset]);
+
+  const opTraceRows = useMemo<OpTraceSummary[]>(() => {
+    const byOp = new Map<string, OpTraceSummary>();
+
+    reportData.filtered.forEach((record) => {
+      const op = String(record.op || 'Sem OP');
+      const current = byOp.get(op) || {
+        op,
+        initial: 0,
+        final: 0,
+        initialDefects: 0,
+        finalDefects: 0,
+        latest: record.created_at,
+      };
+
+      if (record.area === 'initial') {
+        current.initial += 1;
+        current.initialDefects += record.total_defects;
+      } else {
+        current.final += 1;
+        current.finalDefects += record.total_defects;
+      }
+
+      if (new Date(record.created_at) > new Date(current.latest)) {
+        current.latest = record.created_at;
+      }
+
+      byOp.set(op, current);
+    });
+
+    return Array.from(byOp.values())
+      .sort((a, b) => new Date(b.latest).getTime() - new Date(a.latest).getTime())
+      .slice(0, 80);
+  }, [reportData.filtered]);
 
   const pdfPayload = () => ({
     title: 'RELATÓRIO DE QUALIDADE',
@@ -391,7 +458,7 @@ const ReportsView = () => {
               onChange={(event) => setAreaFilter(event.target.value as AreaFilter)}
               className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
             >
-              <option value="ALL">Todos</option>
+              <option value="ALL">Rastreio por OP</option>
               <option value="INITIAL">Processo inicial</option>
               <option value="FINAL">Produto acabado</option>
             </select>
@@ -438,6 +505,59 @@ const ReportsView = () => {
         </div>
       ) : (
         <>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <AreaReportPanel
+              title="Início do Processo"
+              icon="precision_manufacturing"
+              summary={reportData.initialSummary}
+              empty="Nenhum registro de início do processo nos filtros atuais"
+            />
+            <AreaReportPanel
+              title="Produto Acabado"
+              icon="inventory_2"
+              summary={reportData.finalSummary}
+              empty="Nenhum registro de produto acabado nos filtros atuais"
+            />
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Rastreabilidade por OP</h3>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Mesma OP, visualizações separadas por etapa
+                </p>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{opTraceRows.length} OPs</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
+                    <th className="py-3">OP</th>
+                    <th className="py-3 text-right">Início</th>
+                    <th className="py-3 text-right">Desvios início</th>
+                    <th className="py-3 text-right">Acabado</th>
+                    <th className="py-3 text-right">Desvios acabado</th>
+                    <th className="py-3 text-right">Último registro</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opTraceRows.map((row) => (
+                    <tr key={row.op} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
+                      <td className="py-3 font-black">{row.op}</td>
+                      <td className="py-3 text-right">{formatNumber(row.initial)}</td>
+                      <td className="py-3 text-right text-rose-500">{formatNumber(row.initialDefects)}</td>
+                      <td className="py-3 text-right">{formatNumber(row.final)}</td>
+                      <td className="py-3 text-right text-rose-500">{formatNumber(row.finalDefects)}</td>
+                      <td className="py-3 text-right">{new Date(row.latest).toLocaleDateString('pt-BR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartPanel title="Principais desvios">
               <ResponsiveContainer width="100%" height="100%">
@@ -567,6 +687,87 @@ function Metric({ title, value }: { title: string; value: number }) {
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{title}</p>
       <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{formatNumber(value)}</p>
+    </div>
+  );
+}
+
+function AreaReportPanel({ title, icon, summary, empty }: { title: string; icon: string; summary: AreaSummary; empty: string }) {
+  const latestRecords = summary.records
+    .slice()
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 6);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="material-symbols-outlined text-[20px]">{icon}</span>
+          </div>
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">{title}</h3>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Visualização separada</p>
+          </div>
+        </div>
+        <p className="text-2xl font-black text-slate-900 dark:text-white">{formatNumber(summary.inspections)}</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <MiniMetric label="Desvios" value={summary.defects} tone="rose" />
+        <MiniMetric label="Amostras" value={summary.samples} />
+        <MiniMetric label="Revisão" value={summary.rework} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <StatusPill label="Aprovado" value={summary.approved} tone="emerald" />
+        <StatusPill label="Restrição" value={summary.restricted} tone="amber" />
+        <StatusPill label="Reprovado" value={summary.rejected} tone="rose" />
+      </div>
+
+      <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
+        {latestRecords.length === 0 ? (
+          <p className="py-6 text-center text-xs font-black uppercase tracking-widest text-slate-400">{empty}</p>
+        ) : latestRecords.map((record) => (
+          <div key={record.id} className="flex items-center justify-between gap-3 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-slate-800 dark:text-white">OP {record.op}</p>
+              <p className="text-[10px] font-medium text-slate-400">
+                {new Date(record.created_at).toLocaleDateString('pt-BR')} · {record.machines?.name || 'N/A'}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-sm font-black text-rose-500">{formatNumber(record.total_defects)}</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">desvios</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, tone = 'slate' }: { label: string; value: number; tone?: 'slate' | 'rose' }) {
+  const color = tone === 'rose' ? 'text-rose-500' : 'text-slate-900 dark:text-white';
+
+  return (
+    <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950">
+      <p className={`text-lg font-black ${color}`}>{formatNumber(value)}</p>
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+function StatusPill({ label, value, tone }: { label: string; value: number; tone: 'emerald' | 'amber' | 'rose' }) {
+  const colors = {
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-300',
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-300',
+    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-300',
+  }[tone];
+
+  return (
+    <div className={`rounded-lg p-2 text-center ${colors}`}>
+      <p className="text-sm font-black">{formatNumber(value)}</p>
+      <p className="text-[8px] font-black uppercase tracking-widest">{label}</p>
     </div>
   );
 }

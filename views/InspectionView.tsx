@@ -78,7 +78,7 @@ const OFFSET_ESCOLHA_FIELDS: Array<{ key: OffsetEscolhaNumericKeys; label: strin
   { key: 'op_total_unidades', label: 'OP total (unidades)' },
   { key: 'folhas_impressas_total', label: 'Folhas impressas' },
   { key: 'folhas_revisadas_pilha', label: 'Folhas revisadas na pilha' },
-  { key: 'escolhas_unidades', label: 'Escolhas (unidades)' },
+  { key: 'escolhas_unidades', label: 'Pilhas separadas p/ revisão' },
 ];
 
 const OffsetEscolhaCard: React.FC<{ value: EscolhaData; onChange: (partial: Partial<EscolhaData>) => void }> = ({ value, onChange }) => (
@@ -118,11 +118,34 @@ const OffsetEscolhaCard: React.FC<{ value: EscolhaData; onChange: (partial: Part
   </div>
 );
 
+type ApprovalRuleMode = 'percent' | 'quantity';
+type ApprovalRule = { mode: ApprovalRuleMode; restrictedLimit: number; rejectLimit: number };
+type ProductionMetrics = { printedSheets: number; expectedUnits: number; scrapUnits: number };
+
+const DEFAULT_APPROVAL_RULE: ApprovalRule = { mode: 'percent', restrictedLimit: 2, rejectLimit: 5 };
+const APPROVAL_RULE_STORAGE_KEY = 'kg_initial_process_approval_rule';
+
+const sumDefects = (defects: Record<string, number>) =>
+  Object.values(defects).reduce((total, value) => total + (Number(value) || 0), 0);
+
+const calculateStatusByRule = (failureRate: number, failures: number, rule: ApprovalRule) => {
+  const value = rule.mode === 'percent' ? failureRate : failures;
+  if (value >= rule.rejectLimit) return InspectionStatus.REJECTED;
+  if (value >= rule.restrictedLimit) return InspectionStatus.RESTRICTED;
+  return InspectionStatus.APPROVED;
+};
+
+const getStatusText = (status: InspectionStatus) => {
+  if (status === InspectionStatus.REJECTED) return 'Reprovado';
+  if (status === InspectionStatus.RESTRICTED) return 'Aprovado com restrição';
+  return 'Aprovado';
+};
+
 // --- Componente Principal ---
 
 export default function InspectionView() {
   const { showToast } = useToast();
-  const { profile } = useUser();
+  const { profile, isSupervisor } = useUser();
   const rowIdRef = useRef(0);
   const nextRowId = useCallback(() => `row-${rowIdRef.current++}`, []);
 
@@ -141,6 +164,15 @@ export default function InspectionView() {
   const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [activeTab, setActiveTab] = useState<ProcessType>(ProcessType.OFFSET);
+  const [productionMetrics, setProductionMetrics] = useState<ProductionMetrics>({ printedSheets: 0, expectedUnits: 0, scrapUnits: 0 });
+  const [approvalRule, setApprovalRule] = useState<ApprovalRule>(() => {
+    try {
+      const saved = localStorage.getItem(APPROVAL_RULE_STORAGE_KEY);
+      return saved ? { ...DEFAULT_APPROVAL_RULE, ...JSON.parse(saved) } : DEFAULT_APPROVAL_RULE;
+    } catch {
+      return DEFAULT_APPROVAL_RULE;
+    }
+  });
 
   // Estados por Aba
   const [offsetData, setOffsetData] = useState({
@@ -174,9 +206,77 @@ export default function InspectionView() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const realProducedUnits = Math.max(0, productionMetrics.expectedUnits - productionMetrics.scrapUnits);
+
+  const failureBasis = useMemo(() => {
+    if (activeTab === ProcessType.OFFSET) {
+      const colorFailures = Number(offsetData.defects.cor) || 0;
+      const unitFailures = sumDefects({ ...offsetData.defects, cor: 0 }) + offsetData.metrics.rework;
+      const colorRate = productionMetrics.printedSheets > 0 ? (colorFailures / productionMetrics.printedSheets) * 100 : 0;
+      const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
+
+      return {
+        colorFailures,
+        unitFailures,
+        totalFailures: colorFailures + unitFailures,
+        colorRate,
+        unitRate,
+        combinedRate: colorRate + unitRate
+      };
+    }
+
+    const unitFailures = activeTab === ProcessType.UV
+      ? sumDefects(uvData.defects) + uvData.metrics.rejected
+      : sumDefects(hotStampingData.defects) + hotStampingData.metrics.rejected;
+    const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
+
+    return {
+      colorFailures: 0,
+      unitFailures,
+      totalFailures: unitFailures,
+      colorRate: 0,
+      unitRate,
+      combinedRate: unitRate
+    };
+  }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected]);
+
+  const activeFailureCount = failureBasis.totalFailures;
+
+  const calculatedStatus = useMemo(
+    () => calculateStatusByRule(failureBasis.combinedRate, activeFailureCount, approvalRule),
+    [activeFailureCount, approvalRule, failureBasis.combinedRate]
+  );
+
+  const failureRate = failureBasis.combinedRate;
+
+  const updateProductionMetric = (field: keyof ProductionMetrics, value: number) => {
+    setProductionMetrics(prev => ({ ...prev, [field]: Math.max(0, Number(value) || 0) }));
+  };
+
+  const updateApprovalRule = (partial: Partial<ApprovalRule>) => {
+    setApprovalRule(prev => {
+      const next = {
+        ...prev,
+        ...partial,
+        restrictedLimit: Math.max(0, Number(partial.restrictedLimit ?? prev.restrictedLimit) || 0),
+        rejectLimit: Math.max(0, Number(partial.rejectLimit ?? prev.rejectLimit) || 0),
+      };
+      localStorage.setItem(APPROVAL_RULE_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   const updateNewOrder = (field: keyof typeof newOrder, value: string) => {
+    if (field === 'qtd_total') updateProductionMetric('expectedUnits', Number(value));
     setNewOrder(prev => ({ ...prev, [field]: field === 'op' ? value.toUpperCase() : value }));
   };
+
+  useEffect(() => {
+    const selectedOrder = orders.find(order => order.id === selectedOrderId);
+    if (selectedOrder?.qtd_total) {
+      updateProductionMetric('expectedUnits', selectedOrder.qtd_total);
+    }
+  }, [orders, selectedOrderId]);
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -234,6 +334,7 @@ export default function InspectionView() {
       defects: { falha: 0, enchimento_texto: 0, ausencia: 0 },
       metrics: { rejected: 0, samples: 5 }
     });
+    setProductionMetrics({ printedSheets: 0, expectedUnits: 0, scrapUnits: 0 });
   }, []);
 
   const handleSave = useCallback(async (andNew: boolean) => {
@@ -252,6 +353,14 @@ export default function InspectionView() {
 
     if (validOperatorIds.length === 0 || validAnalystIds.length === 0) {
       showToast('Selecione pelo menos um Operador e um Analista', 'warning');
+      return;
+    }
+    if (productionMetrics.printedSheets <= 0 || productionMetrics.expectedUnits <= 0) {
+      showToast('Informe folhas impressas e quantidade total de unidades', 'warning');
+      return;
+    }
+    if (approvalRule.rejectLimit < approvalRule.restrictedLimit) {
+      showToast('A regra de reprovação deve ser maior ou igual à regra de restrição', 'warning');
       return;
     }
 
@@ -309,36 +418,79 @@ export default function InspectionView() {
 
       // Montar payload específico por aba
       if (activeTab === ProcessType.OFFSET) {
-        dataToSave.status = offsetData.status;
+        dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
         dataToSave.samples_count = offsetData.metrics.samples;
         dataToSave.observations = JSON.stringify({
           defects: offsetData.defects,
-          escolha: offsetData.escolha,
+          escolha: {
+            ...offsetData.escolha,
+            op_total_unidades: productionMetrics.expectedUnits,
+            folhas_impressas_total: productionMetrics.printedSheets
+          },
+          production_metrics: {
+            printed_sheets: productionMetrics.printedSheets,
+            expected_units: productionMetrics.expectedUnits,
+            scrap_units: productionMetrics.scrapUnits,
+            real_produced_units: realProducedUnits,
+            failures: activeFailureCount,
+            failure_rate: failureRate,
+            color_failures_by_sheet: failureBasis.colorFailures,
+            unit_failures: failureBasis.unitFailures,
+            color_failure_rate: failureBasis.colorRate,
+            unit_failure_rate: failureBasis.unitRate
+          },
+          approval_rule: approvalRule,
           process_type: activeTab,
           process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
           all_analyst_ids: validAnalystIds
         });
       } else if (activeTab === ProcessType.UV) {
-        dataToSave.status = uvData.metrics.rejected > 0 ? 'REJECTED' : 'APPROVED';
+        dataToSave.status = calculatedStatus;
         dataToSave.samples_count = uvData.metrics.samples;
         dataToSave.rework_count = uvData.metrics.rejected;
         dataToSave.observations = JSON.stringify({
           process: uvData.process,
           defects: uvData.defects,
+          production_metrics: {
+            printed_sheets: productionMetrics.printedSheets,
+            expected_units: productionMetrics.expectedUnits,
+            scrap_units: productionMetrics.scrapUnits,
+            real_produced_units: realProducedUnits,
+            failures: activeFailureCount,
+            failure_rate: failureRate,
+            color_failures_by_sheet: failureBasis.colorFailures,
+            unit_failures: failureBasis.unitFailures,
+            color_failure_rate: failureBasis.colorRate,
+            unit_failure_rate: failureBasis.unitRate
+          },
+          approval_rule: approvalRule,
           process_type: activeTab,
           process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
           all_analyst_ids: validAnalystIds
         });
       } else if (activeTab === ProcessType.HOT_STAMPING) {
-        dataToSave.status = hotStampingData.metrics.rejected > 0 ? 'REJECTED' : 'APPROVED';
+        dataToSave.status = calculatedStatus;
         dataToSave.samples_count = hotStampingData.metrics.samples;
         dataToSave.rework_count = hotStampingData.metrics.rejected;
         dataToSave.observations = JSON.stringify({
           process: hotStampingData.process,
           defects: hotStampingData.defects,
+          production_metrics: {
+            printed_sheets: productionMetrics.printedSheets,
+            expected_units: productionMetrics.expectedUnits,
+            scrap_units: productionMetrics.scrapUnits,
+            real_produced_units: realProducedUnits,
+            failures: activeFailureCount,
+            failure_rate: failureRate,
+            color_failures_by_sheet: failureBasis.colorFailures,
+            unit_failures: failureBasis.unitFailures,
+            color_failure_rate: failureBasis.colorRate,
+            unit_failure_rate: failureBasis.unitRate
+          },
+          approval_rule: approvalRule,
           process_type: activeTab,
           process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
@@ -363,7 +515,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id]);
 
   // Atalhos de Teclado
   useEffect(() => {
@@ -563,6 +715,77 @@ export default function InspectionView() {
       </section>
 
       {/* --- Conteúdo das Abas --- */}
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Produção real</p>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Folhas, unidades e refugos</h2>
+            </div>
+            <span className="material-symbols-outlined text-primary">fact_check</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Folhas impressas *</label>
+              <input type="number" min={0} value={productionMetrics.printedSheets} onChange={(e) => updateProductionMetric('printedSheets', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Quantidade total unidades *</label>
+              <input type="number" min={0} value={productionMetrics.expectedUnits} onChange={(e) => updateProductionMetric('expectedUnits', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ajustes / refugos</label>
+              <input type="number" min={0} value={productionMetrics.scrapUnits} onChange={(e) => updateProductionMetric('scrapUnits', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total real produzido</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{realProducedUnits.toLocaleString('pt-BR')}</p>
+            </div>
+            <div className="rounded-2xl bg-rose-50 p-4 dark:bg-rose-950/20">
+              <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Falhas registradas</p>
+              <p className="mt-1 text-2xl font-black text-rose-600">{activeFailureCount.toLocaleString('pt-BR')}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Percentual de falhas</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{failureRate.toFixed(2)}%</p>
+            </div>
+          </div>
+          <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:bg-slate-950">
+            Cor: {failureBasis.colorFailures.toLocaleString('pt-BR')} por folha ({failureBasis.colorRate.toFixed(2)}%) · Demais falhas: {failureBasis.unitFailures.toLocaleString('pt-BR')} por unidade ({failureBasis.unitRate.toFixed(2)}%)
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Regra de aprovação</p>
+            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Critério flexível</h2>
+          </div>
+          <div className="space-y-3">
+            <select value={approvalRule.mode} onChange={(e) => updateApprovalRule({ mode: e.target.value as ApprovalRuleMode })} disabled={!isSupervisor} className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase outline-none disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800">
+              <option value="percent">Percentual de falhas</option>
+              <option value="quantity">Quantidade de falhas</option>
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Restrição</label>
+                <input type="number" min={0} step={approvalRule.mode === 'percent' ? 0.1 : 1} value={approvalRule.restrictedLimit} onChange={(e) => updateApprovalRule({ restrictedLimit: Number(e.target.value) })} disabled={!isSupervisor} className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovação</label>
+                <input type="number" min={0} step={approvalRule.mode === 'percent' ? 0.1 : 1} value={approvalRule.rejectLimit} onChange={(e) => updateApprovalRule({ rejectLimit: Number(e.target.value) })} disabled={!isSupervisor} className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800" />
+              </div>
+            </div>
+            <div className={`rounded-2xl p-4 ${calculatedStatus === InspectionStatus.APPROVED ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20' : calculatedStatus === InspectionStatus.REJECTED ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/20'}`}>
+              <p className="text-[9px] font-black uppercase tracking-widest opacity-70">Resultado calculado</p>
+              <p className="mt-1 text-xl font-black uppercase">{getStatusText(calculatedStatus)}</p>
+            </div>
+            {!isSupervisor && <p className="text-[10px] font-bold text-slate-400">Somente a supervisão altera os limites. Analistas usam a regra ativa.</p>}
+          </div>
+        </div>
+      </section>
+
       <main className="animate-slide-in">
 
         {/* ABA: OFF-SET */}
@@ -603,8 +826,8 @@ export default function InspectionView() {
               ].map(s => (
                 <button
                   key={s.id}
-                  onClick={() => setOffsetData(prev => ({ ...prev, status: s.id as any }))}
-                  className={`flex items-center gap-4 px-6 h-14 rounded-2xl border-2 transition-all ${offsetData.status === s.id
+                  type="button"
+                  className={`flex items-center gap-4 px-6 h-14 rounded-2xl border-2 transition-all cursor-default ${calculatedStatus === s.id
                     ? s.styles.card
                     : 'border-slate-100 dark:border-slate-800 opacity-60 hover:opacity-100'
                     }`}
