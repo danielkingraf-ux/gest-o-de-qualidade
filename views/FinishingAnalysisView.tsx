@@ -99,6 +99,8 @@ export default function FinishingAnalysisView() {
         op: '',
         laudo_numero: '',
         analyst_id: '',
+        status: InspectionStatus.APPROVED,
+        observacoes: '',
         num_analises: 1,
         amostragem: 500,
         defects: DEFECT_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: 0 }), {})
@@ -211,7 +213,7 @@ export default function FinishingAnalysisView() {
                 machine_id: selectedMachineId,
                 operator_id: selectedOperatorId,
                 analyst_id: formData.analyst_id,
-                status: InspectionStatus.APPROVED,
+                status: formData.status,
                 samples_count: formData.amostragem,
                 process_type: ProcessType.ACABAMENTO,
                 created_at: new Date().toISOString(),
@@ -219,6 +221,8 @@ export default function FinishingAnalysisView() {
                 observations: JSON.stringify({
                     is_spreadsheet_analysis: true,
                     laudo_numero: formData.laudo_numero,
+                    status: formData.status,
+                    observacoes: formData.observacoes.trim(),
                     num_analises: formData.num_analises,
                     defects: formData.defects,
                     all_operator_ids: [selectedOperatorId],
@@ -242,6 +246,8 @@ export default function FinishingAnalysisView() {
                 op: '',
                 laudo_numero: '',
                 analyst_id: '',
+                status: InspectionStatus.APPROVED,
+                observacoes: '',
                 num_analises: 1,
                 amostragem: 500,
                 defects: DEFECT_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: 0 }), {})
@@ -410,6 +416,50 @@ export default function FinishingAnalysisView() {
                         </div>
                     </div>
 
+                    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Resultado</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    {
+                                        id: InspectionStatus.APPROVED,
+                                        label: 'Aprovado',
+                                        icon: 'check_circle',
+                                        className: formData.status === InspectionStatus.APPROVED
+                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10'
+                                            : 'border-slate-200 text-slate-400 hover:text-emerald-600 dark:border-slate-700'
+                                    },
+                                    {
+                                        id: InspectionStatus.REJECTED,
+                                        label: 'Reprovado',
+                                        icon: 'cancel',
+                                        className: formData.status === InspectionStatus.REJECTED
+                                            ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-500/10'
+                                            : 'border-slate-200 text-slate-400 hover:text-rose-600 dark:border-slate-700'
+                                    }
+                                ].map(option => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, status: option.id }))}
+                                        className={`h-11 rounded-xl border-2 px-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${option.className}`}
+                                    >
+                                        <span className="material-symbols-outlined text-base">{option.icon}</span>
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Observação</label>
+                            <textarea
+                                value={formData.observacoes}
+                                onChange={e => setFormData(prev => ({ ...prev, observacoes: e.target.value }))}
+                                className="w-full h-24 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium focus:ring-2 focus:ring-violet-500/20 transition-all resize-none"
+                                placeholder="Observações sobre o laudo, restrições ou motivo da reprovação..."
+                            />
+                        </div>
+                    </div>
 
                     <div className="flex flex-col gap-4">
                         <div className="flex items-center justify-between px-1">
@@ -443,6 +493,8 @@ export default function FinishingAnalysisView() {
             op: '',
             laudo_numero: '',
             analyst_id: '',
+            status: InspectionStatus.APPROVED,
+            observacoes: '',
             num_analises: 1,
             amostragem: 500,
             defects: DEFECT_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: 0 }), {})
