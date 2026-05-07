@@ -331,7 +331,6 @@ export default function DashboardView() {
                 const current = operatorMap.get(id) || { name, defects: 0, inspections: 0, samples: 0 };
                 current.defects += item.defectsTotal;
                 current.inspections += 1;
-                current.samples += item.samples || item.folhasRevisadas || item.folhasImpressas || item.unidadesEscolha;
                 operatorMap.set(id, current);
             });
 
@@ -352,7 +351,7 @@ export default function DashboardView() {
             .map((item) => ({
                 ...item,
                 sharePercent: total.defects > 0 ? (item.defects / total.defects) * 100 : 0,
-                defectRate: item.samples > 0 ? (item.defects / item.samples) * 100 : null,
+                defectsPerRecord: item.inspections > 0 ? item.defects / item.inspections : 0,
             }))
             .sort((a, b) => b.defects - a.defects)
             .slice(0, 10);
@@ -539,7 +538,7 @@ export default function DashboardView() {
                             <div className="mb-4 flex items-center justify-between gap-3">
                                 <div>
                                     <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Desvios por operador</h3>
-                                    <p className="text-xs font-bold text-slate-400">Taxa = desvios / amostras vinculadas. % do total = participação nos desvios do filtro.</p>
+                                    <p className="text-xs font-bold text-slate-400">Media = desvios por registro. % do total = participação nos desvios do filtro.</p>
                                 </div>
                                 <Users className="size-5 text-slate-400" />
                             </div>
@@ -549,7 +548,7 @@ export default function DashboardView() {
                                         <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
                                             <th className="py-3">Operador</th>
                                             <th className="py-3 text-right">Desvios</th>
-                                            <th className="py-3 text-right">Taxa</th>
+                                            <th className="py-3 text-right">MÃ©dia</th>
                                             <th className="py-3 text-right">% do total</th>
                                             <th className="py-3 text-right">Registros</th>
                                         </tr>
@@ -559,7 +558,7 @@ export default function DashboardView() {
                                             <tr key={operator.name} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
                                                 <td className="py-3">{operator.name}</td>
                                                 <td className="py-3 text-right">{formatNumber(operator.defects)}</td>
-                                                <td className="py-3 text-right">{operator.defectRate === null ? '-' : formatPercent(operator.defectRate)}</td>
+                                                <td className="py-3 text-right">{operator.defectsPerRecord.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
                                                 <td className="py-3 text-right">{formatPercent(operator.sharePercent)}</td>
                                                 <td className="py-3 text-right">{formatNumber(operator.inspections)}</td>
                                             </tr>
