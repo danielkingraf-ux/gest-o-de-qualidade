@@ -63,6 +63,9 @@ interface Summary {
     folhasImpressas: number;
     folhasRevisadas: number;
     unidadesEscolha: number;
+    aprovadas: number;
+    saldoSemRevisao: number;
+    reprovacaoPercent: number;
 }
 
 const PERIOD_OPTIONS: Array<{ value: Period; label: string }> = [
@@ -86,6 +89,9 @@ const emptySummary = (): Summary => ({
     folhasImpressas: 0,
     folhasRevisadas: 0,
     unidadesEscolha: 0,
+    aprovadas: 0,
+    saldoSemRevisao: 0,
+    reprovacaoPercent: 0,
 });
 
 const asNumber = (value: any) => {
@@ -200,8 +206,8 @@ const bucketKey = (date: Date, period: Period) => {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 };
 
-const summarize = (items: NormalizedInspection[]): Summary =>
-    items.reduce((acc, item) => {
+const summarize = (items: NormalizedInspection[]): Summary => {
+    const summary = items.reduce((acc, item) => {
         acc.inspections += 1;
         acc.samples += item.samples;
         acc.rework += item.rework;
@@ -211,10 +217,11 @@ const summarize = (items: NormalizedInspection[]): Summary =>
         acc.unidadesEscolha += item.unidadesEscolha;
         return acc;
     }, emptySummary());
-
-const deviationPercent = (summary: Summary) => {
-    const base = summary.samples || summary.folhasRevisadas || summary.folhasImpressas || summary.unidadesEscolha;
-    return base > 0 ? (summary.defects / base) * 100 : 0;
+    const revisadas = summary.folhasRevisadas || summary.samples;
+    summary.aprovadas = Math.max(0, revisadas - summary.rework);
+    summary.saldoSemRevisao = Math.max(0, summary.folhasImpressas - revisadas);
+    summary.reprovacaoPercent = revisadas > 0 ? (summary.rework / revisadas) * 100 : 0;
+    return summary;
 };
 
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
@@ -473,10 +480,10 @@ export default function DashboardView() {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
                 <MetricCard title="Folhas impressas" value={formatNumber(analytics.total.folhasImpressas)} icon={<FileText />} />
                 <MetricCard title="Folhas revisadas" value={formatNumber(analytics.total.folhasRevisadas)} icon={<ClipboardList />} />
-                <MetricCard title="Unid. escolha" value={formatNumber(analytics.total.unidadesEscolha)} icon={<Layers />} />
-                <MetricCard title="Para revisao" value={formatNumber(analytics.total.rework)} icon={<AlertTriangle />} tone="amber" />
-                <MetricCard title="% desvios" value={formatPercent(deviationPercent(analytics.total))} icon={<TrendingUp />} tone="rose" />
-                <MetricCard title="Total desvios" value={formatNumber(analytics.total.defects)} icon={<BarChart3 />} tone="blue" />
+                <MetricCard title="Aprovadas" value={formatNumber(analytics.total.aprovadas)} icon={<Layers />} tone="blue" />
+                <MetricCard title="Reprovadas" value={formatNumber(analytics.total.rework)} icon={<AlertTriangle />} tone="rose" />
+                <MetricCard title="Saldo sem revisao" value={formatNumber(analytics.total.saldoSemRevisao)} icon={<TrendingUp />} tone="amber" />
+                <MetricCard title="% reprov. revisao" value={formatPercent(analytics.total.reprovacaoPercent)} icon={<BarChart3 />} tone="rose" />
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -603,15 +610,15 @@ function AreaSummary({ title, summary, color }: { title: string; summary: Summar
                     <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">{title}</h2>
                     <p className="mt-1 text-xs font-bold text-slate-400">{formatNumber(summary.inspections)} registros analisados</p>
                 </div>
-                <p className="text-lg font-black">{formatPercent(deviationPercent(summary))}</p>
+                <p className="text-lg font-black">{formatPercent(summary.reprovacaoPercent)}</p>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <SmallMetric label="Folhas impressas" value={summary.folhasImpressas} />
                 <SmallMetric label="Folhas revisadas" value={summary.folhasRevisadas} />
-                <SmallMetric label="Unid. escolha" value={summary.unidadesEscolha} />
-                <SmallMetric label="Para revisao" value={summary.rework} />
+                <SmallMetric label="Aprovadas" value={summary.aprovadas} />
+                <SmallMetric label="Reprovadas" value={summary.rework} />
+                <SmallMetric label="Saldo sem revisao" value={summary.saldoSemRevisao} />
                 <SmallMetric label="Amostras" value={summary.samples} />
-                <SmallMetric label="Desvios" value={summary.defects} />
             </div>
         </div>
     );
