@@ -118,7 +118,7 @@ export default function FinishingAnalysisView() {
                 supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
-                supabase.from('orders').select('*').eq('status', 'em_producao').order('created_at', { ascending: false })
+                supabase.from('orders').select('*').order('created_at', { ascending: false })
             ]);
 
             if (mRes.data) {
@@ -145,7 +145,7 @@ export default function FinishingAnalysisView() {
 
     const filteredOrders = orders.filter(order => {
         const term = orderFilter.trim().toLowerCase();
-        if (!term) return true;
+        if (!term) return order.status === 'em_producao';
         return [order.op, order.cliente, order.produto]
             .some(value => String(value || '').toLowerCase().includes(term));
     });
@@ -317,7 +317,7 @@ export default function FinishingAnalysisView() {
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
                             >
                                 <option value="">Selecionar OP...</option>
-                                {filteredOrders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+                                {filteredOrders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente} {o.status !== 'em_producao' ? `(${o.status})` : ''}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1 lg:col-span-2">
