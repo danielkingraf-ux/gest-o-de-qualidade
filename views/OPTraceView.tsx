@@ -8,6 +8,7 @@ type AreaKey = 'initial' | 'final';
 type TraceInspection = {
     id: string;
     op: string;
+    laudoNumero: string;
     status: InspectionStatus;
     processType: string;
     area: AreaKey;
@@ -20,6 +21,11 @@ type TraceInspection = {
     operatorName: string;
     analystName: string;
     observationsText: string;
+};
+
+type TraceOrder = Order & {
+    synthetic?: boolean;
+    laudos?: string[];
 };
 
 const PROCESS_LABELS: Record<string, string> = {
@@ -122,6 +128,7 @@ const normalizeInspection = (record: any): TraceInspection => {
     return {
         id: record.id,
         op: record.op,
+        laudoNumero: String(obs.laudo_numero || ''),
         status: record.status,
         processType,
         area: getArea(record, obs),
@@ -147,8 +154,8 @@ const sum = (items: TraceInspection[], key: 'samples' | 'rework' | 'totalDefects
     items.reduce((total, item) => total + item[key], 0);
 
 export default function OPTraceView() {
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [orders, setOrders] = useState<TraceOrder[]>([]);
+    const [selectedOrder, setSelectedOrder] = useState<TraceOrder | null>(null);
     const [inspections, setInspections] = useState<TraceInspection[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(true);
     const [loadingInsp, setLoadingInsp] = useState(false);
@@ -157,15 +164,57 @@ export default function OPTraceView() {
 
     const fetchOrders = useCallback(async () => {
         setLoadingOrders(true);
-        const { data, error } = await supabase
-            .from('orders')
-            .select('*')
-            .order('created_at', { ascending: false });
+        const [ordersRes, inspectionsRes] = await Promise.all([
+            supabase
+                .from('orders')
+                .select('*')
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('inspections')
+                .select('op, order_id, created_at, observations')
+                .order('created_at', { ascending: false })
+                .limit(2000)
+        ]);
 
-        if (error) {
+        if (ordersRes.error || inspectionsRes.error) {
             showToast('Erro ao carregar OPs', 'error');
         } else {
-            setOrders(data || []);
+            const byOp = new Map<string, TraceOrder>();
+            (ordersRes.data || []).forEach((order: Order) => {
+                byOp.set(String(order.op || '').toUpperCase(), { ...order, laudos: [] });
+            });
+
+            (inspectionsRes.data || []).forEach((inspection: any) => {
+                const op = String(inspection.op || '').trim().toUpperCase();
+                if (!op) return;
+
+                const obs = parseObservations(inspection.observations);
+                const laudo = String(obs.laudo_numero || '').trim();
+                const existing = byOp.get(op);
+
+                if (existing) {
+                    if (laudo && !existing.laudos?.includes(laudo)) {
+                        existing.laudos = [...(existing.laudos || []), laudo];
+                    }
+                    return;
+                }
+
+                byOp.set(op, {
+                    id: `inspection:${op}`,
+                    op,
+                    cliente: '',
+                    produto: '',
+                    descricao: '',
+                    qtd_total: 0,
+                    status: 'em_producao',
+                    created_at: inspection.created_at,
+                    updated_at: inspection.created_at,
+                    synthetic: true,
+                    laudos: laudo ? [laudo] : []
+                });
+            });
+
+            setOrders(Array.from(byOp.values()));
         }
         setLoadingOrders(false);
     }, [showToast]);
@@ -174,15 +223,18 @@ export default function OPTraceView() {
         fetchOrders();
     }, [fetchOrders]);
 
-    const selectOrder = useCallback(async (order: Order) => {
+    const selectOrder = useCallback(async (order: TraceOrder) => {
         setSelectedOrder(order);
         setLoadingInsp(true);
 
-        const { data, error } = await supabase
+        const query = supabase
             .from('inspections')
             .select('*, machines(name), operators(name), analysts(name, tipo)')
-            .or(`order_id.eq.${order.id},op.eq.${order.op}`)
             .order('created_at', { ascending: true });
+
+        const { data, error } = order.synthetic
+            ? await query.eq('op', order.op)
+            : await query.or(`order_id.eq.${order.id},op.eq.${order.op}`);
 
         if (error) {
             showToast('Erro ao carregar inspeções da OP', 'error');
@@ -200,7 +252,8 @@ export default function OPTraceView() {
             return (
                 String(order.op || '').toLowerCase().includes(value) ||
                 String(order.cliente || '').toLowerCase().includes(value) ||
-                String(order.produto || '').toLowerCase().includes(value)
+                String(order.produto || '').toLowerCase().includes(value) ||
+                (order.laudos || []).some((laudo) => laudo.toLowerCase().includes(value))
             );
         });
     }, [orders, search]);
@@ -252,7 +305,7 @@ export default function OPTraceView() {
                             type="text"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Buscar OP, cliente, produto..."
+                            placeholder="Buscar OP, cliente, produto ou laudo..."
                             className="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900"
                         />
                     </div>
@@ -408,6 +461,11 @@ function ProcessSection({ title, icon, inspections }: { title: string; icon: str
                                             <span className="text-[10px] font-bold text-slate-500">
                                                 {PROCESS_LABELS[inspection.processType] || inspection.processType}
                                             </span>
+                                            {inspection.laudoNumero && (
+                                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">
+                                                    Laudo {inspection.laudoNumero}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="mt-1 text-[10px] font-medium text-slate-400">
                                             {new Date(inspection.createdAt).toLocaleString('pt-BR')} · {formatNumber(inspection.samples)} amostras · {formatNumber(inspection.rework)} revisão

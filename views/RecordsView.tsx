@@ -199,6 +199,7 @@ export default function RecordsView() {
           defects,
           total_defects,
           totalDefects: total_defects,
+          laudo_numero: parsedObservations.laudo_numero || '',
           displayProcessType,
           process_type: displayProcessType,
           isLegacy: parsedObservations.legacy === true || parsedObservations.is_historical === true,
@@ -392,7 +393,10 @@ export default function RecordsView() {
 
   const filteredRecords = useMemo(() => {
     return visibleRecords.filter(record => {
-      const matchesSearch = (record.op || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const search = searchTerm.toLowerCase();
+      const matchesSearch =
+        (record.op || '').toLowerCase().includes(search) ||
+        (record.laudo_numero || '').toLowerCase().includes(search);
       const statusMap: Record<string, string> = {
         'Aprovado': 'APPROVED',
         'Reprovado': 'REJECTED',
@@ -534,11 +538,11 @@ export default function RecordsView() {
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Buscar OP / Lote</label>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Buscar OP / Laudo</label>
             <div className="relative">
               <input
                 className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 text-xs font-bold outline-none"
-                placeholder="Ex: 88421"
+                placeholder="Ex: 88421 ou 00000/25"
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -564,6 +568,7 @@ export default function RecordsView() {
               <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Data/Hora</th>
                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">OP</th>
+                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Laudo</th>
                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</th>
                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Processo</th>
                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-slate-400">Resultado</th>
@@ -573,7 +578,7 @@ export default function RecordsView() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic text-sm">Carregando registros...</td></tr>
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic text-sm">Carregando registros...</td></tr>
               ) : filteredRecords.length > 0 ? (
                 filteredRecords.map(record => {
                   const meta = getCategoryMeta(record.displayProcessType || record.process_type);
@@ -587,6 +592,7 @@ export default function RecordsView() {
                       )}
                       <td className="px-6 py-4 text-sm whitespace-nowrap">{formatDate(record.created_at)}</td>
                       <td className="px-6 py-4 text-sm font-bold uppercase tracking-tighter">{record.op}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-violet-600">{record.laudo_numero || '-'}</td>
                       <td className="px-6 py-4 text-sm font-medium">{record.machines?.name || '-'}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${meta.badgeClass}`}>
@@ -686,7 +692,7 @@ export default function RecordsView() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic text-sm">Nenhum registro encontrado.</td>
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic text-sm">Nenhum registro encontrado.</td>
                 </tr>
               )}
             </tbody>

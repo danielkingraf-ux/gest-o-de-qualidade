@@ -34,6 +34,8 @@ const DEFECT_COLUMNS = [
     { key: 'outros', label: 'Outros', icon: 'more_horiz' }
 ];
 
+type OrderOption = Order & { fromInitialInspection?: boolean };
+
 const DefectCounter: React.FC<{
     name: string;
     icon: string;
@@ -83,7 +85,7 @@ export default function FinishingAnalysisView() {
     const [machines, setMachines] = useState<Machine[]>([]);
     const [operators, setOperators] = useState<Operator[]>([]);
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
-    const [orders, setOrders] = useState<Order[]>([]);
+    const [orders, setOrders] = useState<OrderOption[]>([]);
     const [selectedOrderId, setSelectedOrderId] = useState('');
     const [orderFilter, setOrderFilter] = useState('');
     const [newOrder, setNewOrder] = useState({ op: '', cliente: '', produto: '', qtd_total: '' });
@@ -114,11 +116,12 @@ export default function FinishingAnalysisView() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [mRes, oRes, aRes, ordRes] = await Promise.all([
+            const [mRes, oRes, aRes, ordRes, initialRes] = await Promise.all([
                 supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
-                supabase.from('orders').select('*').order('created_at', { ascending: false })
+                supabase.from('orders').select('*').order('created_at', { ascending: false }),
+                supabase.from('inspections').select('op, order_id, created_at, observations').order('created_at', { ascending: false }).limit(500)
             ]);
 
             if (mRes.data) {
@@ -130,7 +133,51 @@ export default function FinishingAnalysisView() {
                 if (!selectedOperatorId && oRes.data.length > 0) setSelectedOperatorId(oRes.data[0].id);
             }
             if (aRes.data) setAnalysts(aRes.data);
-            if (ordRes.data) setOrders(ordRes.data);
+            if (ordRes.data) {
+                const merged = new Map<string, OrderOption>();
+                ordRes.data.forEach((order: Order) => {
+                    merged.set(order.op.toUpperCase(), { ...order });
+                });
+
+                (initialRes.data || []).forEach((inspection: any) => {
+                    const op = String(inspection.op || '').trim().toUpperCase();
+                    if (!op) return;
+
+                    let processArea = '';
+                    let processType = '';
+                    try {
+                        const observationData = JSON.parse(inspection.observations || '{}');
+                        processArea = observationData?.process_area || '';
+                        processType = observationData?.process_type || '';
+                    } catch {
+                        processArea = '';
+                        processType = '';
+                    }
+                    const isInitialProcess = processArea === 'producao_inicial' || ['OFFSET', 'UV', 'HOT_STAMPING'].includes(processType);
+                    if (!isInitialProcess) return;
+
+                    const existing = merged.get(op);
+                    if (existing) {
+                        merged.set(op, { ...existing, fromInitialInspection: true });
+                        return;
+                    }
+
+                    merged.set(op, {
+                        id: `inspection:${op}`,
+                        op,
+                        cliente: '',
+                        produto: '',
+                        descricao: '',
+                        qtd_total: 0,
+                        status: 'em_producao',
+                        created_at: inspection.created_at,
+                        updated_at: inspection.created_at,
+                        fromInitialInspection: true
+                    });
+                });
+
+                setOrders(Array.from(merged.values()));
+            }
         } catch (err) {
             console.error('Erro ao buscar dados:', err);
             showToast('Erro ao carregar dados', 'error');
@@ -145,7 +192,7 @@ export default function FinishingAnalysisView() {
 
     const filteredOrders = orders.filter(order => {
         const term = orderFilter.trim().toLowerCase();
-        if (!term) return order.status === 'em_producao';
+        if (!term) return order.status === 'em_producao' || order.fromInitialInspection;
         return [order.op, order.cliente, order.produto]
             .some(value => String(value || '').toLowerCase().includes(term));
     });
@@ -161,19 +208,20 @@ export default function FinishingAnalysisView() {
             showToast('OP, Máquina, Operador, Nº do Laudo e Analista são obrigatórios', 'warning');
             return;
         }
-        let selectedOrder = orders.find(o => o.id === selectedOrderId) || null;
-        let orderId = selectedOrderId;
+        let selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
+        let orderId = selectedOrder && !selectedOrder.fromInitialInspection ? selectedOrder.id : '';
+        const selectedOp = selectedOrder?.op.trim().toUpperCase() || typedOp;
 
         setIsSaving(true);
         try {
-            if (!selectedOrder && typedOp) {
-                selectedOrder = orders.find(o => o.op.toUpperCase() === typedOp) || null;
+            if (!orderId && selectedOp) {
+                selectedOrder = orders.find(o => !o.fromInitialInspection && o.op.toUpperCase() === selectedOp) || null;
 
                 if (!selectedOrder) {
                     const payload = {
-                        op: typedOp,
-                        cliente: newOrder.cliente.trim(),
-                        produto: newOrder.produto.trim(),
+                        op: selectedOp,
+                        cliente: selectedOrder?.cliente || newOrder.cliente.trim(),
+                        produto: selectedOrder?.produto || newOrder.produto.trim(),
                         qtd_total: Math.max(0, Number(newOrder.qtd_total) || 0),
                         status: 'em_producao',
                         created_by_user_id: profile?.user_id ?? null
@@ -189,7 +237,7 @@ export default function FinishingAnalysisView() {
                         const { data: existing, error: findError } = await supabase
                             .from('orders')
                             .select('*')
-                            .eq('op', typedOp)
+                            .eq('op', selectedOp)
                             .single();
 
                         if (findError || !existing) throw createError;
@@ -199,7 +247,7 @@ export default function FinishingAnalysisView() {
                     }
                 }
 
-                orderId = selectedOrder?.id ?? '';
+                orderId = selectedOrder && !selectedOrder.fromInitialInspection ? selectedOrder.id : '';
             }
 
             if (!selectedOrder || !orderId) {
@@ -317,7 +365,7 @@ export default function FinishingAnalysisView() {
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
                             >
                                 <option value="">Selecionar OP...</option>
-                                {filteredOrders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente} {o.status !== 'em_producao' ? `(${o.status})` : ''}</option>)}
+                                {filteredOrders.map(o => <option key={`${o.id}:${o.op}`} value={o.op}>{o.op} — {o.cliente || 'Processo inicial'} {o.status !== 'em_producao' ? `(${o.status})` : ''}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1 lg:col-span-2">
