@@ -1,6 +1,12 @@
-import React, { useState, createContext, useContext, useCallback, useEffect } from 'react';
-import { supabase } from './services/supabase';
+import React, { useState, createContext, useContext, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from './services/supabase';
+import { authService } from './services/authService';
+import { UserProvider, useUser } from './contexts/UserContext';
+import { ToastProvider, useToast } from './contexts/ToastContext';
+import ChatPopup from './components/ChatPopup';
+import PrivacyNoticeModal from './components/PrivacyNoticeModal';
 import InspectionView from './views/InspectionView';
 import RecordsView from './views/RecordsView';
 import DocumentationView from './views/DocumentationView';
@@ -14,13 +20,6 @@ import ReportsView from './views/ReportsView';
 import HistoricalUploadView from './views/HistoricalUploadView';
 import SupervisorView from './views/SupervisorView';
 import LgpdView from './views/LgpdView';
-import { authService } from './services/authService';
-import ChatPopup from './components/ChatPopup';
-import PrivacyNoticeModal from './components/PrivacyNoticeModal';
-import { UserProvider, useUser } from './contexts/UserContext';
-
-
-
 
 
 // Theme System
@@ -64,16 +63,20 @@ const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-import { ToastProvider, useToast } from './contexts/ToastContext';
 
+interface SidebarProps {
+  user: { email?: string };
+  onLogout: () => void;
+  onOpenChat: () => void;
+  unreadCount: number;
+  pendingRequests: number;
+  isCollapsed: boolean;
+  setIsCollapsed: (v: boolean) => void;
+  isMobileOpen: boolean;
+  onCloseMobile: () => void;
+}
 
-
-
-const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isCollapsed, setIsCollapsed, isMobileOpen, onCloseMobile }: {
-  user: any, onLogout: () => void, onOpenChat: () => void, unreadCount: number, pendingRequests: number,
-  isCollapsed: boolean, setIsCollapsed: (v: boolean) => void,
-  isMobileOpen: boolean, onCloseMobile: () => void
-}) => {
+const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isCollapsed, setIsCollapsed, isMobileOpen, onCloseMobile }: SidebarProps) => {
   const location = useLocation();
   const { showToast } = useToast();
   const { theme, toggleTheme } = useTheme();
@@ -85,7 +88,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
     const subscription = supabase
       .channel('sidebar_shift_alerts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_logs' }, (payload) => {
-        const newLog = payload.new as any;
+        const newLog = payload.new as { type: string };
         if (newLog.type === 'alert' || newLog.type === 'critical') {
           setAlertCount(prev => prev + 1);
         }
@@ -155,7 +158,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
         <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
-            const badgeCount = (item as any).badge;
+            const badgeCount = (item as { badge?: number }).badge;
 
             return item.isAction ? (
               <button
@@ -325,8 +328,8 @@ const Header = ({ onOpenSidebar, unreadCount, onOpenChat }: { onOpenSidebar: () 
   );
 };
 
-export default function App() {
-  const [session, setSession] = useState<any>(null);
+const App = () => {
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -382,7 +385,7 @@ export default function App() {
   );
 }
 
-function AppShell({ session }: { session: any }) {
+const AppShell = ({ session }: { session: Session }) => {
   const { isSupervisor, profile, loading: profileLoading } = useUser();
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -416,8 +419,8 @@ function AppShell({ session }: { session: any }) {
         .eq('user_id', session.user.id);
 
       if (logs && reads) {
-        const readIds = new Set(reads.map((r: any) => r.log_id));
-        setUnreadCount(logs.filter((l: any) => !readIds.has(l.id)).length);
+        const readIds = new Set(reads.map((r: { log_id: string }) => r.log_id));
+        setUnreadCount(logs.filter((l: { id: string }) => !readIds.has(l.id)).length);
       }
     };
 
@@ -563,4 +566,6 @@ function AppShell({ session }: { session: any }) {
       </div>
     </HashRouter>
   );
-}
+};
+
+export default App;

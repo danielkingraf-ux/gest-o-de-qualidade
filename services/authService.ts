@@ -15,7 +15,7 @@ export const authService = {
         return { error };
     },
 
-    onAuthStateChange(callback: (event: any, session: any) => void) {
+    onAuthStateChange(callback: Parameters<typeof supabase.auth.onAuthStateChange>[0]) {
         return supabase.auth.onAuthStateChange(callback);
     },
 };

@@ -2,49 +2,68 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from './supabase';
-import { InspectionRecord } from '../types';
+
+// Paleta de cores dos PDFs
+const COLOR_HEADER_BG:  [number, number, number] = [31,  41,  55];
+const COLOR_PRIMARY:    [number, number, number] = [76,  29,  149];
+const COLOR_ACCENT:     [number, number, number] = [139, 92,  246];
+const COLOR_TEAL:       [number, number, number] = [15,  118, 110];
+const COLOR_INDIGO:     [number, number, number] = [99,  102, 241];
+
+type PersonList = Array<{ id: string; name?: string }>;
+
+interface PdfRecord {
+    id: string;
+    op: string;
+    created_at: string;
+    status: string;
+    observations: string | null;
+    operator_id?: string | null;
+    analyst_id?: string | null;
+    machines?: { name?: string } | null;
+}
+
+const parseObservations = (observations: string | null): Record<string, unknown> => {
+    if (!observations) return {};
+    try { return JSON.parse(observations); } catch { return {}; }
+};
+
+const getNames = (
+    type: 'operator' | 'analyst',
+    obs: Record<string, unknown>,
+    record: PdfRecord,
+    operatorsList: PersonList,
+    analystsList: PersonList,
+): string => {
+    let ids: string[] = [];
+    if (type === 'operator' && Array.isArray(obs.all_operator_ids)) {
+        ids = obs.all_operator_ids as string[];
+    } else if (type === 'analyst' && Array.isArray(obs.all_analyst_ids)) {
+        ids = obs.all_analyst_ids as string[];
+    } else {
+        const singleId = type === 'operator' ? record.operator_id : record.analyst_id;
+        if (singleId) ids = [singleId];
+    }
+    const list = type === 'operator' ? operatorsList : analystsList;
+    if (ids.length === 0) return 'N/A';
+    return ids.map(id => list.find(item => item.id === id)?.name ?? 'Desconhecido').join(', ');
+};
 
 export const reportService = {
-    generateFinishingPDF(record: any, operatorsList: any[] = [], analystsList: any[] = []) {
+    generateFinishingPDF(record: PdfRecord, operatorsList: PersonList = [], analystsList: PersonList = []) {
         try {
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
-            const parsedObservations = (() => {
-                if (!record.observations) return {};
-                try {
-                    return JSON.parse(record.observations);
-                } catch {
-                    return {};
-                }
-            })();
+            const parsedObservations = parseObservations(record.observations);
 
-            const headerData = parsedObservations.header || {};
-            const testsData = parsedObservations.tests || {};
-            const defectsData = parsedObservations.defects || { critical: {}, major: {}, minor: {} };
+            const headerData = (parsedObservations.header ?? {}) as Record<string, string>;
+            const testsData  = (parsedObservations.tests  ?? {}) as Record<string, Record<string, string>>;
+            const defectsData = (parsedObservations.defects ?? { critical: {}, major: {}, minor: {} }) as Record<string, Record<string, number>>;
             const isSpreadsheetAnalysis = parsedObservations.is_spreadsheet_analysis === true;
 
-            // Helper to get names
-            const getNames = (type: 'operator' | 'analyst') => {
-                let ids: string[] = [];
-                const obs = parsedObservations;
-                if (type === 'operator' && obs.all_operator_ids) ids = obs.all_operator_ids;
-                else if (type === 'analyst' && obs.all_analyst_ids) ids = obs.all_analyst_ids;
-                else {
-                    const singleId = type === 'operator' ? record.operator_id : record.analyst_id;
-                    if (singleId) ids = [singleId];
-                }
-                const list = type === 'operator' ? operatorsList : analystsList;
-                if (ids.length === 0) return 'N/A';
-                return ids.map(id => list.find(item => item.id === id)?.name || 'Desconhecido').join(', ');
-            };
-
-            // -- Visual Styles --
-            const primaryColor = [76, 29, 149]; // Violet dark
-            const accentColor = [139, 92, 246]; // Violet light
-
             // -- Header Block --
-            doc.setFillColor(31, 41, 55);
+            doc.setFillColor(...COLOR_HEADER_BG);
             doc.rect(0, 0, pageWidth, 40, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(18);
@@ -80,8 +99,8 @@ export const reportService = {
             });
 
             // -- Technical Tests Section --
-            y = (doc as any).lastAutoTable.finalY + 10;
-            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+            doc.setTextColor(...COLOR_PRIMARY);
             doc.setFontSize(10);
             doc.setFont('helvetica', 'bold');
             doc.text('1. RESULTADOS DOS TESTES TÉCNICOS', 15, y);
@@ -100,23 +119,23 @@ export const reportService = {
                 head: [['TESTES REALIZADOS', '1ª AMO.', '2ª AMO.', 'MÉDIA', 'LIMITES / ESPEC.', 'UNID.']],
                 body: testsTableRows,
                 theme: 'grid',
-                headStyles: { fillColor: primaryColor as [number, number, number], textColor: 255, fontSize: 8, halign: 'center' },
+                headStyles: { fillColor: COLOR_PRIMARY, textColor: 255, fontSize: 8, halign: 'center' },
                 styles: { fontSize: 8, halign: 'center' },
                 columnStyles: { 0: { halign: 'left', fontStyle: 'bold', cellWidth: 40 } },
                 margin: { left: 15, right: 15 }
             });
 
             // -- Defect Classification Section --
-            y = (doc as any).lastAutoTable.finalY + 10;
-            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+            doc.setTextColor(...COLOR_PRIMARY);
             doc.setFontSize(10);
             doc.setFont('helvetica', 'bold');
             doc.text('2. CLASSIFICAÇÃO DE DEFEITOS (NÃO CONFORMIDADES)', 15, y);
             y += 4;
 
-            const allDefects: any[] = [];
-            const addDefects = (categoryMap: any, label: string) => {
-                Object.entries(categoryMap).forEach(([key, count]: [string, any]) => {
+            const allDefects: [string, string, number][] = [];
+            const addDefects = (categoryMap: Record<string, number>, label: string) => {
+                Object.entries(categoryMap).forEach(([key, count]) => {
                     if (count > 0) {
                         allDefects.push([label.toUpperCase(), key.replace(/_/g, ' ').toUpperCase(), count]);
                     }
@@ -133,7 +152,7 @@ export const reportService = {
                     head: [['GRAVIDADE', 'DESCRIÇÃO DO DEFEITO', 'QUANTIDADE']],
                     body: allDefects,
                     theme: 'striped',
-                    headStyles: { fillColor: accentColor as [number, number, number], textColor: 255, fontSize: 8 },
+                    headStyles: { fillColor: COLOR_ACCENT, textColor: 255, fontSize: 8 },
                     styles: { fontSize: 8 },
                     margin: { left: 15, right: 15 }
                 });
@@ -146,7 +165,7 @@ export const reportService = {
             }
 
             // -- Final Opinion & Observations --
-            y = (doc as any).lastAutoTable?.finalY + 15 || y + 15;
+            y = ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y) + 15;
 
             if (!isSpreadsheetAnalysis) {
                 const statusColor = record.status === 'APPROVED' ? [16, 185, 129] : [220, 38, 38];
@@ -163,9 +182,9 @@ export const reportService = {
             y += 6;
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            doc.text(`OPERADORES: ${getNames('operator')}`, 15, y);
+            doc.text(`OPERADORES: ${getNames('operator', parsedObservations, record, operatorsList, analystsList)}`, 15, y);
             y += 5;
-            doc.text(`ANALISTAS: ${getNames('analyst')}`, 15, y);
+            doc.text(`ANALISTAS: ${getNames('analyst', parsedObservations, record, operatorsList, analystsList)}`, 15, y);
 
             y += 10;
             doc.setFont('helvetica', 'bold');
@@ -173,7 +192,7 @@ export const reportService = {
             y += 6;
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            const obsText = defectsData.observations || 'Nenhuma observação adicional.';
+            const obsText = (parsedObservations.observations as string | undefined) ?? 'Nenhuma observação adicional.';
             const splitObs = doc.splitTextToSize(obsText, pageWidth - 30);
             doc.text(splitObs, 15, y);
 
@@ -191,56 +210,27 @@ export const reportService = {
 
             doc.save(`LAUDO_ACABAMENTO_${record.op}_${headerData.reportNumber || ''}.pdf`);
             return true;
-        } catch (e) {
-            console.error(e);
+        } catch {
             return false;
         }
     },
 
-    generateInspectionPDF(record: any, operatorsList: any[] = [], analystsList: any[] = []) {
+    generateInspectionPDF(record: PdfRecord, operatorsList: PersonList = [], analystsList: PersonList = []) {
         try {
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
-            const parsedObservations = (() => {
-                if (!record.observations) return {};
-                try {
-                    return JSON.parse(record.observations);
-                } catch {
-                    return {};
-                }
-            })();
-
-            const safeNumber = (value: any) => {
-                const numeric = Number(value);
-                return Number.isFinite(numeric) ? numeric : 0;
-            };
-
-            const getNames = (type: 'operator' | 'analyst') => {
-                let ids: string[] = [];
-                const obs = parsedObservations;
-                if (type === 'operator' && obs.all_operator_ids) ids = obs.all_operator_ids;
-                else if (type === 'analyst' && obs.all_analyst_ids) ids = obs.all_analyst_ids;
-                else {
-                    const singleId = type === 'operator' ? record.operator_id : record.analyst_id;
-                    if (singleId) ids = [singleId];
-                }
-                const list = type === 'operator' ? operatorsList : analystsList;
-                if (ids.length === 0) return 'N/A';
-                return ids.map(id => list.find(item => item.id === id)?.name || 'Desconhecido').join(', ');
-            };
+            const parsedObservations = parseObservations(record.observations);
 
             const getDefects = () => {
-                const defectsMap = parsedObservations.defects || {};
-                const parsed = Object.entries(defectsMap)
-                    .filter(([_, count]) => (count as number) > 0)
+                const defectsMap = (parsedObservations.defects ?? {}) as Record<string, number>;
+                return Object.entries(defectsMap)
+                    .filter(([, count]) => count > 0)
                     .map(([name, count]) => ({ name: name.replace(/_/g, ' '), count }));
-                if (parsed.length > 0) return parsed;
-                return [];
             };
 
             // -- Header --
-            doc.setFillColor(30, 41, 59); // slate-800
+            doc.setFillColor(...COLOR_HEADER_BG);
             doc.rect(0, 0, pageWidth, 40, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
@@ -255,7 +245,7 @@ export const reportService = {
             let y = 50;
             const generalInfo = [
                 ['OP:', record.op, 'MÁQUINA:', record.machines?.name || 'N/A'],
-                ['OPERADORES:', getNames('operator'), 'ANALISTAS:', getNames('analyst')],
+                ['OPERADORES:', getNames('operator', parsedObservations, record, operatorsList, analystsList), 'ANALISTAS:', getNames('analyst', parsedObservations, record, operatorsList, analystsList)],
                 ['STATUS:', record.status.toUpperCase(), 'ID:', record.id.substring(0, 8).toUpperCase()]
             ];
 
@@ -268,7 +258,7 @@ export const reportService = {
                 margin: { left: 15 }
             });
 
-            y = (doc as any).lastAutoTable.finalY + 10;
+            y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
             doc.setTextColor(30, 41, 59);
             doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
@@ -284,7 +274,7 @@ export const reportService = {
                     head: [['DESCRIÇÃO DO DEFEITO', 'QUANTIDADE']],
                     body: defects.map(d => [d.name.toUpperCase(), d.count]),
                     theme: 'striped',
-                    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontSize: 9 },
+                    headStyles: { fillColor: COLOR_HEADER_BG, textColor: 255, fontSize: 9 },
                     styles: { fontSize: 8 },
                     margin: { left: 15 }
                 });
@@ -295,7 +285,7 @@ export const reportService = {
                 y += 10;
             }
 
-            y = (doc as any).lastAutoTable?.finalY + 15 || y + 15;
+            y = ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y) + 15;
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(10);
             doc.text('OBSERVAÇÕES:', 15, y);
@@ -308,12 +298,11 @@ export const reportService = {
 
             doc.save(`INSPECAO_${record.op}_${record.id.substring(0, 4)}.pdf`);
             return true;
-        } catch (e) {
-            console.error(e);
+        } catch {
             return false;
         }
-    }
-    ,
+    },
+
     async generateSummaryReportPDF(report: {
         title: string;
         generatedAt: string;
@@ -332,7 +321,7 @@ export const reportService = {
         const pageHeight = doc.internal.pageSize.getHeight();
 
         // Header
-        doc.setFillColor(30, 41, 59);
+        doc.setFillColor(...COLOR_HEADER_BG);
         doc.rect(0, 0, pageWidth, 60, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
@@ -400,10 +389,10 @@ export const reportService = {
                 body: series.map(s => [s.label, s.inspections.toString(), s.defects.toString()]),
                 theme: 'grid',
                 styles: { fontSize: 8, halign: 'center' },
-                headStyles: { fillColor: [15, 118, 110], textColor: 255, fontSize: 8 },
+                headStyles: { fillColor: COLOR_TEAL, textColor: 255, fontSize: 8 },
                 margin: { left: 20, right: 20 }
             });
-            y = (doc as any).lastAutoTable.finalY + 10;
+            y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
             if (y > pageHeight - 140) {
                 doc.addPage();
                 y = 40;

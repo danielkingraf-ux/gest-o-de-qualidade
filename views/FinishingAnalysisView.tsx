@@ -36,6 +36,17 @@ const DEFECT_COLUMNS = [
 
 type OrderOption = Order & { fromInitialInspection?: boolean };
 
+type RodadaSummary = {
+  id: string;
+  numero: number;
+  date: string;
+  status: 'APPROVED' | 'RESTRICTED' | 'REJECTED';
+  qty_produzida: number;
+  aprovadas: number;
+  em_escolha: number;
+  reprovadas: number;
+};
+
 const DefectCounter: React.FC<{
     name: string;
     icon: string;
@@ -89,6 +100,8 @@ export default function FinishingAnalysisView() {
     const [selectedOrderId, setSelectedOrderId] = useState('');
     const [orderFilter, setOrderFilter] = useState('');
     const [newOrder, setNewOrder] = useState({ op: '', cliente: '', produto: '', qtd_total: '' });
+    const [rodadas, setRodadas] = useState<RodadaSummary[]>([]);
+    const [loadingRodadas, setLoadingRodadas] = useState(false);
     const [selectedMachineId, setSelectedMachineId] = useState('');
     const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
@@ -189,6 +202,44 @@ export default function FinishingAnalysisView() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    useEffect(() => {
+        if (!selectedOrderId) { setRodadas([]); return; }
+        const order = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
+        if (!order || order.id.startsWith('inspection:')) { setRodadas([]); return; }
+
+        const fetchRodadas = async () => {
+            setLoadingRodadas(true);
+            try {
+                const { data } = await supabase
+                    .from('inspections')
+                    .select('id, created_at, observations')
+                    .eq('order_id', order.id)
+                    .order('created_at', { ascending: true });
+
+                const summaries: RodadaSummary[] = [];
+                for (const row of data || []) {
+                    let obs: any = {};
+                    try { obs = JSON.parse(row.observations || '{}'); } catch { obs = {}; }
+                    if (obs.process_area !== 'producao_inicial') continue;
+                    summaries.push({
+                        id: row.id,
+                        numero: obs.numero_rodada ?? summaries.length + 1,
+                        date: row.created_at,
+                        status: obs.status_final ?? 'APPROVED',
+                        qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0,
+                        aprovadas: obs.saldo_unidades?.aprovadas ?? 0,
+                        em_escolha: obs.saldo_unidades?.em_escolha ?? 0,
+                        reprovadas: obs.saldo_unidades?.reprovadas ?? 0,
+                    });
+                }
+                setRodadas(summaries);
+            } finally {
+                setLoadingRodadas(false);
+            }
+        };
+        fetchRodadas();
+    }, [selectedOrderId, orders]);
 
     const filteredOrders = orders.filter(order => {
         const term = orderFilter.trim().toLowerCase();
@@ -343,6 +394,100 @@ export default function FinishingAnalysisView() {
                     </select>
                 </div>
             </header>
+
+            {/* ── Banner: Histórico de Rodadas da OP ───────────────────────── */}
+            {(loadingRodadas || rodadas.length > 0) && (() => {
+                const fmt = new Intl.NumberFormat('pt-BR');
+                const statusMeta = {
+                    APPROVED: { label: 'Aprovado', dot: 'bg-emerald-500', text: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+                    RESTRICTED: { label: 'Restrição', dot: 'bg-amber-500', text: 'text-amber-600', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+                    REJECTED: { label: 'Reprovado', dot: 'bg-rose-500', text: 'text-rose-600', badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+                } as const;
+                const totalAprovadas = rodadas.reduce((s, r) => s + r.aprovadas, 0);
+                const totalEscolha = rodadas.reduce((s, r) => s + r.em_escolha, 0);
+                const totalReprovadas = rodadas.reduce((s, r) => s + r.reprovadas, 0);
+                const totalProduzido = rodadas.reduce((s, r) => s + r.qty_produzida, 0);
+                const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
+
+                return (
+                    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-sm overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-base text-violet-500">history</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                    Histórico de Rodadas — OP {selectedOrder?.op}
+                                </span>
+                            </div>
+                            {loadingRodadas && (
+                                <span className="material-symbols-outlined animate-spin text-sm text-slate-400">progress_activity</span>
+                            )}
+                        </div>
+
+                        {!loadingRodadas && (
+                            <>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[640px] text-left">
+                                        <thead>
+                                            <tr className="border-b border-slate-100 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                                <th className="px-5 py-2">Rodada</th>
+                                                <th className="px-5 py-2">Data</th>
+                                                <th className="px-5 py-2">Status</th>
+                                                <th className="px-5 py-2 text-right">Produzidas</th>
+                                                <th className="px-5 py-2 text-right text-emerald-600">Aprovadas</th>
+                                                <th className="px-5 py-2 text-right text-amber-600">Em Escolha</th>
+                                                <th className="px-5 py-2 text-right text-rose-600">Reprovadas</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {rodadas.map((r) => {
+                                                const m = statusMeta[r.status] ?? statusMeta.APPROVED;
+                                                return (
+                                                    <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0 text-sm font-bold text-slate-700 dark:text-slate-200">
+                                                        <td className="px-5 py-2.5 font-black">{r.numero}ª</td>
+                                                        <td className="px-5 py-2.5 text-xs text-slate-500">
+                                                            {new Date(r.date).toLocaleDateString('pt-BR')}
+                                                        </td>
+                                                        <td className="px-5 py-2.5">
+                                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${m.badge}`}>
+                                                                <span className={`size-1.5 rounded-full ${m.dot}`} />
+                                                                {m.label}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-5 py-2.5 text-right">{fmt.format(r.qty_produzida)}</td>
+                                                        <td className="px-5 py-2.5 text-right text-emerald-600">{fmt.format(r.aprovadas)}</td>
+                                                        <td className="px-5 py-2.5 text-right text-amber-600">{fmt.format(r.em_escolha)}</td>
+                                                        <td className="px-5 py-2.5 text-right text-rose-600">{fmt.format(r.reprovadas)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Saldo acumulado */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-5 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
+                                    <div>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total Produzido</p>
+                                        <p className="text-xl font-black text-slate-900 dark:text-white">{fmt.format(totalProduzido)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Disponível (Aprovadas)</p>
+                                        <p className="text-xl font-black text-emerald-600">{fmt.format(totalAprovadas)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Em Escolha</p>
+                                        <p className="text-xl font-black text-amber-600">{fmt.format(totalEscolha)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-rose-600">Reprovadas</p>
+                                        <p className="text-xl font-black text-rose-600">{fmt.format(totalReprovadas)}</p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* Quick Add Form Section Compact */}
             <section className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">

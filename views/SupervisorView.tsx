@@ -4,6 +4,22 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { InspectionStatus, Order, ProcessType } from '../types';
 
+type ReimpressaoPendente = {
+  id: string;
+  order_id: string;
+  op: string;
+  cliente: string;
+  produto: string;
+  numero_rodada: number;
+  quantidade_unid: number;
+  motivo: string;
+  solicitada_por: string;
+  requester_name: string;
+  machine_name: string | null;
+  operator_name: string | null;
+  created_at: string;
+};
+
 type Period = 'week' | 'month' | 'year';
 type StatusFilter = 'ALL' | InspectionStatus;
 type AreaKey = 'initial' | 'final';
@@ -150,25 +166,43 @@ export default function SupervisorView() {
   const [anchorDate, setAnchorDate] = useState(formatDateInput(new Date()));
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [opFilter, setOpFilter] = useState('');
+  const [pendingReimps, setPendingReimps] = useState<ReimpressaoPendente[]>([]);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: inspectionsData, error: inspectionsError } = await supabase
-        .from('inspections')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [inspectionsRes, ordersRes, reimpsRes, profilesRes] = await Promise.all([
+        supabase.from('inspections').select('*').order('created_at', { ascending: false }),
+        supabase.from('orders').select('*'),
+        supabase.from('op_reimpressoes').select('*, orders(op, cliente, produto), machines(name), operators(name)').eq('status', 'pendente').order('created_at', { ascending: true }),
+        supabase.from('user_profiles').select('user_id, name'),
+      ]);
 
-      if (inspectionsError) throw inspectionsError;
+      if (inspectionsRes.error) throw inspectionsRes.error;
+      if (ordersRes.error) throw ordersRes.error;
 
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('*');
+      const profileMap = new Map<string, string>();
+      (profilesRes.data || []).forEach((p: any) => profileMap.set(p.user_id, p.name));
 
-      if (ordersError) throw ordersError;
+      setPendingReimps((reimpsRes.data || []).map((r: any) => ({
+        id: r.id,
+        order_id: r.order_id,
+        op: r.orders?.op ?? '—',
+        cliente: r.orders?.cliente ?? '—',
+        produto: r.orders?.produto ?? '—',
+        numero_rodada: r.numero_rodada,
+        quantidade_unid: r.quantidade_unid,
+        motivo: r.motivo,
+        solicitada_por: r.solicitada_por,
+        requester_name: profileMap.get(r.solicitada_por) ?? 'Analista',
+        machine_name: r.machines?.name ?? null,
+        operator_name: r.operators?.name ?? null,
+        created_at: r.created_at,
+      })));
 
-      setOrders(ordersData || []);
-      setInspections((inspectionsData || []).map((record: any) => {
+      setOrders(ordersRes.data || []);
+      setInspections((inspectionsRes.data || []).map((record: any) => {
         const obs = parseObs(record.observations);
         return {
           id: record.id,
@@ -183,9 +217,53 @@ export default function SupervisorView() {
         };
       }).filter((item: ApprovalInspection) => item.status && !Number.isNaN(item.createdAt.getTime())));
     } catch (error) {
-      showToast('Erro ao carregar aprovações', 'error');
+      showToast('Erro ao carregar dados', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAprovarReimpressao = async (reimp: ReimpressaoPendente) => {
+    setLoadingAction(reimp.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: updateError } = await supabase
+        .from('op_reimpressoes')
+        .update({ status: 'aprovada', aprovada_por: user?.id ?? null })
+        .eq('id', reimp.id);
+      if (updateError) throw updateError;
+
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({ rodadas_realizadas: reimp.numero_rodada })
+        .eq('id', reimp.order_id);
+      if (orderError) throw orderError;
+
+      showToast(`Reimpressão da OP ${reimp.op} aprovada`, 'success');
+      setPendingReimps((prev) => prev.filter((r) => r.id !== reimp.id));
+    } catch {
+      showToast('Erro ao aprovar reimpressão', 'error');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRecusarReimpressao = async (reimp: ReimpressaoPendente) => {
+    setLoadingAction(reimp.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('op_reimpressoes')
+        .update({ status: 'recusada', aprovada_por: user?.id ?? null })
+        .eq('id', reimp.id);
+      if (error) throw error;
+
+      showToast(`Reimpressão da OP ${reimp.op} recusada`, 'success');
+      setPendingReimps((prev) => prev.filter((r) => r.id !== reimp.id));
+    } catch {
+      showToast('Erro ao recusar reimpressão', 'error');
+    } finally {
+      setLoadingAction(null);
     }
   };
 
@@ -289,6 +367,88 @@ export default function SupervisorView() {
 
   return (
     <div className="mx-auto max-w-7xl animate-fade-in space-y-4 p-4 pb-20 md:p-6">
+
+      {/* ── Reimpressões Pendentes ─────────────────────────────────────── */}
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-5 shadow-sm dark:border-amber-700 dark:bg-amber-950/20">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-amber-600">refresh</span>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Aguardando aprovação</p>
+              <h2 className="text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                Reimpressões Pendentes
+                {pendingReimps.length > 0 && (
+                  <span className="ml-2 inline-flex size-6 items-center justify-center rounded-full bg-amber-500 text-xs font-black text-white">
+                    {pendingReimps.length}
+                  </span>
+                )}
+              </h2>
+            </div>
+          </div>
+        </div>
+
+        {pendingReimps.length === 0 ? (
+          <p className="py-4 text-center text-xs font-black uppercase tracking-widest text-slate-400">
+            Nenhuma solicitação pendente
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {pendingReimps.map((reimp) => (
+              <div key={reimp.id} className="rounded-lg border border-amber-200 bg-white p-4 dark:border-amber-800 dark:bg-slate-900">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-black text-slate-900 dark:text-white">OP {reimp.op}</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                        Rodada {reimp.numero_rodada}ª
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {new Intl.NumberFormat('pt-BR').format(reimp.quantidade_unid)} unid.
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium text-slate-500">{reimp.cliente} · {reimp.produto}</p>
+                    {reimp.operator_name && (
+                      <p className="text-xs text-slate-500">
+                        <span className="font-black">Operador:</span> {reimp.operator_name}
+                        {reimp.machine_name && <> · <span className="font-black">Máq.:</span> {reimp.machine_name}</>}
+                      </p>
+                    )}
+                    <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <span className="font-black">Motivo:</span> {reimp.motivo}
+                    </p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Solicitado por {reimp.requester_name} · {new Date(reimp.created_at).toLocaleString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 sm:flex-col">
+                    <button
+                      onClick={() => handleAprovarReimpressao(reimp)}
+                      disabled={loadingAction === reimp.id}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
+                    >
+                      {loadingAction === reimp.id ? (
+                        <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                      ) : (
+                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                      )}
+                      Aprovar
+                    </button>
+                    <button
+                      onClick={() => handleRecusarReimpressao(reimp)}
+                      disabled={loadingAction === reimp.id}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-700 dark:bg-slate-900 dark:hover:bg-rose-950/20 sm:flex-none"
+                    >
+                      <span className="material-symbols-outlined text-sm">cancel</span>
+                      Recusar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>

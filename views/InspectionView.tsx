@@ -1,52 +1,10 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
-import { InspectionStatus, ProcessType, Machine, Operator, Analyst, EscolhaData, Order } from '../types';
+import { InspectionStatus, ProcessType, Machine, Operator, Analyst, Order } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
-
-// --- Sub-componentes ---
-
-const DefectCounter: React.FC<{
-  name: string;
-  icon: string;
-  count: number;
-  onUpdate: (delta: number) => void;
-  onSet: (val: number) => void;
-}> = ({ name, icon, count, onUpdate, onSet }) => (
-  <div className={`flex items-center justify-between p-2 rounded-xl border transition-all bg-white dark:bg-slate-900/50 group ${count > 0
-    ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20'
-    : 'border-slate-100 dark:border-slate-800'
-    }`}>
-    <div className="flex items-center gap-2 overflow-hidden">
-      <span className="material-symbols-outlined text-base text-primary p-1">{icon}</span>
-      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase truncate">{name}</span>
-    </div>
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => onUpdate(-1)}
-        className="size-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 transition-colors"
-      >
-        <span className="material-symbols-outlined text-sm">remove</span>
-      </button>
-      <input
-        type="number"
-        value={count || ''}
-        onChange={(e) => onSet(Math.max(0, parseInt(e.target.value) || 0))}
-        className="w-10 h-6 text-center font-black text-[11px] bg-slate-50 dark:bg-slate-800 rounded border-none outline-none focus:ring-1 focus:ring-primary/30"
-        placeholder="0"
-      />
-      <button
-        type="button"
-        onClick={() => onUpdate(1)}
-        className="size-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-500 transition-colors"
-      >
-        <span className="material-symbols-outlined text-sm">add</span>
-      </button>
-    </div>
-  </div>
-);
+import DefectCounter from '../components/DefectCounter';
 
 const MetricInput: React.FC<{
   label: string;
@@ -64,7 +22,7 @@ const MetricInput: React.FC<{
       <input
         type="number"
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
         className="w-full h-6 bg-transparent text-center font-black text-xs outline-none"
       />
       <button type="button" onClick={() => onChange(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
@@ -72,55 +30,16 @@ const MetricInput: React.FC<{
   </div>
 );
 
-type OffsetEscolhaNumericKeys = 'op_total_unidades' | 'folhas_impressas_total' | 'folhas_revisadas_pilha' | 'escolhas_unidades';
-
-const OFFSET_ESCOLHA_FIELDS: Array<{ key: OffsetEscolhaNumericKeys; label: string }> = [
-  { key: 'op_total_unidades', label: 'OP total (unidades)' },
-  { key: 'folhas_impressas_total', label: 'Folhas impressas' },
-  { key: 'folhas_revisadas_pilha', label: 'Folhas revisadas na pilha' },
-  { key: 'escolhas_unidades', label: 'Pilhas separadas p/ revisão' },
-];
-
-const OffsetEscolhaCard: React.FC<{ value: EscolhaData; onChange: (partial: Partial<EscolhaData>) => void }> = ({ value, onChange }) => (
-  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-sm">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Escolha</p>
-        <p className="text-xs text-slate-700 dark:text-slate-300">Quantidades finais do processo de separação.</p>
-      </div>
-      <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">Unidades</span>
-    </div>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {OFFSET_ESCOLHA_FIELDS.map(field => (
-        <div key={field.key} className="space-y-1">
-          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">{field.label}</label>
-          <input
-            type="number"
-            min={0}
-            value={(value[field.key] ?? 0).toString()}
-            onChange={(e) => onChange({
-              [field.key]: Math.max(0, Number(e.target.value))
-            })}
-            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
-          />
-        </div>
-      ))}
-    </div>
-    <div className="space-y-1">
-      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações e restrições</label>
-      <textarea
-        value={value.observacoes ?? ''}
-        onChange={(e) => onChange({ observacoes: e.target.value })}
-        placeholder="Notas sobre o lote..."
-        className="w-full h-20 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-primary/20 resize-none"
-      />
-    </div>
-  </div>
-);
-
 type ApprovalRuleMode = 'percent' | 'quantity';
 type ApprovalRule = { mode: ApprovalRuleMode; restrictedLimit: number; rejectLimit: number };
 type ProductionMetrics = { printedSheets: number; expectedUnits: number; scrapUnits: number };
+type PilhasData = {
+  pilhas_total: number;
+  pilhas_verificadas: number;
+  pilhas_aprovadas: number;
+  pilhas_segregadas_escolha: number;
+  pilhas_reprovadas: number;
+};
 
 const DEFAULT_APPROVAL_RULE: ApprovalRule = { mode: 'percent', restrictedLimit: 2, rejectLimit: 5 };
 const APPROVAL_RULE_STORAGE_KEY = 'kg_initial_process_approval_rule';
@@ -141,7 +60,7 @@ const getStatusText = (status: InspectionStatus) => {
   return 'Aprovado';
 };
 
-// --- Componente Principal ---
+const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR');
 
 export default function InspectionView() {
   const { showToast } = useToast();
@@ -151,13 +70,13 @@ export default function InspectionView() {
 
   type SelectRow = { rowId: string; value: string };
 
-  // Dados Mestres
+  // Master data
   const [machines, setMachines] = useState<Machine[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  // Estados Genéricos (Topo)
+  // OP / form
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [newOrder, setNewOrder] = useState({ op: '', cliente: '', produto: '', qtd_total: '' });
   const [selectedMachineId, setSelectedMachineId] = useState('');
@@ -174,38 +93,52 @@ export default function InspectionView() {
     }
   });
 
-  // Estados por Aba
+  // Defects per tab
   const [offsetData, setOffsetData] = useState({
-    status: InspectionStatus.APPROVED,
     defects: {
       cor: 0, manchas: 0, pintas: 0, fiapos: 0, registro: 0,
       falha_verniz: 0, falha_texto: 0, texto_fechado: 0
-    },
+    } as Record<string, number>,
     metrics: { rework: 0, samples: 5 },
-    escolha: {
-      op_total_unidades: 0,
-      folhas_impressas_total: 0,
-      folhas_revisadas_pilha: 0,
-      escolhas_unidades: 0,
-      observacoes: ''
-    }
   });
 
   const [uvData, setUvData] = useState({
     process: 'APPLIED' as 'APPLIED' | 'NA',
-    defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 },
+    defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 } as Record<string, number>,
     metrics: { rejected: 0, samples: 5 }
   });
 
   const [hotStampingData, setHotStampingData] = useState({
     process: 'APPLIED' as 'APPLIED' | 'NA',
-    defects: { falha: 0, enchimento_texto: 0, ausencia: 0 },
+    defects: { falha: 0, enchimento_texto: 0, ausencia: 0 } as Record<string, number>,
     metrics: { rejected: 0, samples: 5 }
   });
+
+  // Production tracking
+  const [unidadesPorFolha, setUnidadesPorFolha] = useState(1);
+  const [folhasPorPilha, setFolhasPorPilha] = useState(500);
+  const [pilhasData, setPilhasData] = useState<PilhasData>({
+    pilhas_total: 0,
+    pilhas_verificadas: 0,
+    pilhas_aprovadas: 0,
+    pilhas_segregadas_escolha: 0,
+    pilhas_reprovadas: 0,
+  });
+  const [observacoesAnalista, setObservacoesAnalista] = useState('');
+
+  // Post-save reimpressão
+  const [savedInspectionId, setSavedInspectionId] = useState<string | null>(null);
+  const [showReimpressaoForm, setShowReimpressaoForm] = useState(false);
+  const [reimpressaoMotivo, setReimpressaoMotivo] = useState('');
+  const [reimpressaoQtd, setReimpressaoQtd] = useState(0);
+  const [isSubmittingReimpressao, setIsSubmittingReimpressao] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Derived
+  const currentOrder = useMemo(() => orders.find(o => o.id === selectedOrderId) ?? null, [orders, selectedOrderId]);
+  const numeroRodada = currentOrder ? (currentOrder.rodadas_realizadas ?? 0) + 1 : 1;
   const realProducedUnits = Math.max(0, productionMetrics.expectedUnits - productionMetrics.scrapUnits);
 
   const failureBasis = useMemo(() => {
@@ -214,39 +147,29 @@ export default function InspectionView() {
       const unitFailures = sumDefects({ ...offsetData.defects, cor: 0 }) + offsetData.metrics.rework;
       const colorRate = productionMetrics.printedSheets > 0 ? (colorFailures / productionMetrics.printedSheets) * 100 : 0;
       const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-
-      return {
-        colorFailures,
-        unitFailures,
-        totalFailures: colorFailures + unitFailures,
-        colorRate,
-        unitRate,
-        combinedRate: colorRate + unitRate
-      };
+      return { colorFailures, unitFailures, totalFailures: colorFailures + unitFailures, colorRate, unitRate, combinedRate: colorRate + unitRate };
     }
-
     const unitFailures = activeTab === ProcessType.UV
       ? sumDefects(uvData.defects) + uvData.metrics.rejected
       : sumDefects(hotStampingData.defects) + hotStampingData.metrics.rejected;
     const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-
-    return {
-      colorFailures: 0,
-      unitFailures,
-      totalFailures: unitFailures,
-      colorRate: 0,
-      unitRate,
-      combinedRate: unitRate
-    };
+    return { colorFailures: 0, unitFailures, totalFailures: unitFailures, colorRate: 0, unitRate, combinedRate: unitRate };
   }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected]);
 
-  const activeFailureCount = failureBasis.totalFailures;
+  const saldo = useMemo(() => {
+    const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
+    const em_escolha = pilhasData.pilhas_segregadas_escolha * folhasPorPilha * unidadesPorFolha;
+    const reprovadas = pilhasData.pilhas_reprovadas * folhasPorPilha * unidadesPorFolha;
+    const aprovadas = pilhasData.pilhas_aprovadas * folhasPorPilha * unidadesPorFolha;
+    const divergencia = rodadas - (aprovadas + em_escolha + reprovadas);
+    return { rodadas, aprovadas, em_escolha, reprovadas, divergencia, alerta_divergencia: divergencia !== 0 };
+  }, [productionMetrics.printedSheets, unidadesPorFolha, folhasPorPilha, pilhasData]);
 
+  const activeFailureCount = failureBasis.totalFailures;
   const calculatedStatus = useMemo(
     () => calculateStatusByRule(failureBasis.combinedRate, activeFailureCount, approvalRule),
     [activeFailureCount, approvalRule, failureBasis.combinedRate]
   );
-
   const failureRate = failureBasis.combinedRate;
 
   const updateProductionMetric = (field: keyof ProductionMetrics, value: number) => {
@@ -272,13 +195,14 @@ export default function InspectionView() {
   };
 
   useEffect(() => {
-    const selectedOrder = orders.find(order => order.id === selectedOrderId);
-    if (selectedOrder?.qtd_total) {
-      updateProductionMetric('expectedUnits', selectedOrder.qtd_total);
+    if (currentOrder) {
+      if (currentOrder.qtd_total) updateProductionMetric('expectedUnits', currentOrder.qtd_total);
+      setUnidadesPorFolha(currentOrder.unidades_por_folha ?? 1);
+      setFolhasPorPilha(currentOrder.folhas_por_pilha ?? 500);
     }
-  }, [orders, selectedOrderId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentOrder?.id]);
 
-  // Carregar dados iniciais
   useEffect(() => {
     async function fetchData() {
       try {
@@ -301,7 +225,7 @@ export default function InspectionView() {
           if (aRes.data.length > 0) setSelectedAnalystRows([{ rowId: nextRowId(), value: aRes.data[0].id }]);
         }
         if (ordRes.data) setOrders(ordRes.data);
-      } catch (err) {
+      } catch {
         showToast('Erro ao carregar dados mestres', 'error');
       } finally {
         setIsLoading(false);
@@ -311,52 +235,37 @@ export default function InspectionView() {
   }, [showToast, nextRowId]);
 
   const resetAll = useCallback(() => {
-    // ... manter lógica anterior de reset ...
     setOffsetData({
-      status: InspectionStatus.APPROVED,
       defects: { cor: 0, manchas: 0, pintas: 0, fiapos: 0, registro: 0, falha_verniz: 0, falha_texto: 0, texto_fechado: 0 },
       metrics: { rework: 0, samples: 5 },
-      escolha: {
-        op_total_unidades: 0,
-        folhas_impressas_total: 0,
-        folhas_revisadas_pilha: 0,
-        escolhas_unidades: 0,
-        observacoes: ''
-      }
     });
-    setUvData({
-      process: 'APPLIED',
-      defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 },
-      metrics: { rejected: 0, samples: 5 }
-    });
-    setHotStampingData({
-      process: 'APPLIED',
-      defects: { falha: 0, enchimento_texto: 0, ausencia: 0 },
-      metrics: { rejected: 0, samples: 5 }
-    });
+    setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
+    setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0, scrapUnits: 0 });
+    setPilhasData({ pilhas_total: 0, pilhas_verificadas: 0, pilhas_aprovadas: 0, pilhas_segregadas_escolha: 0, pilhas_reprovadas: 0 });
+    setUnidadesPorFolha(1);
+    setFolhasPorPilha(500);
+    setObservacoesAnalista('');
+    setSavedInspectionId(null);
+    setShowReimpressaoForm(false);
+    setReimpressaoMotivo('');
+    setReimpressaoQtd(0);
   }, []);
 
   const handleSave = useCallback(async (andNew: boolean) => {
-    // Validate required fields
     const typedOp = newOrder.op.trim().toUpperCase();
     if ((!selectedOrderId && !typedOp) || !selectedMachineId) {
       showToast('Selecione a Ordem de Produção e a Máquina', 'warning');
       return;
     }
-    let selectedOrder = orders.find(o => o.id === selectedOrderId) || null;
-    let orderId = selectedOrderId;
-
-    // Filter out empty selections
     const validOperatorIds = selectedOperatorRows.map(r => r.value).filter(id => id.trim() !== '');
     const validAnalystIds = selectedAnalystRows.map(r => r.value).filter(id => id.trim() !== '');
-
     if (validOperatorIds.length === 0 || validAnalystIds.length === 0) {
       showToast('Selecione pelo menos um Operador e um Analista', 'warning');
       return;
     }
     if (productionMetrics.printedSheets <= 0 || productionMetrics.expectedUnits <= 0) {
-      showToast('Informe folhas impressas e quantidade total de unidades', 'warning');
+      showToast('Informe folhas rodadas e quantidade total de unidades', 'warning');
       return;
     }
     if (approvalRule.rejectLimit < approvalRule.restrictedLimit) {
@@ -366,47 +275,39 @@ export default function InspectionView() {
 
     setIsSaving(true);
     try {
+      let selectedOrder = orders.find(o => o.id === selectedOrderId) || null;
+      let orderId = selectedOrderId;
+
       if (!selectedOrder && typedOp) {
         selectedOrder = orders.find(o => o.op.toUpperCase() === typedOp) || null;
-
         if (!selectedOrder) {
           const payload = {
             op: typedOp,
             cliente: newOrder.cliente.trim(),
             produto: newOrder.produto.trim(),
             qtd_total: Math.max(0, Number(newOrder.qtd_total) || 0),
-            status: 'em_producao'
+            status: 'em_producao',
+            unidades_por_folha: unidadesPorFolha,
+            folhas_por_pilha: folhasPorPilha,
           };
-
-          const { data: created, error: createError } = await supabase
-            .from('orders')
-            .insert([payload])
-            .select()
-            .single();
-
+          const { data: created, error: createError } = await supabase.from('orders').insert([payload]).select().single();
           if (createError) {
-            const { data: existing, error: findError } = await supabase
-              .from('orders')
-              .select('*')
-              .eq('op', typedOp)
-              .single();
-
+            const { data: existing, error: findError } = await supabase.from('orders').select('*').eq('op', typedOp).single();
             if (findError || !existing) throw createError;
             selectedOrder = existing;
           } else {
             selectedOrder = created;
           }
         }
-
         orderId = selectedOrder?.id ?? '';
       }
 
       if (!selectedOrder || !orderId) {
-        showToast('Nao foi possivel identificar a OP', 'error');
+        showToast('Não foi possível identificar a OP', 'error');
         return;
       }
 
-      let dataToSave: any = {
+      const dataToSave: Record<string, unknown> = {
         op: selectedOrder.op,
         order_id: orderId,
         machine_id: selectedMachineId,
@@ -416,35 +317,47 @@ export default function InspectionView() {
         created_by_user_id: profile?.user_id ?? null,
       };
 
-      // Montar payload específico por aba
       if (activeTab === ProcessType.OFFSET) {
+        const defeitosUnidade: Record<string, number> = {};
+        for (const [k, v] of Object.entries(offsetData.defects)) {
+          if (k !== 'cor') defeitosUnidade[k] = v;
+        }
         dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
         dataToSave.samples_count = offsetData.metrics.samples;
         dataToSave.observations = JSON.stringify({
-          defects: offsetData.defects,
-          escolha: {
-            ...offsetData.escolha,
-            op_total_unidades: productionMetrics.expectedUnits,
-            folhas_impressas_total: productionMetrics.printedSheets
-          },
-          production_metrics: {
-            printed_sheets: productionMetrics.printedSheets,
-            expected_units: productionMetrics.expectedUnits,
-            scrap_units: productionMetrics.scrapUnits,
-            real_produced_units: realProducedUnits,
-            failures: activeFailureCount,
-            failure_rate: failureRate,
-            color_failures_by_sheet: failureBasis.colorFailures,
-            unit_failures: failureBasis.unitFailures,
-            color_failure_rate: failureBasis.colorRate,
-            unit_failure_rate: failureBasis.unitRate
-          },
-          approval_rule: approvalRule,
-          process_type: activeTab,
+          schema_version: 2,
           process_area: 'producao_inicial',
+          process_type: activeTab,
           all_operator_ids: validOperatorIds,
-          all_analyst_ids: validAnalystIds
+          all_analyst_ids: validAnalystIds,
+          numero_rodada: numeroRodada,
+          producao: {
+            unidades_por_folha: unidadesPorFolha,
+            unidades_op: selectedOrder.qtd_total,
+            quantidade_rodada_folhas: productionMetrics.printedSheets,
+            quantidade_rodada_unidades: saldo.rodadas,
+            folhas_por_pilha: folhasPorPilha,
+            ...pilhasData,
+          },
+          defeitos: {
+            por_folha: { cor: offsetData.defects.cor },
+            por_unidade: defeitosUnidade,
+          },
+          saldo_unidades: saldo,
+          metricas_falha: {
+            cor_folhas_com_defeito: failureBasis.colorFailures,
+            cor_unidades_equivalentes: failureBasis.colorFailures * unidadesPorFolha,
+            taxa_cor_por_folha: failureBasis.colorRate,
+            falhas_por_unidade: failureBasis.unitFailures,
+            taxa_unidade: failureBasis.unitRate,
+            taxa_combinada: failureBasis.combinedRate,
+          },
+          reimpressao_solicitada: false,
+          reimpressao_id: null,
+          regra_aprovacao: approvalRule,
+          status_final: calculatedStatus,
+          observacoes_analista: observacoesAnalista,
         });
       } else if (activeTab === ProcessType.UV) {
         dataToSave.status = calculatedStatus;
@@ -460,16 +373,12 @@ export default function InspectionView() {
             real_produced_units: realProducedUnits,
             failures: activeFailureCount,
             failure_rate: failureRate,
-            color_failures_by_sheet: failureBasis.colorFailures,
-            unit_failures: failureBasis.unitFailures,
-            color_failure_rate: failureBasis.colorRate,
-            unit_failure_rate: failureBasis.unitRate
           },
           approval_rule: approvalRule,
           process_type: activeTab,
           process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
-          all_analyst_ids: validAnalystIds
+          all_analyst_ids: validAnalystIds,
         });
       } else if (activeTab === ProcessType.HOT_STAMPING) {
         dataToSave.status = calculatedStatus;
@@ -485,21 +394,25 @@ export default function InspectionView() {
             real_produced_units: realProducedUnits,
             failures: activeFailureCount,
             failure_rate: failureRate,
-            color_failures_by_sheet: failureBasis.colorFailures,
-            unit_failures: failureBasis.unitFailures,
-            color_failure_rate: failureBasis.colorRate,
-            unit_failure_rate: failureBasis.unitRate
           },
           approval_rule: approvalRule,
           process_type: activeTab,
           process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
-          all_analyst_ids: validAnalystIds
+          all_analyst_ids: validAnalystIds,
         });
       }
 
-      const { error } = await supabase.from('inspections').insert([dataToSave]);
+      const { data: inserted, error } = await supabase.from('inspections').insert([dataToSave]).select('id').single();
       if (error) throw error;
+
+      if (!andNew && activeTab === ProcessType.OFFSET) {
+        setSavedInspectionId(inserted.id);
+        if (calculatedStatus === InspectionStatus.REJECTED || saldo.aprovadas < selectedOrder.qtd_total) {
+          setReimpressaoQtd(Math.max(0, selectedOrder.qtd_total - saldo.aprovadas));
+          setShowReimpressaoForm(true);
+        }
+      }
 
       showToast('Registro salvo com sucesso!', 'success');
       if (andNew) {
@@ -510,24 +423,47 @@ export default function InspectionView() {
         setSelectedOrderId(orderId);
         setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
       }
-    } catch (err: any) {
-      showToast(`Erro ao salvar: ${err.message}`, 'error');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+      showToast(`Erro ao salvar: ${msg}`, 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, pilhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
-  // Atalhos de Teclado
+  const handleSubmitReimpressao = useCallback(async () => {
+    if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
+      showToast('Informe o motivo e a quantidade', 'warning');
+      return;
+    }
+    setIsSubmittingReimpressao(true);
+    try {
+      const { error } = await supabase.from('op_reimpressoes').insert([{
+        order_id: currentOrder.id,
+        inspection_id: savedInspectionId,
+        numero_rodada: numeroRodada,
+        quantidade_unid: reimpressaoQtd,
+        motivo: reimpressaoMotivo,
+        solicitada_por: profile.user_id,
+        status: 'pendente',
+        machine_id: selectedMachineId || null,
+        operator_id: selectedOperatorRows.find(r => r.value.trim())?.value ?? null,
+      }]);
+      if (error) throw error;
+      showToast('Solicitação de reimpressão enviada ao supervisor', 'success');
+      setShowReimpressaoForm(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+      showToast(`Erro ao solicitar reimpressão: ${msg}`, 'error');
+    } finally {
+      setIsSubmittingReimpressao(false);
+    }
+  }, [reimpressaoMotivo, reimpressaoQtd, savedInspectionId, currentOrder, profile?.user_id, selectedMachineId, selectedOperatorRows, showToast, numeroRodada]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        handleSave(false);
-      }
-      if (e.altKey && e.key.toLowerCase() === 'n') {
-        e.preventDefault();
-        handleSave(true);
-      }
+      if (e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); handleSave(false); }
+      if (e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); handleSave(true); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -538,7 +474,7 @@ export default function InspectionView() {
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4 pb-56 md:pb-48">
 
-      {/* --- Cabeçalho de Tela Compacto --- */}
+      {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="space-y-1">
           <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Processo Inicial</h1>
@@ -556,10 +492,7 @@ export default function InspectionView() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 h-9 rounded-lg text-[10px] font-black tracking-widest transition-all ${activeTab === tab.id
-                ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                }`}
+              className={`flex items-center gap-2 px-4 h-9 rounded-lg text-[10px] font-black tracking-widest transition-all ${activeTab === tab.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
             >
               <span className="material-symbols-outlined text-base">{tab.icon}</span>
               {tab.label}
@@ -568,169 +501,131 @@ export default function InspectionView() {
         </div>
       </div>
 
-      {/* --- Cabeçalho Fixo (Dados OP) --- */}
-      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="space-y-2 md:col-span-2">
-          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ordem de Produção (OP)</label>
-          <select
-            value={selectedOrderId}
-            onChange={(e) => {
-              setSelectedOrderId(e.target.value);
-              if (e.target.value) setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
-            }}
-            className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-1 focus:ring-primary/20"
-          >
-            <option value="">Selecionar OP...</option>
-            {orders.map(o => (
-              <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>
-            ))}
-          </select>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={newOrder.op}
-              onChange={(e) => {
-                setSelectedOrderId('');
-                updateNewOrder('op', e.target.value);
-              }}
-              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-black outline-none focus:ring-1 focus:ring-primary/20"
-              placeholder="Nova OP"
-            />
-            <input
-              value={newOrder.cliente}
-              onChange={(e) => updateNewOrder('cliente', e.target.value)}
-              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
-              placeholder="Cliente"
-            />
-            <input
-              value={newOrder.produto}
-              onChange={(e) => updateNewOrder('produto', e.target.value)}
-              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
-              placeholder="Produto"
-            />
-            <input
-              type="number"
-              min={0}
-              value={newOrder.qtd_total}
-              onChange={(e) => updateNewOrder('qtd_total', e.target.value)}
-              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
-              placeholder="Qtd. total"
-            />
-          </div>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Máquina</label>
-          <select
-            value={selectedMachineId}
-            onChange={(e) => setSelectedMachineId(e.target.value)}
-            className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
-          >
-            <option value="">Selecionar...</option>
-            {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </div>
-        <div className="space-y-1 flex flex-col">
-          <div className="flex justify-between items-center pr-1">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador(es)</label>
-            <button
-              onClick={() => setSelectedOperatorRows(prev => [...prev, { rowId: nextRowId(), value: '' }])}
-              className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors"
-              aria-label="Adicionar Operador"
-              data-tooltip="Adicionar Operador"
+      {/* Dados da OP */}
+      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* OP picker */}
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ordem de Produção (OP)</label>
+            <select
+              value={selectedOrderId}
+              onChange={(e) => { setSelectedOrderId(e.target.value); if (e.target.value) setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' }); }}
+              className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-1 focus:ring-primary/20"
             >
-              <span className="material-symbols-outlined text-sm font-black">add</span>
-            </button>
+              <option value="">Selecionar OP...</option>
+              {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={newOrder.op} onChange={(e) => { setSelectedOrderId(''); updateNewOrder('op', e.target.value); }} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-black outline-none focus:ring-1 focus:ring-primary/20" placeholder="Nova OP" />
+              <input value={newOrder.cliente} onChange={(e) => updateNewOrder('cliente', e.target.value)} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20" placeholder="Cliente" />
+              <input value={newOrder.produto} onChange={(e) => updateNewOrder('produto', e.target.value)} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20" placeholder="Produto" />
+              <input type="number" min={0} value={newOrder.qtd_total} onChange={(e) => updateNewOrder('qtd_total', e.target.value)} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20" placeholder="Qtd. total" />
+            </div>
           </div>
-          <div className="space-y-2">
-            {selectedOperatorRows.map((row, idx) => (
-              <div key={row.rowId} className="flex gap-2">
-                <select
-                  value={row.value}
-                  onChange={(e) => {
-                    const newRows = [...selectedOperatorRows];
-                    newRows[idx] = { ...newRows[idx], value: e.target.value };
-                    setSelectedOperatorRows(newRows);
-                  }}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
-                >
-                  <option value="">Selecionar...</option>
-                  {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
-                {selectedOperatorRows.length > 1 && (
-                  <button
-                    onClick={() => {
-                      const newRows = selectedOperatorRows.filter((_, i) => i !== idx);
-                      setSelectedOperatorRows(newRows);
-                    }}
-                    className="size-10 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-lg">delete</span>
-                  </button>
-                )}
-              </div>
-            ))}
+
+          {/* Máquina */}
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Máquina</label>
+            <select value={selectedMachineId} onChange={(e) => setSelectedMachineId(e.target.value)} className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none">
+              <option value="">Selecionar...</option>
+              {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+
+          {/* Operadores */}
+          <div className="space-y-1 flex flex-col">
+            <div className="flex justify-between items-center pr-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador(es)</label>
+              <button onClick={() => setSelectedOperatorRows(prev => [...prev, { rowId: nextRowId(), value: '' }])} className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors">
+                <span className="material-symbols-outlined text-sm font-black">add</span>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {selectedOperatorRows.map((row, idx) => (
+                <div key={row.rowId} className="flex gap-2">
+                  <select value={row.value} onChange={(e) => { const r = [...selectedOperatorRows]; r[idx] = { ...r[idx], value: e.target.value }; setSelectedOperatorRows(r); }} className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none">
+                    <option value="">Selecionar...</option>
+                    {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                  {selectedOperatorRows.length > 1 && (
+                    <button onClick={() => setSelectedOperatorRows(selectedOperatorRows.filter((_, i) => i !== idx))} className="size-10 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors">
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Analistas */}
+          <div className="space-y-1 flex flex-col">
+            <div className="flex justify-between items-center pr-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Analista(s)</label>
+              <button onClick={() => setSelectedAnalystRows(prev => [...prev, { rowId: nextRowId(), value: '' }])} className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors">
+                <span className="material-symbols-outlined text-sm font-black">add</span>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {selectedAnalystRows.map((row, idx) => (
+                <div key={row.rowId} className="flex gap-2">
+                  <select value={row.value} onChange={(e) => { const r = [...selectedAnalystRows]; r[idx] = { ...r[idx], value: e.target.value }; setSelectedAnalystRows(r); }} className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none">
+                    <option value="">Selecionar...</option>
+                    {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  {selectedAnalystRows.length > 1 && (
+                    <button onClick={() => setSelectedAnalystRows(selectedAnalystRows.filter((_, i) => i !== idx))} className="size-10 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors">
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="space-y-1 flex flex-col">
-          <div className="flex justify-between items-center pr-1">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Analista(s)</label>
-            <button
-              onClick={() => setSelectedAnalystRows(prev => [...prev, { rowId: nextRowId(), value: '' }])}
-              className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors"
-              aria-label="Adicionar Analista"
-              data-tooltip="Adicionar Analista"
-            >
-              <span className="material-symbols-outlined text-sm font-black">add</span>
-            </button>
+
+        {/* Unidades/folha, Folhas/pilha, Rodada */}
+        <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Unid. / Folha</label>
+            <input type="number" min={1} value={unidadesPorFolha} onChange={(e) => setUnidadesPorFolha(Math.max(1, Number(e.target.value) || 1))} className="h-9 w-28 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black outline-none focus:ring-1 focus:ring-primary/20" />
           </div>
-          <div className="space-y-2">
-            {selectedAnalystRows.map((row, idx) => (
-              <div key={row.rowId} className="flex gap-2">
-                <select
-                  value={row.value}
-                  onChange={(e) => {
-                    const newRows = [...selectedAnalystRows];
-                    newRows[idx] = { ...newRows[idx], value: e.target.value };
-                    setSelectedAnalystRows(newRows);
-                  }}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
-                >
-                  <option value="">Selecionar...</option>
-                  {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-                {selectedAnalystRows.length > 1 && (
-                  <button
-                    onClick={() => {
-                      const newRows = selectedAnalystRows.filter((_, i) => i !== idx);
-                      setSelectedAnalystRows(newRows);
-                    }}
-                    className="size-10 flex-shrink-0 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-lg">delete</span>
-                  </button>
-                )}
-              </div>
-            ))}
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Folhas / Pilha</label>
+            <input type="number" min={1} value={folhasPorPilha} onChange={(e) => setFolhasPorPilha(Math.max(1, Number(e.target.value) || 1))} className="h-9 w-28 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black outline-none focus:ring-1 focus:ring-primary/20" />
           </div>
+          <div className="flex items-center gap-2 h-9 px-4 rounded-xl bg-primary/10 border border-primary/20">
+            <span className="material-symbols-outlined text-primary text-sm">repeat</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary">Rodada {numeroRodada}ª</span>
+          </div>
+          {currentOrder && (
+            <div className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pedido:</span>
+              <span className="text-sm font-black text-slate-800 dark:text-white">{fmt(currentOrder.qtd_total)} unid.</span>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* --- Conteúdo das Abas --- */}
+      {/* Produção + Regra */}
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Produção real</p>
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Folhas, unidades e refugos</h2>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rodada {numeroRodada}</p>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Folhas rodadas e unidades</h2>
             </div>
             <span className="material-symbols-outlined text-primary">fact_check</span>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Folhas impressas *</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Folhas rodadas *</label>
               <input type="number" min={0} value={productionMetrics.printedSheets} onChange={(e) => updateProductionMetric('printedSheets', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
+              {productionMetrics.printedSheets > 0 && (
+                <p className="text-[10px] font-bold text-primary ml-1">= {fmt(saldo.rodadas)} unidades rodadas</p>
+              )}
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Quantidade total unidades *</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Quantidade OP (unidades) *</label>
               <input type="number" min={0} value={productionMetrics.expectedUnits} onChange={(e) => updateProductionMetric('expectedUnits', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
             </div>
             <div className="space-y-1">
@@ -741,11 +636,11 @@ export default function InspectionView() {
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total real produzido</p>
-              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{realProducedUnits.toLocaleString('pt-BR')}</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{fmt(realProducedUnits)}</p>
             </div>
             <div className="rounded-2xl bg-rose-50 p-4 dark:bg-rose-950/20">
               <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Falhas registradas</p>
-              <p className="mt-1 text-2xl font-black text-rose-600">{activeFailureCount.toLocaleString('pt-BR')}</p>
+              <p className="mt-1 text-2xl font-black text-rose-600">{fmt(activeFailureCount)}</p>
             </div>
             <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Percentual de falhas</p>
@@ -753,10 +648,11 @@ export default function InspectionView() {
             </div>
           </div>
           <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:bg-slate-950">
-            Cor: {failureBasis.colorFailures.toLocaleString('pt-BR')} por folha ({failureBasis.colorRate.toFixed(2)}%) · Demais falhas: {failureBasis.unitFailures.toLocaleString('pt-BR')} por unidade ({failureBasis.unitRate.toFixed(2)}%)
+            Cor: {fmt(failureBasis.colorFailures)} por folha ({failureBasis.colorRate.toFixed(2)}%) · Demais falhas: {fmt(failureBasis.unitFailures)} por unidade ({failureBasis.unitRate.toFixed(2)}%)
           </div>
         </div>
 
+        {/* Regra de aprovação */}
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4">
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Regra de aprovação</p>
@@ -781,109 +677,182 @@ export default function InspectionView() {
               <p className="text-[9px] font-black uppercase tracking-widest opacity-70">Resultado calculado</p>
               <p className="mt-1 text-xl font-black uppercase">{getStatusText(calculatedStatus)}</p>
             </div>
-            {!isSupervisor && <p className="text-[10px] font-bold text-slate-400">Somente a supervisão altera os limites. Analistas usam a regra ativa.</p>}
+            {!isSupervisor && <p className="text-[10px] font-bold text-slate-400">Somente a supervisão altera os limites.</p>}
           </div>
         </div>
       </section>
 
+      {/* Conteúdo das Abas */}
       <main className="animate-slide-in">
 
         {/* ABA: OFF-SET */}
         {activeTab === ProcessType.OFFSET && (
-          <div className="space-y-8">
+          <div className="space-y-6">
+
+            {/* Status indicators */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
-                {
-                  id: 'APPROVED',
-                  label: 'Aprovado',
-                  icon: 'check_circle',
-                  styles: {
-                    card: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10',
-                    icon: 'text-emerald-600',
-                    label: 'text-emerald-700'
-                  }
-                },
-                {
-                  id: 'RESTRICTED',
-                  label: 'Aprovado c/ Restrição',
-                  icon: 'warning',
-                  styles: {
-                    card: 'border-amber-500 bg-amber-50 dark:bg-amber-500/10',
-                    icon: 'text-amber-600',
-                    label: 'text-amber-700'
-                  }
-                },
-                {
-                  id: 'REJECTED',
-                  label: 'Reprovado',
-                  icon: 'cancel',
-                  styles: {
-                    card: 'border-rose-500 bg-rose-50 dark:bg-rose-500/10',
-                    icon: 'text-rose-600',
-                    label: 'text-rose-700'
-                  }
-                }
+                { id: 'APPROVED', label: 'Aprovado', icon: 'check_circle', card: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10', icon_c: 'text-emerald-600', label_c: 'text-emerald-700' },
+                { id: 'RESTRICTED', label: 'Aprovado c/ Restrição', icon: 'warning', card: 'border-amber-500 bg-amber-50 dark:bg-amber-500/10', icon_c: 'text-amber-600', label_c: 'text-amber-700' },
+                { id: 'REJECTED', label: 'Reprovado', icon: 'cancel', card: 'border-rose-500 bg-rose-50 dark:bg-rose-500/10', icon_c: 'text-rose-600', label_c: 'text-rose-700' },
               ].map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`flex items-center gap-4 px-6 h-14 rounded-2xl border-2 transition-all cursor-default ${calculatedStatus === s.id
-                    ? s.styles.card
-                    : 'border-slate-100 dark:border-slate-800 opacity-60 hover:opacity-100'
-                    }`}
-                >
-                  <span className={`material-symbols-outlined text-2xl ${s.styles.icon}`}>{s.icon}</span>
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${s.styles.label}`}>{s.label}</span>
-                </button>
+                <div key={s.id} className={`flex items-center gap-4 px-6 h-14 rounded-2xl border-2 transition-all ${calculatedStatus === s.id ? s.card : 'border-slate-100 dark:border-slate-800 opacity-40'}`}>
+                  <span className={`material-symbols-outlined text-2xl ${s.icon_c}`}>{s.icon}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${s.label_c}`}>{s.label}</span>
+                </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { key: 'cor', label: 'Cor', icon: 'palette' },
-                { key: 'manchas', label: 'Manchas', icon: 'texture' },
-                { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
-                { key: 'fiapos', label: 'Fiapos', icon: 'straighten' },
-                { key: 'registro', label: 'Registro', icon: 'grid_view' },
-                { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
-                { key: 'falha_texto', label: 'Falha Texto', icon: 'format_color_text' },
-                { key: 'texto_fechado', label: 'Texto Fechado', icon: 'block' },
-              ].map(d => (
-                <DefectCounter
-                  key={d.key}
-                  name={d.label}
-                  icon={d.icon}
-                  count={(offsetData.defects as any)[d.key]}
-                  onUpdate={(delta) => setOffsetData(prev => ({
-                    ...prev,
-                    defects: { ...prev.defects, [d.key]: Math.max(0, (prev.defects as any)[d.key] + delta) }
-                  }))}
-                  onSet={(val) => setOffsetData(prev => ({
-                    ...prev,
-                    defects: { ...prev.defects, [d.key]: val }
-                  }))}
-                />
-              ))}
+            {/* Defeitos Por Folha — somente Cor */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Contagem por Folha</p>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Cor</h3>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-lg">1 folha = {unidadesPorFolha} unid.</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="w-48">
+                  <DefectCounter
+                    name="Cor"
+                    icon="palette"
+                    count={offsetData.defects.cor}
+                    onUpdate={(delta) => setOffsetData(prev => ({ ...prev, defects: { ...prev.defects, cor: Math.max(0, prev.defects.cor + delta) } }))}
+                    onSet={(val) => setOffsetData(prev => ({ ...prev, defects: { ...prev.defects, cor: val } }))}
+                  />
+                </div>
+                {offsetData.defects.cor > 0 && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                    <span className="material-symbols-outlined text-amber-500 text-sm">info</span>
+                    <span className="text-xs font-black text-amber-700 dark:text-amber-400">
+                      = {fmt(offsetData.defects.cor * unidadesPorFolha)} unidades equivalentes
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-              <MetricInput
-                label="Qtd Cartucho Reprovado"
-                icon="restart_alt"
-                value={offsetData.metrics.rework}
-                onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, rework: v } }))}
-              />
-              <MetricInput
-                label="Total Amostras (unid.)"
-                icon="science"
-                value={offsetData.metrics.samples}
-                onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))}
+            {/* Defeitos Por Unidade */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Contagem por Unidade</p>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Manchas, Pintas e demais</h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { key: 'manchas', label: 'Manchas', icon: 'texture' },
+                  { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
+                  { key: 'fiapos', label: 'Fiapos', icon: 'straighten' },
+                  { key: 'registro', label: 'Registro', icon: 'grid_view' },
+                  { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
+                  { key: 'falha_texto', label: 'Falha Texto', icon: 'format_color_text' },
+                  { key: 'texto_fechado', label: 'Texto Fechado', icon: 'block' },
+                ].map(d => (
+                  <DefectCounter
+                    key={d.key}
+                    name={d.label}
+                    icon={d.icon}
+                    count={offsetData.defects[d.key]}
+                    onUpdate={(delta) => setOffsetData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: Math.max(0, prev.defects[d.key] + delta) } }))}
+                    onSet={(val) => setOffsetData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: val } }))}
+                  />
+                ))}
+              </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                <MetricInput label="Qtd Cartucho Reprovado" icon="restart_alt" value={offsetData.metrics.rework} onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, rework: v } }))} />
+                <MetricInput label="Total Amostras (unid.)" icon="science" value={offsetData.metrics.samples} onChange={(v) => setOffsetData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))} />
+              </div>
+            </div>
+
+            {/* Distribuição de Pilhas */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rastreabilidade</p>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Distribuição de Pilhas</h3>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-lg">1 pilha = {fmt(folhasPorPilha * unidadesPorFolha)} unid.</span>
+              </div>
+
+              {pilhasData.pilhas_verificadas > 0 && pilhasData.pilhas_verificadas < pilhasData.pilhas_total && (
+                <div className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                  <span className="material-symbols-outlined text-amber-500 text-sm">warning</span>
+                  <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest">Inspeção parcial — {pilhasData.pilhas_verificadas}/{pilhasData.pilhas_total} pilhas verificadas</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <MetricInput label="Total na bancada" icon="layers" value={pilhasData.pilhas_total} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_total: v }))} />
+                <MetricInput label="Verificadas" icon="search" value={pilhasData.pilhas_verificadas} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_verificadas: Math.min(v, pilhasData.pilhas_total || v) }))} />
+                <MetricInput label="Aprovadas" icon="check_circle" value={pilhasData.pilhas_aprovadas} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_aprovadas: v }))} />
+                <MetricInput label="P/ Escolha" icon="filter_list" value={pilhasData.pilhas_segregadas_escolha} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_segregadas_escolha: v }))} />
+                <MetricInput label="Reprovadas" icon="cancel" value={pilhasData.pilhas_reprovadas} onChange={(v) => setPilhasData(prev => ({ ...prev, pilhas_reprovadas: v }))} />
+              </div>
+            </div>
+
+            {/* Painel de Saldo */}
+            {saldo.rodadas > 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Saldo da OP</p>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Rodada {numeroRodada}ª</h3>
+                  </div>
+                  <div className="flex gap-4 text-right">
+                    {currentOrder && <div><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. pedida</p><p className="font-black text-slate-700 dark:text-slate-200">{fmt(currentOrder.qtd_total)}</p></div>}
+                    <div><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. rodada</p><p className="font-black text-slate-700 dark:text-slate-200">{fmt(saldo.rodadas)}</p></div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    { label: 'Aprovadas', value: saldo.aprovadas, color: 'bg-emerald-500' },
+                    { label: 'Em escolha', value: saldo.em_escolha, color: 'bg-amber-400' },
+                    { label: 'Reprovadas', value: saldo.reprovadas, color: 'bg-rose-500' },
+                  ].map(row => {
+                    const pct = saldo.rodadas > 0 ? (row.value / saldo.rodadas) * 100 : 0;
+                    return (
+                      <div key={row.label} className="flex items-center gap-3">
+                        <span className="w-24 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">{row.label}</span>
+                        <div className="flex-1 h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div className={`h-full ${row.color} rounded-full transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
+                        </div>
+                        <span className="w-24 text-xs font-black text-slate-700 dark:text-slate-300">{fmt(row.value)}</span>
+                        <span className="w-12 text-[10px] font-bold text-slate-400 text-right">{pct.toFixed(1)}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {saldo.alerta_divergencia && (
+                  <div className="mt-3 flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800">
+                    <span className="material-symbols-outlined text-rose-500">error</span>
+                    <span className="text-xs font-black text-rose-700 dark:text-rose-400">
+                      Divergência: {fmt(Math.abs(saldo.divergencia))} unidades não contabilizadas — revise a distribuição de pilhas
+                    </span>
+                  </div>
+                )}
+
+                <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${calculatedStatus === InspectionStatus.APPROVED ? 'bg-emerald-50 dark:bg-emerald-950/20' : calculatedStatus === InspectionStatus.REJECTED ? 'bg-rose-50 dark:bg-rose-950/20' : 'bg-amber-50 dark:bg-amber-950/20'}`}>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Taxa de falha: {failureRate.toFixed(2)}%</span>
+                  <span className={`text-xs font-black uppercase tracking-widest ${calculatedStatus === InspectionStatus.APPROVED ? 'text-emerald-700' : calculatedStatus === InspectionStatus.REJECTED ? 'text-rose-700' : 'text-amber-700'}`}>
+                    → {getStatusText(calculatedStatus)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Observações */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações do analista</label>
+              <textarea
+                value={observacoesAnalista}
+                onChange={(e) => setObservacoesAnalista(e.target.value)}
+                placeholder="Notas sobre o lote, restrições ou ocorrências..."
+                className="mt-2 w-full h-20 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-primary/20 resize-none"
               />
             </div>
-            <OffsetEscolhaCard
-              value={offsetData.escolha}
-              onChange={(partial) => setOffsetData(prev => ({ ...prev, escolha: { ...prev.escolha, ...partial } }))}
-            />
           </div>
         )}
 
@@ -892,20 +861,12 @@ export default function InspectionView() {
           <div className="space-y-8">
             <div className="flex gap-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 w-fit">
               <label className="text-xs font-black uppercase tracking-widest text-slate-500 mr-4 self-center">Processo:</label>
-              {['APPLIED', 'NA'].map(v => (
-                <button
-                  key={v}
-                  onClick={() => setUvData(prev => ({ ...prev, process: v as any }))}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${uvData.process === v
-                    ? 'bg-primary text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                    }`}
-                >
+              {(['APPLIED', 'NA'] as const).map(v => (
+                <button key={v} onClick={() => setUvData(prev => ({ ...prev, process: v }))} className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${uvData.process === v ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
                   {v === 'APPLIED' ? 'APLICADO' : 'NÃO APLICÁVEL'}
                 </button>
               ))}
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 { key: 'cor', label: 'Cor', icon: 'palette' },
@@ -913,36 +874,15 @@ export default function InspectionView() {
                 { key: 'falha_verniz', label: 'Falha Verniz', icon: 'imagesearch_roller' },
                 { key: 'acabamento_aspero', label: 'Acab. Áspero', icon: 'texture' },
               ].map(d => (
-                <DefectCounter
-                  key={d.key}
-                  name={d.label}
-                  icon={d.icon}
-                  count={(uvData.defects as any)[d.key]}
-                  onUpdate={(delta) => setUvData(prev => ({
-                    ...prev,
-                    defects: { ...prev.defects, [d.key]: Math.max(0, (prev.defects as any)[d.key] + delta) }
-                  }))}
-                  onSet={(val) => setUvData(prev => ({
-                    ...prev,
-                    defects: { ...prev.defects, [d.key]: val }
-                  }))}
+                <DefectCounter key={d.key} name={d.label} icon={d.icon} count={uvData.defects[d.key]}
+                  onUpdate={(delta) => setUvData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: Math.max(0, prev.defects[d.key] + delta) } }))}
+                  onSet={(val) => setUvData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: val } }))}
                 />
               ))}
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-              <MetricInput
-                label="Reprovados"
-                icon="cancel"
-                value={uvData.metrics.rejected}
-                onChange={(v) => setUvData(prev => ({ ...prev, metrics: { ...prev.metrics, rejected: v } }))}
-              />
-              <MetricInput
-                label="Amostras"
-                icon="science"
-                value={uvData.metrics.samples}
-                onChange={(v) => setUvData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))}
-              />
+              <MetricInput label="Reprovados" icon="cancel" value={uvData.metrics.rejected} onChange={(v) => setUvData(prev => ({ ...prev, metrics: { ...prev.metrics, rejected: v } }))} />
+              <MetricInput label="Amostras" icon="science" value={uvData.metrics.samples} onChange={(v) => setUvData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))} />
             </div>
           </div>
         )}
@@ -952,81 +892,92 @@ export default function InspectionView() {
           <div className="space-y-8">
             <div className="flex gap-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 w-fit">
               <label className="text-xs font-black uppercase tracking-widest text-slate-500 mr-4 self-center">Processo:</label>
-              {['APPLIED', 'NA'].map(v => (
-                <button
-                  key={v}
-                  onClick={() => setHotStampingData(prev => ({ ...prev, process: v as any }))}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${hotStampingData.process === v
-                    ? 'bg-primary text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                    }`}
-                >
+              {(['APPLIED', 'NA'] as const).map(v => (
+                <button key={v} onClick={() => setHotStampingData(prev => ({ ...prev, process: v }))} className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${hotStampingData.process === v ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
                   {v === 'APPLIED' ? 'APLICADO' : 'NÃO APLICÁVEL'}
                 </button>
               ))}
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 { key: 'falha', label: 'Falha', icon: 'warning' },
                 { key: 'enchimento_texto', label: 'Enchimento Texto', icon: 'format_color_fill' },
                 { key: 'ausencia', label: 'Ausência', icon: 'visibility_off' },
               ].map(d => (
-                <DefectCounter
-                  key={d.key}
-                  name={d.label}
-                  icon={d.icon}
-                  count={(hotStampingData.defects as any)[d.key]}
-                  onUpdate={(delta) => setHotStampingData(prev => ({
-                    ...prev,
-                    defects: { ...prev.defects, [d.key]: Math.max(0, (prev.defects as any)[d.key] + delta) }
-                  }))}
-                  onSet={(val) => setHotStampingData(prev => ({
-                    ...prev,
-                    defects: { ...prev.defects, [d.key]: val }
-                  }))}
+                <DefectCounter key={d.key} name={d.label} icon={d.icon} count={hotStampingData.defects[d.key]}
+                  onUpdate={(delta) => setHotStampingData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: Math.max(0, prev.defects[d.key] + delta) } }))}
+                  onSet={(val) => setHotStampingData(prev => ({ ...prev, defects: { ...prev.defects, [d.key]: val } }))}
                 />
               ))}
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-              <MetricInput
-                label="Reprovados"
-                icon="cancel"
-                value={hotStampingData.metrics.rejected}
-                onChange={(v) => setHotStampingData(prev => ({ ...prev, metrics: { ...prev.metrics, rejected: v } }))}
-              />
-              <MetricInput
-                label="Amostras"
-                icon="science"
-                value={hotStampingData.metrics.samples}
-                onChange={(v) => setHotStampingData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))}
-              />
+              <MetricInput label="Reprovados" icon="cancel" value={hotStampingData.metrics.rejected} onChange={(v) => setHotStampingData(prev => ({ ...prev, metrics: { ...prev.metrics, rejected: v } }))} />
+              <MetricInput label="Amostras" icon="science" value={hotStampingData.metrics.samples} onChange={(v) => setHotStampingData(prev => ({ ...prev, metrics: { ...prev.metrics, samples: v } }))} />
             </div>
           </div>
         )}
       </main>
 
-      {/* --- Rodapé Fixo Compacto --- */}
+      {/* Formulário de Reimpressão (pós-save) */}
+      {showReimpressaoForm && currentOrder && (
+        <div className="rounded-3xl border-2 border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-6 shadow-lg space-y-4">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-rose-500 text-2xl mt-0.5">warning</span>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-rose-800 dark:text-rose-300">Quantidade Insuficiente para a OP</h3>
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 mt-1">
+                Pedido: {fmt(currentOrder.qtd_total)} · Aprovadas: {fmt(saldo.aprovadas)} · Faltam: {fmt(Math.max(0, currentOrder.qtd_total - saldo.aprovadas))} unidades
+              </p>
+            </div>
+            <button onClick={() => setShowReimpressaoForm(false)} className="ml-auto text-rose-400 hover:text-rose-600 transition-colors">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 space-y-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-rose-500 ml-1">Motivo da reimpressão *</label>
+              <input
+                value={reimpressaoMotivo}
+                onChange={(e) => setReimpressaoMotivo(e.target.value)}
+                placeholder="Descreva o motivo da reimpressão..."
+                className="w-full h-10 px-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:ring-1 focus:ring-rose-300"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-rose-500 ml-1">Qtd. a reimprimir (unid.) *</label>
+              <input
+                type="number"
+                min={1}
+                value={reimpressaoQtd}
+                onChange={(e) => setReimpressaoQtd(Math.max(1, Number(e.target.value) || 0))}
+                className="w-full h-10 px-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-white dark:bg-slate-900 text-sm font-black outline-none focus:ring-1 focus:ring-rose-300"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSubmitReimpressao}
+              disabled={isSubmittingReimpressao || !reimpressaoMotivo.trim() || reimpressaoQtd <= 0}
+              className="h-10 px-6 rounded-xl bg-rose-600 text-white font-black text-[10px] tracking-widest hover:bg-rose-700 transition-all disabled:opacity-50 uppercase"
+            >
+              {isSubmittingReimpressao ? 'Enviando...' : 'Solicitar Reimpressão'}
+            </button>
+            <p className="text-[10px] font-bold text-rose-500">Aguarda aprovação do supervisor antes de iniciar nova rodada.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Rodapé Fixo */}
       <footer className="fixed bottom-0 left-[var(--sidebar-width)] right-0 p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:justify-end items-stretch sm:items-center gap-3 z-30">
-        <button
-          onClick={resetAll}
-          className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] tracking-widest hover:bg-slate-50 transition-all text-slate-500 uppercase w-full sm:w-auto"
-        >
+        <button onClick={resetAll} className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] tracking-widest hover:bg-slate-50 transition-all text-slate-500 uppercase w-full sm:w-auto">
           LIMPAR
         </button>
-        <button
-          onClick={() => handleSave(false)}
-          disabled={isSaving}
-          className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase w-full sm:w-auto"
-        >
+        <button onClick={() => handleSave(false)} disabled={isSaving} className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase w-full sm:w-auto">
           {isSaving ? '...' : 'SALVAR'}
         </button>
-        <button
-          onClick={() => handleSave(true)}
-          disabled={isSaving}
-          className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase w-full sm:w-auto"
-        >
+        <button onClick={() => handleSave(true)} disabled={isSaving} className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase w-full sm:w-auto">
           {isSaving ? 'SINC...' : 'SALVAR E NOVO'}
         </button>
       </footer>

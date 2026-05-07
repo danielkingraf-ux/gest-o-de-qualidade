@@ -18,7 +18,7 @@ export interface EditRequest {
   inspection_id: string;
   requested_by: string;
   reason: string;
-  proposed_changes: Record<string, any>;
+  proposed_changes: Record<string, unknown>;
   status: EditRequestStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -90,9 +90,125 @@ export interface Order {
   descricao?: string;
   qtd_total: number;
   status: OrderStatus;
+  unidades_por_folha: number;
+  folhas_por_pilha: number;
+  rodadas_realizadas: number;
   created_by_user_id?: string;
   created_at: string;
   updated_at: string;
+}
+
+export type ReimpressaoStatus = 'pendente' | 'aprovada' | 'recusada' | 'executada';
+
+export interface OpReimpressao {
+  id: string;
+  order_id: string;
+  inspection_id: string | null;
+  numero_rodada: number;
+  quantidade_unid: number;
+  motivo: string;
+  solicitada_por: string;
+  aprovada_por: string | null;
+  status: ReimpressaoStatus;
+  machine_id: string | null;
+  operator_id: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  orders?: Order;
+  machines?: Machine;
+  operators?: Operator;
+}
+
+// ─── Payload do processo inicial (inspections.observations) ─────────────────
+
+export interface ProducaoTracking {
+  unidades_por_folha: number;
+  unidades_op: number;
+  quantidade_rodada_folhas: number;
+  quantidade_rodada_unidades: number;
+  folhas_por_pilha: number;
+  pilhas_total: number;
+  pilhas_verificadas: number;
+  pilhas_aprovadas: number;
+  pilhas_segregadas_escolha: number;
+  pilhas_reprovadas: number;
+}
+
+export interface DefeitosTracking {
+  por_folha: {
+    cor: number;
+  };
+  por_unidade: Record<string, number>;
+}
+
+export interface SaldoUnidades {
+  rodadas: number;
+  aprovadas: number;
+  em_escolha: number;
+  reprovadas: number;
+  divergencia: number;
+  alerta_divergencia: boolean;
+}
+
+export interface MetricasFalha {
+  cor_folhas_com_defeito: number;
+  cor_unidades_equivalentes: number;
+  taxa_cor_por_folha: number;
+  falhas_por_unidade: number;
+  taxa_unidade: number;
+  taxa_combinada: number;
+}
+
+export interface InspectionObservationsV2 {
+  schema_version: 2;
+  process_area: 'producao_inicial' | 'produto_acabado';
+  process_type: string;
+  all_operator_ids: string[];
+  all_analyst_ids: string[];
+  numero_rodada: number;
+  producao: ProducaoTracking;
+  defeitos: DefeitosTracking;
+  saldo_unidades: SaldoUnidades;
+  metricas_falha: MetricasFalha;
+  reimpressao_solicitada: boolean;
+  reimpressao_id: string | null;
+  regra_aprovacao: {
+    mode: 'percent' | 'quantity';
+    restrictedLimit: number;
+    rejectLimit: number;
+  };
+  status_final: 'APPROVED' | 'RESTRICTED' | 'REJECTED';
+  observacoes_analista: string;
+}
+
+// ─── Payload do produto acabado ──────────────────────────────────────────────
+
+export interface EntradaProcesso {
+  op_initial_inspection_id: string;
+  unidades_aprovadas_inicial: number;
+  unidades_em_escolha_resolvidas: number;
+  unidades_descartadas_escolha: number;
+  total_entrada: number;
+}
+
+export interface InspectionObservationsFinishing {
+  schema_version: 2;
+  process_area: 'produto_acabado';
+  process_type: string;
+  all_operator_ids: string[];
+  all_analyst_ids: string[];
+  entrada_processo: EntradaProcesso;
+  producao: Pick<ProducaoTracking, 'unidades_por_folha' | 'pilhas_total' | 'pilhas_verificadas' | 'pilhas_aprovadas' | 'pilhas_reprovadas'>;
+  defeitos: { por_unidade: Record<string, number> };
+  saldo_unidades: {
+    entrada: number;
+    aprovadas: number;
+    com_restricao: number;
+    reprovadas: number;
+    divergencia: number;
+  };
+  status_final: 'APPROVED' | 'RESTRICTED' | 'REJECTED';
 }
 
 export interface DefectType {
@@ -128,7 +244,7 @@ export interface InspectionRecord {
   machines?: Machine;
   operators?: Operator;
   analysts?: Analyst;
-  process_data?: any;
+  process_data?: Record<string, unknown>;
   escolha?: EscolhaData;
   created_by_user_id?: string;
   edited_at?: string | null;
