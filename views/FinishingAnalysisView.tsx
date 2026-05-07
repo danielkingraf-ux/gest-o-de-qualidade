@@ -263,11 +263,11 @@ export default function FinishingAnalysisView() {
                 analyst_id: formData.analyst_id,
                 status: formData.status,
                 samples_count: formData.amostragem,
-                process_type: ProcessType.ACABAMENTO,
                 created_at: new Date().toISOString(),
                 created_by_user_id: profile?.user_id ?? null,
                 observations: JSON.stringify({
                     is_spreadsheet_analysis: true,
+                    process_type: ProcessType.ACABAMENTO,
                     laudo_numero: formData.laudo_numero,
                     status: formData.status,
                     observacoes: formData.observacoes.trim(),
