@@ -1,27 +1,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Machine, Operator, Analyst, DefectType, ProductionArea, User, UserRole } from '../types';
+import { Machine, Operator, Analyst, DefectType, UserProfile, UserRole } from '../types';
 import { useToast } from '../contexts/ToastContext';
+import { useUser } from '../contexts/UserContext';
 
 type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users';
-
-const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
-    { value: 'producao_inicial', label: 'Produção inicial' },
-    { value: 'produto_acabado', label: 'Produto acabado' },
-    { value: 'ambos', label: 'Ambos' },
-];
-
-const AREA_BADGES: Record<ProductionArea, { label: string; className: string }> = {
-    producao_inicial: { label: 'Produção inicial', className: 'bg-blue-50 text-blue-600 border border-blue-100' },
-    produto_acabado: { label: 'Produto acabado', className: 'bg-violet-50 text-violet-600 border border-violet-100' },
-    ambos: { label: 'Ambos', className: 'bg-amber-50 text-amber-600 border border-amber-100' },
-};
-
-function AreaBadge({ area }: { area?: ProductionArea }) {
-    const badge = AREA_BADGES[area ?? 'producao_inicial'] ?? AREA_BADGES.producao_inicial;
-    return <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${badge.className}`}>{badge.label}</span>;
-}
 
 export default function AdminView() {
     const [activeTab, setActiveTab] = useState<Tab>('machines');
@@ -30,8 +14,8 @@ export default function AdminView() {
         { id: 'machines', label: 'Máquinas', icon: 'settings' },
         { id: 'operators', label: 'Operadores', icon: 'groups' },
         { id: 'analysts', label: 'Analistas', icon: 'shield_person' },
-        { id: 'users', label: 'Usuários', icon: 'person' },
         { id: 'defects', label: 'Defeitos', icon: 'error' },
+        { id: 'users', label: 'Usuários', icon: 'manage_accounts' },
     ];
 
     return (
@@ -67,8 +51,8 @@ export default function AdminView() {
                 {activeTab === 'machines' && <MachinesManager />}
                 {activeTab === 'operators' && <OperatorsManager />}
                 {activeTab === 'analysts' && <AnalystsManager />}
-                {activeTab === 'users' && <UsersManager />}
                 {activeTab === 'defects' && <DefectTypesManager />}
+                {activeTab === 'users' && <UsersManager />}
             </div>
         </div>
     );
@@ -239,7 +223,7 @@ function MachinesManager() {
                     Gestão de Máquinas
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', code: '', area: 'producao_inicial', active: true })}
+                    onClick={() => setEditing({ name: '', code: '', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Nova Máquina
@@ -247,7 +231,7 @@ function MachinesManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome do Equipamento</label>
                         <input
@@ -268,16 +252,6 @@ function MachinesManager() {
                             onChange={e => setEditing({ ...editing, code: e.target.value })}
                             placeholder="Ex: PR-01"
                         />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Área de uso</label>
-                        <select
-                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            value={editing.area ?? 'producao_inicial'}
-                            onChange={e => setEditing({ ...editing, area: e.target.value as ProductionArea })}
-                        >
-                            {AREA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button
@@ -312,7 +286,6 @@ function MachinesManager() {
                         )
                     },
                     { key: 'code', label: 'TAG/ID' },
-                    { key: 'area', label: 'Área', render: m => <AreaBadge area={m.area} /> },
                     {
                         key: 'active', label: 'Situação', render: m => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${m.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
@@ -400,7 +373,7 @@ function OperatorsManager() {
                     Frente de Trabalho
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', code: '', area: 'producao_inicial', active: true })}
+                    onClick={() => setEditing({ name: '', code: '', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Operador
@@ -408,7 +381,7 @@ function OperatorsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome Completo</label>
                         <input
@@ -427,16 +400,6 @@ function OperatorsManager() {
                             onChange={e => setEditing({ ...editing, code: e.target.value })}
                             placeholder="Ex: 50123"
                         />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Área de atuação</label>
-                        <select
-                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
-                            value={editing.area ?? 'producao_inicial'}
-                            onChange={e => setEditing({ ...editing, area: e.target.value as ProductionArea })}
-                        >
-                            {AREA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving} className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">{isSaving ? '...' : 'Salvar'}</button>
@@ -461,7 +424,6 @@ function OperatorsManager() {
                         )
                     },
                     { key: 'code', label: 'RE / Registro' },
-                    { key: 'area', label: 'Área', render: o => <AreaBadge area={o.area} /> },
                     {
                         key: 'active', label: 'Status', render: o => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${o.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
@@ -547,7 +509,7 @@ function AnalystsManager() {
                     Equipe de Qualidade
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', email: '', active: true })}
+                    onClick={() => setEditing({ name: '', email: '', tipo: 'impressao', active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Analista
@@ -555,7 +517,7 @@ function AnalystsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome do Analista</label>
                         <input
@@ -575,6 +537,18 @@ function AnalystsManager() {
                             onChange={e => setEditing({ ...editing, email: e.target.value })}
                             placeholder="Ex: beatriz@kingraf.com"
                         />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Área de Atuação</label>
+                        <select
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.tipo ?? 'impressao'}
+                            onChange={e => setEditing({ ...editing, tipo: e.target.value as any })}
+                        >
+                            <option value="impressao">Impressão</option>
+                            <option value="acabamento">Acabamento</option>
+                            <option value="ambos">Ambos</option>
+                        </select>
                     </div>
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving} className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest">{isSaving ? '...' : 'Salvar'}</button>
@@ -599,6 +573,17 @@ function AnalystsManager() {
                         )
                     },
                     { key: 'email', label: 'Contato' },
+                    {
+                        key: 'tipo', label: 'Área', render: a => {
+                            const map: Record<string, { label: string; color: string }> = {
+                                impressao: { label: 'Impressão', color: 'bg-blue-50 text-blue-600 border border-blue-100' },
+                                acabamento: { label: 'Acabamento', color: 'bg-purple-50 text-purple-600 border border-purple-100' },
+                                ambos: { label: 'Ambos', color: 'bg-amber-50 text-amber-600 border border-amber-100' },
+                            };
+                            const t = map[a.tipo] ?? map['impressao'];
+                            return <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${t.color}`}>{t.label}</span>;
+                        }
+                    },
                     {
                         key: 'active', label: 'Status', render: a => (
                             <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${a.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
@@ -760,32 +745,25 @@ function DefectTypesManager() {
 }
 
 // -----------------------------------------------------------------------------
-// USERS
+// USERS (perfis de acesso ao sistema)
 // -----------------------------------------------------------------------------
 
-const ROLE_OPTIONS: Array<{ value: UserRole; label: string; color: string }> = [
-    { value: 'admin', label: 'Administrador', color: 'bg-red-50 text-red-600 border-red-100' },
-    { value: 'supervisor', label: 'Supervisor', color: 'bg-orange-50 text-orange-600 border-orange-100' },
-    { value: 'quality_analyst', label: 'Analista de Qualidade', color: 'bg-blue-50 text-blue-600 border-blue-100' },
-    { value: 'operator', label: 'Operador', color: 'bg-green-50 text-green-600 border-green-100' },
-];
-
 function UsersManager() {
-    const [users, setUsers] = useState<User[]>([]);
+    const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState<Partial<UserProfile> & { email?: string; password?: string } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [editing, setEditing] = useState<Partial<User> | null>(null);
     const { showToast } = useToast();
+    const { refreshProfile } = useUser();
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
-        if (error) {
-            showToast('Erro ao carregar usuários', 'error');
-            console.error(error);
-        } else {
-            setUsers(data || []);
-        }
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .order('name');
+        if (error) showToast('Erro ao carregar usuários', 'error');
+        else setUsers(data || []);
         setLoading(false);
     }, [showToast]);
 
@@ -793,22 +771,22 @@ function UsersManager() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editing?.email || !editing?.name || !editing?.role) {
-            showToast('Email, Nome e Nível são obrigatórios', 'warning');
-            return;
-        }
-
+        if (!editing?.name || !editing?.role) return;
         setIsSaving(true);
         try {
-            const payload: any = { ...editing };
-            delete payload.created_at;
-
             if (editing.id) {
-                const { id, ...updateData } = payload;
-                const { error } = await supabase.from('user_profiles').update(updateData).eq('id', id);
+                const { error } = await supabase
+                    .from('user_profiles')
+                    .update({ name: editing.name, role: editing.role, active: editing.active })
+                    .eq('id', editing.id);
                 if (error) throw error;
-                showToast('Usuário atualizado com sucesso', 'success');
+                showToast('Usuário atualizado', 'success');
             } else {
+                if (!editing.email || !editing.password) {
+                    showToast('Email e senha são obrigatórios', 'warning');
+                    setIsSaving(false);
+                    return;
+                }
                 const { data: { session } } = await supabase.auth.getSession();
                 const res = await fetch(
                     'https://juatgymcjvnofllfennk.supabase.co/functions/v1/create-user',
@@ -818,74 +796,41 @@ function UsersManager() {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${session?.access_token}`,
                         },
-                        body: JSON.stringify({
-                            email: editing.email,
-                            name: editing.name,
-                            role: editing.role,
-                        }),
+                        body: JSON.stringify({ email: editing.email, name: editing.name, role: editing.role, password: editing.password }),
                     }
                 );
-
                 const result = await res.json();
-                if (!res.ok) {
-                    if (result.error?.includes('already exists')) {
-                        showToast('Esse email já está cadastrado', 'warning');
-                    } else {
-                        throw new Error(result.error || 'Erro ao criar usuário');
-                    }
-                    setIsSaving(false);
-                    return;
-                }
-
-                showToast('Usuário cadastrado. Um email de confirmação foi enviado.', 'success');
+                if (!res.ok) throw new Error(result.error || 'Erro ao criar usuário');
+                showToast('Usuário criado com sucesso', 'success');
             }
-
             setEditing(null);
             fetchUsers();
-        } catch (error: any) {
-            showToast(`Erro: ${error.message || 'Erro desconhecido'}`, 'error');
+            refreshProfile();
+        } catch (err: any) {
+            showToast(`Erro: ${err.message}`, 'error');
         } finally {
             setIsSaving(false);
         }
     };
 
     const toggleActive = async (id: string, current: boolean) => {
-        try {
-            const { error } = await supabase.from('user_profiles').update({ active: !current }).eq('id', id);
-            if (error) throw error;
-            showToast(current ? 'Usuário desativado' : 'Usuário ativado', 'success');
-            fetchUsers();
-        } catch (error: any) {
-            showToast('Erro ao atualizar status', 'error');
-        }
-    };
-
-    const handleDelete = async (id: string) => {
-        if (!window.confirm('Deseja realmente excluir este usuário? Isso não pode ser desfeito.')) return;
-        try {
-            const { error: profileError } = await supabase.from('user_profiles').delete().eq('id', id);
-            if (profileError) throw profileError;
-            showToast('Usuário excluído', 'info');
-            fetchUsers();
-        } catch (error: any) {
-            showToast('Erro ao excluir usuário', 'error');
-        }
-    };
-
-    const getRoleBadge = (role: UserRole) => {
-        const roleOption = ROLE_OPTIONS.find(r => r.value === role);
-        return roleOption ? roleOption.color : 'bg-slate-50 text-slate-600 border-slate-100';
+        const { error } = await supabase
+            .from('user_profiles')
+            .update({ active: !current })
+            .eq('id', id);
+        if (error) showToast('Erro ao atualizar', 'error');
+        else fetchUsers();
     };
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary">person</span>
-                    Gerenciamento de Usuários
+                    <span className="material-symbols-outlined text-primary">manage_accounts</span>
+                    Controle de Acesso
                 </h2>
                 <button
-                    onClick={() => setEditing({ email: '', name: '', role: 'operator', active: true })}
+                    onClick={() => setEditing({ name: '', email: '', password: '', role: 'analista' as UserRole, active: true })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Usuário
@@ -893,113 +838,126 @@ function UsersManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-5 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                    {!editing.id && (
+                        <>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email</label>
+                                <input
+                                    required
+                                    type="email"
+                                    className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                                    value={editing.email ?? ''}
+                                    onChange={e => setEditing({ ...editing, email: e.target.value })}
+                                    placeholder="Ex: joao@kingraf.com.br"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Senha Inicial</label>
+                                <input
+                                    required
+                                    type="text"
+                                    className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                                    value={editing.password ?? ''}
+                                    onChange={e => setEditing({ ...editing, password: e.target.value })}
+                                    placeholder="Ex: Kingraf@2026"
+                                />
+                            </div>
+                        </>
+                    )}
                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Email</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome de Exibição</label>
                         <input
                             required
-                            type="email"
-                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            value={editing.email}
-                            onChange={e => setEditing({ ...editing, email: e.target.value })}
-                            placeholder="ex: usuario@kingraf.com"
-                            disabled={!!editing.id}
-                            autoFocus
-                        />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome Completo</label>
-                        <input
-                            required
-                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            value={editing.name}
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.name ?? ''}
                             onChange={e => setEditing({ ...editing, name: e.target.value })}
-                            placeholder="Ex: João Silva"
+                            placeholder="Ex: Maria Souza"
                         />
                     </div>
                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nível de Acesso</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nível de Acesso</label>
                         <select
-                            required
-                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            value={editing.role || 'operator'}
+                            className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
+                            value={editing.role ?? 'analista'}
                             onChange={e => setEditing({ ...editing, role: e.target.value as UserRole })}
                         >
-                            {ROLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                            <option value="analista">Analista</option>
+                            <option value="supervisor">Supervisão</option>
                         </select>
                     </div>
-                    <div className="flex items-center gap-2 pt-6">
-                        <input
-                            type="checkbox"
-                            id="active"
-                            checked={editing.active ?? true}
-                            onChange={e => setEditing({ ...editing, active: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer"
-                        />
-                        <label htmlFor="active" className="text-xs font-black uppercase tracking-widest text-slate-600 cursor-pointer">
-                            Ativo
-                        </label>
-                    </div>
                     <div className="flex items-end gap-3">
-                        <button
-                            type="submit"
-                            disabled={isSaving}
-                            className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-                        >
-                            {isSaving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : 'Confirmar'}
+                        <button type="submit" disabled={isSaving}
+                            className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">
+                            {isSaving ? '...' : 'Confirmar'}
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setEditing(null)}
-                            className="px-6 h-14 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-                        >
+                        <button type="button" onClick={() => setEditing(null)}
+                            className="px-6 h-14 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500">
                             Voltar
                         </button>
                     </div>
                 </form>
             )}
 
-            <ManagerTable
-                loading={loading}
-                items={users}
-                emptyMessage="Nenhum usuário cadastrado no sistema."
-                columns={[
-                    {
-                        key: 'name', label: 'Usuário', render: u => (
-                            <div className="flex items-center gap-3">
-                                <div className="size-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-primary">
-                                    <span className="material-symbols-outlined text-[20px]">account_circle</span>
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-sm font-black text-slate-700 dark:text-white uppercase">{u.name}</span>
-                                    <span className="text-[10px] text-slate-500">{u.email}</span>
-                                </div>
-                            </div>
-                        )
-                    },
-                    {
-                        key: 'role', label: 'Nível de Acesso', render: u => {
-                            const roleOption = ROLE_OPTIONS.find(r => r.value === u.role);
-                            return (
-                                <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getRoleBadge(u.role)}`}>
-                                    {roleOption?.label || u.role}
-                                </span>
-                            );
-                        }
-                    },
-                    {
-                        key: 'active', label: 'Status', render: u => (
-                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'
-                                }`}>
-                                {u.active ? 'Ativo' : 'Inativo'}
-                            </span>
-                        )
-                    }
-                ]}
-                onEdit={setEditing}
-                onToggleActive={toggleActive}
-                onDelete={handleDelete}
-            />
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        <tr>
+                            <th className="px-6 py-4">Usuário</th>
+                            <th className="px-6 py-4">Nível</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4 text-right w-32">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {loading ? (
+                            <tr><td colSpan={4} className="px-6 py-12 text-center">
+                                <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+                            </td></tr>
+                        ) : users.length === 0 ? (
+                            <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs italic">
+                                Nenhum usuário cadastrado. Usuários aparecem aqui após o primeiro login.
+                            </td></tr>
+                        ) : users.map(u => (
+                            <tr key={u.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
+                                <td className="px-6 py-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`size-10 rounded-full flex items-center justify-center text-white text-sm font-black ${u.role === 'supervisor' ? 'bg-amber-500' : 'bg-primary'}`}>
+                                            {u.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-sm font-black text-slate-700 dark:text-white uppercase">{u.name}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-3">
+                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.role === 'supervisor'
+                                        ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                        : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                                        {u.role === 'supervisor' ? 'Supervisão' : 'Analista'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-3">
+                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'}`}>
+                                        {u.active ? 'Ativo' : 'Inativo'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-3 text-right">
+                                    <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => setEditing(u)} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all" title="Editar nível">
+                                            <span className="material-symbols-outlined text-lg">edit</span>
+                                        </button>
+                                        <button onClick={() => toggleActive(u.id, u.active)}
+                                            className={`p-2 rounded-xl transition-all ${u.active ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
+                                            title={u.active ? 'Desativar acesso' : 'Ativar acesso'}>
+                                            <span className="material-symbols-outlined text-xl">{u.active ? 'block' : 'check_circle'}</span>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

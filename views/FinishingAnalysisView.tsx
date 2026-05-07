@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
-import { ProcessType, Analyst, InspectionStatus, Machine, Operator } from '../types';
+import { ProcessType, Analyst, InspectionStatus, Order } from '../types';
 
 const DEFECT_COLUMNS = [
     { key: 'manchas', label: 'Manchas', icon: 'texture' },
@@ -78,11 +78,9 @@ export default function FinishingAnalysisView() {
     const { showToast } = useToast();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [machines, setMachines] = useState<Machine[]>([]);
-    const [operators, setOperators] = useState<Operator[]>([]);
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
-    const [selectedMachineId, setSelectedMachineId] = useState('');
-    const [selectedOperatorId, setSelectedOperatorId] = useState('');
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [selectedOrderId, setSelectedOrderId] = useState('');
 
     // Filters
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -106,28 +104,20 @@ export default function FinishingAnalysisView() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [mRes, oRes, aRes] = await Promise.all([
-                supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
-                supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
-                supabase.from('analysts').select('*').eq('active', true).order('name')
+            const [aRes, ordRes] = await Promise.all([
+                supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
+                supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
             ]);
 
-            if (mRes.data) {
-                setMachines(mRes.data);
-                if (!selectedMachineId && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id);
-            }
-            if (oRes.data) {
-                setOperators(oRes.data);
-                if (!selectedOperatorId && oRes.data.length > 0) setSelectedOperatorId(oRes.data[0].id);
-            }
             if (aRes.data) setAnalysts(aRes.data);
+            if (ordRes.data) setOrders(ordRes.data);
         } catch (err) {
             console.error('Erro ao buscar dados:', err);
             showToast('Erro ao carregar dados', 'error');
         } finally {
             setIsLoading(false);
         }
-    }, [selectedMachineId, selectedMonth, selectedOperatorId, selectedYear, showToast]);
+    }, [selectedMonth, selectedYear, showToast]);
 
     useEffect(() => {
         fetchData();
@@ -135,17 +125,17 @@ export default function FinishingAnalysisView() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.op || !selectedMachineId || !selectedOperatorId || !formData.laudo_numero || !formData.analyst_id) {
-            showToast('OP, Máquina, Operador, Nº do Laudo e Analista são obrigatórios', 'warning');
+        if (!selectedOrderId || !formData.laudo_numero || !formData.analyst_id) {
+            showToast('OP, Nº do Laudo e Analista são obrigatórios', 'warning');
             return;
         }
+        const selectedOrder = orders.find(o => o.id === selectedOrderId);
 
         setIsSaving(true);
         try {
             const dataToSave = {
-                op: formData.op,
-                machine_id: selectedMachineId,
-                operator_id: selectedOperatorId,
+                op: selectedOrder?.op ?? '',
+                order_id: selectedOrderId,
                 analyst_id: formData.analyst_id,
                 status: InspectionStatus.APPROVED,
                 samples_count: formData.amostragem,
@@ -156,9 +146,6 @@ export default function FinishingAnalysisView() {
                     laudo_numero: formData.laudo_numero,
                     num_analises: formData.num_analises,
                     defects: formData.defects,
-                    all_operator_ids: [selectedOperatorId],
-                    all_analyst_ids: [formData.analyst_id],
-                    process_area: 'produto_acabado',
                     month: months[selectedMonth],
                     year: selectedYear
                 })
@@ -168,6 +155,7 @@ export default function FinishingAnalysisView() {
             if (error) throw error;
 
             showToast('Análise salva com sucesso!', 'success');
+            setSelectedOrderId('');
             setFormData({
                 op: '',
                 laudo_numero: '',
@@ -223,36 +211,16 @@ export default function FinishingAnalysisView() {
             {/* Quick Add Form Section Compact */}
             <section className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <form onSubmit={handleSave} className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         <div className="space-y-1">
                             <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Ordem Proc. (OP)</label>
-                            <input
-                                value={formData.op}
-                                onChange={e => setFormData(p => ({ ...p, op: e.target.value.toUpperCase() }))}
-                                className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
-                                placeholder="00000"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Máquina</label>
                             <select
-                                value={selectedMachineId}
-                                onChange={e => setSelectedMachineId(e.target.value)}
+                                value={selectedOrderId}
+                                onChange={e => setSelectedOrderId(e.target.value)}
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
                             >
-                                <option value="">Selecionar...</option>
-                                {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            </select>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Operador</label>
-                            <select
-                                value={selectedOperatorId}
-                                onChange={e => setSelectedOperatorId(e.target.value)}
-                                className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
-                            >
-                                <option value="">Selecionar...</option>
-                                {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                <option value="">Selecionar OP...</option>
+                                {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1">

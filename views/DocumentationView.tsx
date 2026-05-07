@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
-import { authService } from '../services/authService';
 
 export default function DocumentationView() {
   const { showToast } = useToast();
@@ -57,7 +56,7 @@ export default function DocumentationView() {
         .getPublicUrl(filePath);
 
       // 3. Insert into Table
-      const user = await authService.getCurrentUser();
+      const { data: { user } } = await supabase.auth.getUser();
       const { error: dbError } = await supabase
         .from('documents')
         .insert({

@@ -35,18 +35,15 @@ const isSpreadsheetAnalysis = (record: InspectionRecord) => {
 };
 
 const getDefectsFromRecord = (record: InspectionRecord) => {
+  // Usa o campo `defects` normalizado que foi populado no fetchAll
+  const normalized: any[] = (record as any).defects || [];
+  if (normalized.length > 0) return normalized;
+
+  // Fallback: lê direto do observations (finishing laudo tem formato categorizado)
   const obs = parseObservations(record.observations);
   const defects: Array<{ name: string; count: number }> = [];
 
-  if (record.inspection_defects && record.inspection_defects.length > 0) {
-    record.inspection_defects.forEach(d => {
-      const name = d.defect_types?.name || 'Outros';
-      defects.push({ name, count: d.count || 0 });
-    });
-    return defects;
-  }
-
-  if (obs.is_finishing_laudo && obs.defects) {
+  if (obs.is_finishing_laudo && obs.defects && !Array.isArray(obs.defects)) {
     const categories = ['critical', 'major', 'minor'];
     categories.forEach(cat => {
       const group = obs.defects?.[cat] || {};
@@ -56,13 +53,6 @@ const getDefectsFromRecord = (record: InspectionRecord) => {
       });
     });
     return defects;
-  }
-
-  if (obs.defects) {
-    Object.entries(obs.defects).forEach(([key, val]) => {
-      const count = Number(val) || 0;
-      if (count > 0) defects.push({ name: key.replace(/_/g, ' '), count });
-    });
   }
 
   return defects;
@@ -101,13 +91,35 @@ const ReportsView = () => {
       try {
         const { data: inspections, error } = await supabase
           .from('inspections')
-          .select('*, machines(name), operators(name), inspection_defects(count, defect_types(name))')
+          .select('*, machines(name), operators(name), analysts(name)')
           .order('created_at', { ascending: true });
         if (error) throw error;
 
         const { data: ops } = await supabase.from('operators').select('id, name');
 
-        const cleaned = (inspections || []).filter((r: InspectionRecord) => !!r.status);
+        // Normaliza defeitos — suporta objeto {cor:2} (manual) e array [{name,count}] (CSV)
+        const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
+          if (!raw) return [];
+          if (Array.isArray(raw)) return raw.filter((d: any) => (d.count || 0) > 0);
+          return Object.entries(raw)
+            .filter(([_, count]) => (count as number) > 0)
+            .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
+        };
+
+        // Enriquecer com defeitos e process_type vindos do observations JSON
+        const cleaned = (inspections || [])
+          .filter((r: any) => !!r.status)
+          .map((r: any) => {
+            const obs = parseObservations(r.observations);
+            const defects = normalizeDefects(obs.defects);
+            const total_defects: number = obs.totalDefects ?? defects.reduce((a: number, d: any) => a + (d.count || 0), 0);
+            return {
+              ...r,
+              defects,
+              total_defects,
+              process_type: r.process_type || obs.process_type || 'OFFSET',
+            };
+          });
         setRecords(cleaned);
         setOperators(ops || []);
       } catch (err: any) {
