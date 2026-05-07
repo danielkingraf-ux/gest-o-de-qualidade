@@ -17,6 +17,8 @@ interface ReadReceipt {
     user_id: string;
 }
 
+const AUTO_CLOSE_SECONDS = 300;
+
 export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
     const [messages, setMessages] = useState<ShiftLog[]>([]);
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
@@ -24,6 +26,7 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
     const [content, setContent] = useState('');
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [secondsToClose, setSecondsToClose] = useState(AUTO_CLOSE_SECONDS);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -61,10 +64,28 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
 
     useEffect(() => {
         if (isOpen) {
+            setSecondsToClose(AUTO_CLOSE_SECONDS);
             scrollToBottom();
             markAllAsRead();
         }
     }, [isOpen, messages]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const timer = window.setInterval(() => {
+            setSecondsToClose((current) => {
+                if (current <= 1) {
+                    window.clearInterval(timer);
+                    onClose();
+                    return AUTO_CLOSE_SECONDS;
+                }
+                return current - 1;
+            });
+        }, 1000);
+
+        return () => window.clearInterval(timer);
+    }, [isOpen, onClose]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -99,6 +120,10 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
         }
     };
 
+    const resetAutoClose = () => {
+        setSecondsToClose(AUTO_CLOSE_SECONDS);
+    };
+
     const markAllAsRead = async () => {
         if (!currentUser || messages.length === 0) return;
         const unreadLogs = messages.filter(m => !readReceipts.some(r => r.log_id === m.id && r.user_id === currentUser.id));
@@ -130,6 +155,7 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
         setMessages(prev => [...prev.filter(m => !m.id.startsWith('temp-')), tempMessage]);
         const originalContent = content;
         setContent('');
+        resetAutoClose();
 
         const { error, data } = await supabase.from('shift_logs').insert([
             {
@@ -169,8 +195,15 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
 
     if (!isOpen) return null;
 
+    const timerMinutes = Math.floor(secondsToClose / 60);
+    const timerSeconds = String(secondsToClose % 60).padStart(2, '0');
+
     return (
-        <div className="fixed bottom-6 right-6 w-[calc(100vw-2rem)] sm:w-96 h-[70vh] sm:h-[500px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden z-[100] animate-slide-in">
+        <div
+            onMouseDown={resetAutoClose}
+            onKeyDown={resetAutoClose}
+            className="fixed bottom-6 right-6 w-[calc(100vw-2rem)] sm:w-96 h-[70vh] sm:h-[500px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden z-[100] animate-slide-in"
+        >
             {/* Header */}
             <div className="bg-primary p-4 text-white flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-3">
@@ -179,11 +212,13 @@ export default function ChatPopup({ isOpen, onClose }: { isOpen: boolean; onClos
                     </div>
                     <div>
                         <h3 className="font-bold text-sm">Chat da Qualidade</h3>
-                        <p className="text-[10px] opacity-80 uppercase tracking-widest font-bold">Equipe Kingraf</p>
+                        <p className="text-[10px] opacity-80 uppercase tracking-widest font-bold">
+                            Fecha em {timerMinutes}:{timerSeconds}
+                        </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
-                    <a href="/#/shift-log" title="Ver Histórico Completo" className="hover:bg-white/10 p-1.5 rounded-lg transition-colors flex items-center">
+                    <a href="/#/shift-log" aria-label="Ver Histórico Completo" data-tooltip="Ver Histórico Completo" className="hover:bg-white/10 p-1.5 rounded-lg transition-colors flex items-center">
                         <span className="material-symbols-outlined text-lg">open_in_full</span>
                     </a>
                     <button onClick={onClose} className="hover:bg-white/10 p-1.5 rounded-lg transition-colors flex items-center">

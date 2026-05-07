@@ -136,6 +136,7 @@ export default function InspectionView() {
 
   // Estados Genéricos (Topo)
   const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [newOrder, setNewOrder] = useState({ op: '', cliente: '', produto: '', qtd_total: '' });
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
@@ -173,13 +174,17 @@ export default function InspectionView() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const updateNewOrder = (field: keyof typeof newOrder, value: string) => {
+    setNewOrder(prev => ({ ...prev, [field]: field === 'op' ? value.toUpperCase() : value }));
+  };
+
   // Carregar dados iniciais
   useEffect(() => {
     async function fetchData() {
       try {
         const [mRes, oRes, aRes, ordRes] = await Promise.all([
-          supabase.from('machines').select('*').eq('active', true).order('name'),
-          supabase.from('operators').select('*').eq('active', true).order('name'),
+          supabase.from('machines').select('*').eq('active', true).in('area', ['producao_inicial', 'ambos']).order('name'),
+          supabase.from('operators').select('*').eq('active', true).in('area', ['producao_inicial', 'ambos']).order('name'),
           supabase.from('analysts').select('*').eq('active', true).in('tipo', ['impressao', 'ambos']).order('name'),
           supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
         ]);
@@ -203,7 +208,7 @@ export default function InspectionView() {
       }
     }
     fetchData();
-  }, [showToast]);
+  }, [showToast, nextRowId]);
 
   const resetAll = useCallback(() => {
     // ... manter lógica anterior de reset ...
@@ -233,11 +238,13 @@ export default function InspectionView() {
 
   const handleSave = useCallback(async (andNew: boolean) => {
     // Validate required fields
-    if (!selectedOrderId || !selectedMachineId) {
+    const typedOp = newOrder.op.trim().toUpperCase();
+    if ((!selectedOrderId && !typedOp) || !selectedMachineId) {
       showToast('Selecione a Ordem de Produção e a Máquina', 'warning');
       return;
     }
-    const selectedOrder = orders.find(o => o.id === selectedOrderId);
+    let selectedOrder = orders.find(o => o.id === selectedOrderId) || null;
+    let orderId = selectedOrderId;
 
     // Filter out empty selections
     const validOperatorIds = selectedOperatorRows.map(r => r.value).filter(id => id.trim() !== '');
@@ -250,9 +257,49 @@ export default function InspectionView() {
 
     setIsSaving(true);
     try {
+      if (!selectedOrder && typedOp) {
+        selectedOrder = orders.find(o => o.op.toUpperCase() === typedOp) || null;
+
+        if (!selectedOrder) {
+          const payload = {
+            op: typedOp,
+            cliente: newOrder.cliente.trim(),
+            produto: newOrder.produto.trim(),
+            qtd_total: Math.max(0, Number(newOrder.qtd_total) || 0),
+            status: 'em_producao'
+          };
+
+          const { data: created, error: createError } = await supabase
+            .from('orders')
+            .insert([payload])
+            .select()
+            .single();
+
+          if (createError) {
+            const { data: existing, error: findError } = await supabase
+              .from('orders')
+              .select('*')
+              .eq('op', typedOp)
+              .single();
+
+            if (findError || !existing) throw createError;
+            selectedOrder = existing;
+          } else {
+            selectedOrder = created;
+          }
+        }
+
+        orderId = selectedOrder?.id ?? '';
+      }
+
+      if (!selectedOrder || !orderId) {
+        showToast('Nao foi possivel identificar a OP', 'error');
+        return;
+      }
+
       let dataToSave: any = {
-        op: selectedOrder?.op ?? '',
-        order_id: selectedOrderId,
+        op: selectedOrder.op,
+        order_id: orderId,
         machine_id: selectedMachineId,
         operator_id: validOperatorIds[0],
         analyst_id: validAnalystIds[0],
@@ -269,6 +316,7 @@ export default function InspectionView() {
           defects: offsetData.defects,
           escolha: offsetData.escolha,
           process_type: activeTab,
+          process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
           all_analyst_ids: validAnalystIds
         });
@@ -280,6 +328,7 @@ export default function InspectionView() {
           process: uvData.process,
           defects: uvData.defects,
           process_type: activeTab,
+          process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
           all_analyst_ids: validAnalystIds
         });
@@ -291,6 +340,7 @@ export default function InspectionView() {
           process: hotStampingData.process,
           defects: hotStampingData.defects,
           process_type: activeTab,
+          process_area: 'producao_inicial',
           all_operator_ids: validOperatorIds,
           all_analyst_ids: validAnalystIds
         });
@@ -303,13 +353,17 @@ export default function InspectionView() {
       if (andNew) {
         resetAll();
         setSelectedOrderId('');
+        setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
+      } else if (!selectedOrderId) {
+        setSelectedOrderId(orderId);
+        setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
       }
     } catch (err: any) {
       showToast(`Erro ao salvar: ${err.message}`, 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, activeTab, offsetData, uvData, hotStampingData, orders, resetAll, showToast]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, activeTab, offsetData, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id]);
 
   // Atalhos de Teclado
   useEffect(() => {
@@ -335,10 +389,10 @@ export default function InspectionView() {
       {/* --- Cabeçalho de Tela Compacto --- */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="space-y-1">
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Inspeção de Produção</h1>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Processo Inicial</h1>
           <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
-            Qualidade • Processos Produtivos
+            Inspeção de produção
           </p>
         </div>
         <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
@@ -363,12 +417,15 @@ export default function InspectionView() {
       </div>
 
       {/* --- Cabeçalho Fixo (Dados OP) --- */}
-      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="space-y-1">
+      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="space-y-2 md:col-span-2">
           <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ordem de Produção (OP)</label>
           <select
             value={selectedOrderId}
-            onChange={(e) => setSelectedOrderId(e.target.value)}
+            onChange={(e) => {
+              setSelectedOrderId(e.target.value);
+              if (e.target.value) setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
+            }}
             className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-1 focus:ring-primary/20"
           >
             <option value="">Selecionar OP...</option>
@@ -376,6 +433,37 @@ export default function InspectionView() {
               <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>
             ))}
           </select>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={newOrder.op}
+              onChange={(e) => {
+                setSelectedOrderId('');
+                updateNewOrder('op', e.target.value);
+              }}
+              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-black outline-none focus:ring-1 focus:ring-primary/20"
+              placeholder="Nova OP"
+            />
+            <input
+              value={newOrder.cliente}
+              onChange={(e) => updateNewOrder('cliente', e.target.value)}
+              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
+              placeholder="Cliente"
+            />
+            <input
+              value={newOrder.produto}
+              onChange={(e) => updateNewOrder('produto', e.target.value)}
+              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
+              placeholder="Produto"
+            />
+            <input
+              type="number"
+              min={0}
+              value={newOrder.qtd_total}
+              onChange={(e) => updateNewOrder('qtd_total', e.target.value)}
+              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
+              placeholder="Qtd. total"
+            />
+          </div>
         </div>
         <div className="space-y-1">
           <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Máquina</label>
@@ -394,7 +482,8 @@ export default function InspectionView() {
             <button
               onClick={() => setSelectedOperatorRows(prev => [...prev, { rowId: nextRowId(), value: '' }])}
               className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors"
-              title="Adicionar Operador"
+              aria-label="Adicionar Operador"
+              data-tooltip="Adicionar Operador"
             >
               <span className="material-symbols-outlined text-sm font-black">add</span>
             </button>
@@ -435,7 +524,8 @@ export default function InspectionView() {
             <button
               onClick={() => setSelectedAnalystRows(prev => [...prev, { rowId: nextRowId(), value: '' }])}
               className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors"
-              title="Adicionar Analista"
+              aria-label="Adicionar Analista"
+              data-tooltip="Adicionar Analista"
             >
               <span className="material-symbols-outlined text-sm font-black">add</span>
             </button>

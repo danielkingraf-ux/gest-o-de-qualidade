@@ -1,15 +1,62 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
+import { logPrivacyEvent } from '../services/privacyService';
+
+type DocCategory = 'Manual' | 'Procedimento' | 'Tecnico' | 'Formulario' | 'Instrucao' | 'Outro';
+
+type DocumentRecord = {
+  id: string;
+  name: string;
+  type: DocCategory | string;
+  size?: string;
+  url: string;
+  origin?: string;
+  description?: string;
+  file_path?: string;
+  signed_url?: string;
+  created_at: string;
+};
+
+const CATEGORIES: Array<{ value: DocCategory | 'Todas'; label: string }> = [
+  { value: 'Todas', label: 'Todos os tipos' },
+  { value: 'Manual', label: 'Manual técnico' },
+  { value: 'Procedimento', label: 'Procedimento operacional' },
+  { value: 'Tecnico', label: 'Desenho técnico' },
+  { value: 'Formulario', label: 'Formulário' },
+  { value: 'Instrucao', label: 'Instrução de trabalho' },
+  { value: 'Outro', label: 'Outro' },
+];
+
+const INITIAL_FORM = {
+  name: '',
+  type: 'Procedimento' as DocCategory,
+  origin: '',
+  description: '',
+};
+
+const fileSize = (bytes: number) => {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
+
+const fileKind = (doc: DocumentRecord) => {
+  const target = `${doc.file_path || doc.url || ''} ${doc.name || ''}`.toLowerCase();
+  if (target.includes('.pdf')) return 'pdf';
+  if (/\.(png|jpg|jpeg|webp|gif|bmp)(\?|$|\s)/.test(target)) return 'image';
+  return 'other';
+};
 
 export default function DocumentationView() {
   const { showToast } = useToast();
-  const [documents, setDocuments] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [filterType, setFilterType] = useState('Todas');
-  const [storageUsage, setStorageUsage] = useState(0); // Dummy usage for now
+  const [search, setSearch] = useState('');
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [file, setFile] = useState<File | null>(null);
+  const [viewerDoc, setViewerDoc] = useState<DocumentRecord | null>(null);
 
   const fetchDocuments = async () => {
     setLoading(true);
@@ -20,10 +67,16 @@ export default function DocumentationView() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setDocuments(data || []);
+      const withSignedUrls = await Promise.all(((data || []) as DocumentRecord[]).map(async (doc) => {
+        if (!doc.file_path) return doc;
+        const { data: signed } = await supabase.storage
+          .from('documents')
+          .createSignedUrl(doc.file_path, 60 * 60);
+        return { ...doc, signed_url: signed?.signedUrl || doc.url };
+      }));
+      setDocuments(withSignedUrls);
     } catch (error: any) {
-      // Silent fail if table doesn't exist yet, just show empty
-      console.error('Error fetching docs:', error);
+      showToast(`Erro ao carregar documentos: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -33,168 +86,289 @@ export default function DocumentationView() {
     fetchDocuments();
   }, []);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files || event.target.files.length === 0) return;
+  const filteredDocs = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return documents.filter((doc) => {
+      if (filterType !== 'Todas' && doc.type !== filterType) return false;
+      if (!term) return true;
+      return [doc.name, doc.type, doc.origin, doc.description]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [documents, filterType, search]);
 
-    setUploading(true);
-    const file = event.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${fileName}`;
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!file) {
+      showToast('Selecione um arquivo para cadastrar', 'warning');
+      return;
+    }
 
+    const documentName = form.name.trim() || file.name;
+    const extension = file.name.split('.').pop() || 'arquivo';
+    const safeName = documentName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase()
+      .slice(0, 60);
+    const filePath = `${Date.now()}-${safeName || 'documento'}.${extension}`;
+
+    setSaving(true);
     try {
-      // 1. Upload to Storage
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, file);
+        .upload(filePath, file, { upsert: false });
 
       if (uploadError) throw uploadError;
 
-      // 2. Get Public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath);
-
-      // 3. Insert into Table
       const { data: { user } } = await supabase.auth.getUser();
       const { error: dbError } = await supabase
         .from('documents')
         .insert({
-          name: file.name,
-          type: 'Manual', // Default for now, could be dynamic
-          size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-          url: publicUrl,
-          origin: 'Upload Manual',
-          uploaded_by: user?.id
+          name: documentName,
+          type: form.type,
+          size: fileSize(file.size),
+          url: filePath,
+          origin: form.origin.trim() || 'Cadastro documental',
+          description: form.description.trim(),
+          file_path: filePath,
+          uploaded_by: user?.id,
         });
 
       if (dbError) throw dbError;
 
-      showToast('Documento enviado com sucesso!');
+      setForm(INITIAL_FORM);
+      setFile(null);
+      const input = document.getElementById('document-file') as HTMLInputElement | null;
+      if (input) input.value = '';
+      showToast('Documento cadastrado para visualização', 'success');
+      await logPrivacyEvent('document_upload', 'documents', undefined, { name: documentName, type: form.type });
       fetchDocuments();
     } catch (error: any) {
-      console.error(error);
-      showToast('Erro ao enviar documento: ' + error.message, 'error');
+      showToast(`Erro ao cadastrar documento: ${error.message}`, 'error');
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string, url: string) => {
-    if (!confirm('Deseja realmente excluir este arquivo?')) return;
+  const handleDelete = async (doc: DocumentRecord) => {
+    if (!confirm('Deseja realmente excluir este documento?')) return;
 
     try {
-      // Extract file path from URL if needed, or store path in DB. 
-      // For now assuming we can just delete row, but ideally delete from storage too.
-      // Getting path from URL is tricky if not stored. 
-      // Simplified: Just delete DB record for MVP or if permissions allow.
+      if (doc.file_path) {
+        await supabase.storage.from('documents').remove([doc.file_path]);
+      }
 
-      const { error } = await supabase.from('documents').delete().eq('id', id);
+      const { error } = await supabase.from('documents').delete().eq('id', doc.id);
       if (error) throw error;
 
-      showToast('Documento removido.');
+      showToast('Documento removido', 'success');
+      await logPrivacyEvent('document_delete', 'documents', doc.id, { name: doc.name, type: doc.type });
       fetchDocuments();
     } catch (error: any) {
-      showToast('Erro ao excluir: ' + error.message, 'error');
+      showToast(`Erro ao excluir: ${error.message}`, 'error');
     }
   };
 
-  const filteredDocs = filterType === 'Todas'
-    ? documents
-    : documents.filter(d => d.type === filterType);
-
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 animate-fade-in pb-20">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="space-y-1">
-          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
-            Gestão Documental • Kingraf
-          </p>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Repositório de Documentos</h1>
-          <p className="text-xs text-slate-500 font-medium">Acesse e gerencie documentos técnicos vinculados ao processo produtivo.</p>
-        </div>
-        <div className="flex gap-3">
+    <div className="mx-auto max-w-7xl animate-fade-in space-y-4 p-4 pb-20 md:p-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+          <span className="size-1.5 rounded-full bg-primary" />
+          Gestão documental Kingraf
+        </p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 dark:text-white">Documentação</h1>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Cadastre documentos, procedimentos, desenhos e formulários para consulta pela equipe.
+            </p>
+          </div>
           <button
             onClick={fetchDocuments}
-            className="flex items-center gap-2 px-4 h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-slate-100 transition-all">
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+          >
             <span className="material-symbols-outlined text-lg">sync</span>
             Atualizar
           </button>
-          <label className={`cursor-pointer flex items-center gap-2 px-6 h-10 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-            <span className="material-symbols-outlined text-lg">{uploading ? 'progress_activity' : 'cloud_upload'}</span>
-            {uploading ? 'ENVIANDO...' : 'NOVO UPLOAD'}
-            <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
-          </label>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2 space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between p-6 border-b border-slate-50 dark:border-slate-800/50">
-              <div className="space-y-1">
-                <h3 className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">folder_open</span>
-                  Arquivos Disponíveis
-                </h3>
-              </div>
-              <span className="bg-slate-100 dark:bg-slate-800 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest text-slate-500">{documents.length} itens</span>
-            </div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
+        <form onSubmit={handleSubmit} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="mb-4 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">Cadastrar Documento</h2>
 
-            {loading ? (
-              <div className="p-12 flex justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Nome para visualização</span>
+              <input
+                value={form.name}
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                placeholder="Ex: Procedimento de inspeção final"
+                className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Categoria</span>
+              <select
+                value={form.type}
+                onChange={(event) => setForm({ ...form, type: event.target.value as DocCategory })}
+                className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                {CATEGORIES.filter((item) => item.value !== 'Todas').map((category) => (
+                  <option key={category.value} value={category.value}>{category.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Origem / setor</span>
+              <input
+                value={form.origin}
+                onChange={(event) => setForm({ ...form, origin: event.target.value })}
+                placeholder="Ex: Qualidade, Produção, Engenharia"
+                className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Descrição</span>
+              <textarea
+                value={form.description}
+                onChange={(event) => setForm({ ...form, description: event.target.value })}
+                rows={4}
+                placeholder="Observações para ajudar a equipe a encontrar o documento"
+                className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+            </label>
+
+            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 p-4 text-center transition hover:border-primary dark:border-slate-700 dark:bg-slate-950">
+              <input
+                id="document-file"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.ods,.csv"
+                className="hidden"
+                onChange={(event) => setFile(event.target.files?.[0] || null)}
+              />
+              <span className="material-symbols-outlined mb-2 text-3xl text-primary">upload_file</span>
+              <span className="max-w-full truncate text-xs font-black uppercase tracking-widest text-slate-500">
+                {file ? file.name : 'Selecionar arquivo'}
+              </span>
+              {file && <span className="mt-1 text-[10px] font-bold text-slate-400">{fileSize(file.size)}</span>}
+            </label>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-primary/90 disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-base ${saving ? 'animate-spin' : ''}`}>
+                {saving ? 'progress_activity' : 'save'}
+              </span>
+              {saving ? 'Cadastrando...' : 'Cadastrar para Visualização'}
+            </button>
+          </div>
+        </form>
+
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_auto]">
+              <div className="relative">
+                <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400">search</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar por nome, origem ou descrição"
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-bold outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                />
               </div>
-            ) : documents.length === 0 ? (
+              <select
+                value={filterType}
+                onChange={(event) => setFilterType(event.target.value)}
+                className="h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                {CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>{category.label}</option>
+                ))}
+              </select>
+              <div className="flex h-11 items-center justify-center rounded-lg bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800">
+                {filteredDocs.length} itens
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            {loading ? (
+              <div className="flex justify-center p-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+              </div>
+            ) : filteredDocs.length === 0 ? (
               <div className="p-12 text-center text-slate-400">
-                <span className="material-symbols-outlined text-4xl mb-2">folder_off</span>
+                <span className="material-symbols-outlined mb-2 text-4xl">folder_off</span>
                 <p className="text-sm font-medium">Nenhum documento encontrado.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <table className="w-full min-w-[760px] text-left">
                   <thead>
-                    <tr className="bg-slate-50/50 dark:bg-slate-800/30 text-slate-400 font-bold border-b border-slate-50 dark:border-slate-800 uppercase text-[10px] tracking-widest">
-                      <th className="px-6 py-4">Data Registro</th>
-                      <th className="px-6 py-4">Arquivo / Tipo</th>
-                      <th className="px-6 py-4 text-center">Origem</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/30">
+                      <th className="px-5 py-4">Documento</th>
+                      <th className="px-5 py-4">Categoria</th>
+                      <th className="px-5 py-4">Cadastro</th>
+                      <th className="px-5 py-4 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                    {filteredDocs.map(doc => (
-                      <tr key={doc.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-[11px] font-bold text-slate-600 dark:text-slate-400">{new Date(doc.created_at).toLocaleDateString('pt-BR')}</p>
-                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{new Date(doc.created_at).toLocaleTimeString('pt-BR')}</p>
+                    {filteredDocs.map((doc) => (
+                      <tr key={doc.id} className="group transition hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-slate-100">{doc.name}</p>
+                          <p className="mt-1 max-w-xl truncate text-[11px] font-bold text-slate-400">{doc.description || doc.url}</p>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-xs font-black text-slate-900 dark:text-slate-200 group-hover:text-primary transition-colors uppercase tracking-tight">{doc.name}</span>
-                            <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{doc.type || 'Geral'} • {doc.size}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-widest text-slate-500">
-                            {doc.origin || 'Sistema'}
+                        <td className="px-5 py-4">
+                          <span className="rounded bg-primary/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-primary">
+                            {doc.type || 'Geral'}
                           </span>
+                          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">{doc.origin || 'Sistema'} • {doc.size || '-'}</p>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <p className="text-[11px] font-bold text-slate-600 dark:text-slate-400">{new Date(doc.created_at).toLocaleDateString('pt-BR')}</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{new Date(doc.created_at).toLocaleTimeString('pt-BR')}</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewerDoc(doc);
+                                logPrivacyEvent('document_view', 'documents', doc.id, { name: doc.name, type: doc.type });
+                              }}
+                              className="rounded-lg p-2 text-primary transition hover:bg-primary/10"
+                              aria-label="Visualizar"
+                              data-tooltip="Visualizar"
+                            >
+                              <span className="material-symbols-outlined text-lg">visibility</span>
+                            </button>
                             <a
-                              href={doc.url}
+                              href={doc.signed_url || doc.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-2 hover:bg-emerald-500/10 rounded-lg text-emerald-500 transition-colors"
-                              title="Baixar"
+                              onClick={() => logPrivacyEvent('document_open', 'documents', doc.id, { name: doc.name, type: doc.type })}
+                              className="rounded-lg p-2 text-emerald-500 transition hover:bg-emerald-500/10"
+                              aria-label="Abrir em nova aba"
+                              data-tooltip="Abrir"
                             >
-                              <span className="material-symbols-outlined text-lg">download</span>
+                              <span className="material-symbols-outlined text-lg">open_in_new</span>
                             </a>
                             <button
-                              onClick={() => handleDelete(doc.id, doc.url)}
-                              className="p-2 hover:bg-rose-500/10 rounded-lg text-rose-500 transition-colors"
-                              title="Excluir"
+                              type="button"
+                              onClick={() => handleDelete(doc)}
+                              className="rounded-lg p-2 text-rose-500 transition hover:bg-rose-500/10"
+                              aria-label="Excluir"
+                              data-tooltip="Excluir"
                             >
                               <span className="material-symbols-outlined text-lg">delete</span>
                             </button>
@@ -207,58 +381,65 @@ export default function DocumentationView() {
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-8 flex flex-col items-center justify-center text-center hover:border-primary/50 transition-all group cursor-pointer">
-            <div className={`size-12 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-4 group-hover:scale-110 transition-transform ${uploading ? 'animate-pulse' : ''}`}>
-              <span className="material-symbols-outlined text-2xl text-primary">{uploading ? 'cloud_upload' : 'folder_zip'}</span>
-            </div>
-            <h4 className="text-[10px] font-black text-slate-900 dark:text-white mb-2 uppercase tracking-widest">Área de Upload Rápido</h4>
-            <p className="text-[10px] text-slate-500 max-w-xs font-bold uppercase tracking-wide">Arraste arquivos ou clique no botão superior</p>
+      {viewerDoc && (
+        <DocumentViewer doc={viewerDoc} onClose={() => setViewerDoc(null)} />
+      )}
+    </div>
+  );
+}
+
+function DocumentViewer({ doc, onClose }: { doc: DocumentRecord; onClose: () => void }) {
+  const kind = fileKind(doc);
+  const displayUrl = doc.signed_url || doc.url;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <div className="flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-950 shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-800 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black uppercase tracking-tight text-white">{doc.name}</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{doc.type || 'Documento'} • {doc.origin || 'Sistema'}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={displayUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-9 items-center gap-2 rounded-lg bg-white/10 px-3 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-white/20"
+            >
+              <span className="material-symbols-outlined text-base">open_in_new</span>
+              Abrir
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex size-9 items-center justify-center rounded-lg bg-white/10 text-white transition hover:bg-white/20"
+              aria-label="Fechar"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-            <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest mb-6 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-xl">filter_alt</span>
-              Filtragem Avançada
-            </h4>
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria de Arquivo</label>
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-white transition-all outline-none px-4"
-                >
-                  <option value="Todas">TODOS OS TIPOS</option>
-                  <option value="Manual">MANUAIS TÉCNICOS</option>
-                  <option value="Procedimento">PROCEDIMENTOS OPERACIONAIS</option>
-                  <option value="Tecnico">DESENHOS TÉCNICOS</option>
-                </select>
-              </div>
+        <div className="min-h-0 flex-1 bg-slate-900">
+          {kind === 'image' ? (
+            <div className="flex h-full items-center justify-center p-4">
+              <img src={displayUrl} alt={doc.name} className="max-h-full max-w-full object-contain" />
             </div>
-          </div>
-
-          <div className="bg-slate-900 dark:bg-slate-950 rounded-3xl border border-slate-800 p-6 text-white relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-              <span className="material-symbols-outlined text-6xl">cloud</span>
+          ) : kind === 'pdf' ? (
+            <iframe title={doc.name} src={displayUrl} className="h-full w-full bg-white" />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+              <span className="material-symbols-outlined mb-3 text-5xl text-slate-500">draft</span>
+              <p className="text-sm font-black uppercase tracking-widest text-white">Pré-visualização indisponível para este formato</p>
+              <p className="mt-2 max-w-md text-xs font-medium text-slate-400">
+                Use o botão Abrir para visualizar ou baixar o arquivo no aplicativo compatível.
+              </p>
             </div>
-            <h4 className="text-[10px] font-black text-primary mb-6 flex items-center gap-2 uppercase tracking-widest relative">
-              <span className="material-symbols-outlined text-lg">cloud</span>
-              Status do Armazenamento
-            </h4>
-            <div className="space-y-4 relative">
-              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
-                <span className="text-slate-500">Uso do Disco</span>
-                <span className="text-white">Kingraf Cloud</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-primary w-[3%] rounded-full shadow-[0_0_10px_rgba(59,130,246,0.3)]"></div>
-              </div>
-              <p className="text-[9px] text-slate-500 text-center font-black uppercase tracking-widest">Sincronização Ativa</p>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

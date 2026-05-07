@@ -96,3 +96,152 @@ body {
 .animate-bounce-slow {
     animation: bounce-slow 2s infinite;
 }
+
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]::before,
+[data-tooltip]::after {
+    pointer-events: none;
+    position: absolute;
+    z-index: 80;
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+    transition: opacity 150ms ease, transform 150ms ease;
+}
+
+[data-tooltip]::before {
+    content: "";
+    left: 50%;
+    top: calc(100% + 6px);
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-bottom-color: #0f172a;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    left: 50%;
+    top: calc(100% + 15px);
+    width: max-content;
+    max-width: min(260px, 70vw);
+    transform: translateX(-50%) translateY(4px) scale(0.98);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    background: #0f172a;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+    color: #f8fafc;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1.25;
+    padding: 7px 10px;
+    text-align: center;
+    white-space: normal;
+}
+
+[data-tooltip]:hover::before,
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::before,
+[data-tooltip]:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+    transform: translateX(-50%) translateY(0) scale(1);
+}
+
+[data-tooltip=""]::before,
+[data-tooltip=""]::after {
+    display: none;
+}
+
+[data-tooltip-side="right"]::before {
+    left: calc(100% + 6px);
+    top: 50%;
+    margin-left: 0;
+    margin-top: -5px;
+    border-color: transparent;
+    border-right-color: #0f172a;
+}
+
+[data-tooltip-side="right"]::after {
+    left: calc(100% + 15px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-4px) scale(0.98);
+}
+
+[data-tooltip-side="right"]:hover::after,
+[data-tooltip-side="right"]:focus-visible::after {
+    transform: translateY(-50%) translateX(0) scale(1);
+}
+
+.dark [data-tooltip]::before {
+    border-bottom-color: #e2e8f0;
+}
+
+.dark [data-tooltip]::after {
+    border-color: rgba(15, 23, 42, 0.15);
+    background: #e2e8f0;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+    color: #0f172a;
+}
+
+.dark [data-tooltip-side="right"]::before {
+    border-bottom-color: transparent;
+    border-right-color: #e2e8f0;
+}
+
+.recharts-tooltip-wrapper {
+    outline: none !important;
+}
+
+.recharts-default-tooltip {
+    overflow: hidden !important;
+    border: 1px solid rgba(148, 163, 184, 0.22) !important;
+    border-radius: 10px !important;
+    background: rgba(15, 23, 42, 0.96) !important;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.26) !important;
+    color: #f8fafc !important;
+    padding: 10px 12px !important;
+}
+
+.recharts-tooltip-label {
+    margin-bottom: 6px !important;
+    color: #cbd5e1 !important;
+    font-size: 11px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
+}
+
+.recharts-tooltip-item {
+    color: #f8fafc !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    padding: 2px 0 !important;
+}
+
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-separator,
+.recharts-tooltip-item-value,
+.recharts-tooltip-item-unit {
+    color: inherit !important;
+}
+
+.dark .recharts-default-tooltip {
+    border-color: rgba(15, 23, 42, 0.18) !important;
+    background: rgba(226, 232, 240, 0.96) !important;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3) !important;
+    color: #0f172a !important;
+}
+
+.dark .recharts-tooltip-label {
+    color: #475569 !important;
+}
+
+.dark .recharts-tooltip-item {
+    color: #0f172a !important;
+}

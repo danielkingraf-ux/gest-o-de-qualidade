@@ -9,15 +9,14 @@ import AdminView from './views/AdminView';
 import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import ShiftLogView from './views/ShiftLogView';
-import FinishingView from './views/FinishingView';
 import FinishingAnalysisView from './views/FinishingAnalysisView';
 import ReportsView from './views/ReportsView';
 import HistoricalUploadView from './views/HistoricalUploadView';
 import SupervisorView from './views/SupervisorView';
-import OrdersView from './views/OrdersView';
-import OPTraceView from './views/OPTraceView';
+import LgpdView from './views/LgpdView';
 import { authService } from './services/authService';
 import ChatPopup from './components/ChatPopup';
+import PrivacyNoticeModal from './components/PrivacyNoticeModal';
 import { UserProvider, useUser } from './contexts/UserContext';
 
 
@@ -106,19 +105,17 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   }, [location.pathname]);
 
   const allMenuItems = [
-    { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['analista', 'supervisor'] },
-    { path: '/inspections', label: 'Inspeções', icon: 'assignment_turned_in', roles: ['analista', 'supervisor'] },
-    { path: '/finishing', label: 'Laudo de Acabamento', icon: 'verified', roles: ['analista', 'supervisor'] },
-    { path: '/finishing-analysis', label: 'Análise de Amostragem', icon: 'table_chart', roles: ['analista', 'supervisor'] },
-    { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['analista', 'supervisor'] },
+    { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['supervisor'] },
+    { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['analista', 'supervisor'] },
+    { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['analista', 'supervisor'] },
+    { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['supervisor'] },
     { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true, roles: ['analista', 'supervisor'] },
-    { path: '/orders', label: 'Ordens de Produção', icon: 'receipt_long', roles: ['analista', 'supervisor'] },
-    { path: '/op-trace', label: 'Rastreio por OP', icon: 'route', roles: ['analista', 'supervisor'] },
     { path: '/records', label: 'Registros', icon: 'analytics', roles: ['analista', 'supervisor'] },
-    { path: '/historical-import', label: 'Importação ODS', icon: 'history', roles: ['supervisor'] },
-    { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['supervisor'] },
+    { path: '/historical-import', label: 'Importar Histórico', icon: 'history', roles: ['supervisor'] },
+    { path: '/supervisor', label: 'Aprovações', icon: 'rule', roles: ['supervisor'] },
     { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['supervisor'] },
     { path: '/docs', label: 'Documentação', icon: 'description', roles: ['analista', 'supervisor'] },
+    { path: '/lgpd', label: 'LGPD', icon: 'verified_user', roles: ['supervisor'] },
   ];
 
   const userRole = profile?.role ?? 'analista';
@@ -167,7 +164,9 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
                   onOpenChat();
                   onCloseMobile();
                 }}
-                title={isCollapsed ? item.label : ''}
+                aria-label={item.label}
+                data-tooltip={isCollapsed ? item.label : ''}
+                data-tooltip-side="right"
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center' : ''}`}
               >
                 <div className="relative flex items-center justify-center">
@@ -184,7 +183,9 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
               <Link
                 key={item.path}
                 to={item.path}
-                title={isCollapsed ? item.label : ''}
+                aria-label={item.label}
+                data-tooltip={isCollapsed ? item.label : ''}
+                data-tooltip-side="right"
                 onClick={onCloseMobile}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''} ${isActive
                   ? 'bg-primary/10 text-primary'
@@ -209,7 +210,9 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
 
         <button
           onClick={toggleTheme}
-          title={isCollapsed ? `Modo ${theme === 'dark' ? 'Claro' : 'Escuro'}` : ''}
+          aria-label={`Modo ${theme === 'dark' ? 'Claro' : 'Escuro'}`}
+          data-tooltip={isCollapsed ? `Modo ${theme === 'dark' ? 'Claro' : 'Escuro'}` : ''}
+          data-tooltip-side="right"
           className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors w-full group ${isCollapsed ? 'justify-center' : ''}`}
         >
           <div className="flex items-center gap-3">
@@ -227,7 +230,9 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
 
         <button
           onClick={handleLogout}
-          title={isCollapsed ? 'Sair do Sistema' : ''}
+          aria-label="Sair do Sistema"
+          data-tooltip={isCollapsed ? 'Sair do Sistema' : ''}
+          data-tooltip-side="right"
           className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-500 hover:text-rose-600 transition-colors w-full ${isCollapsed ? 'justify-center' : ''}`}
         >
           <span className="material-symbols-outlined">logout</span>
@@ -251,7 +256,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   );
 };
 
-const Header = ({ onOpenSidebar }: { onOpenSidebar: () => void }) => {
+const Header = ({ onOpenSidebar, unreadCount, onOpenChat }: { onOpenSidebar: () => void; unreadCount: number; onOpenChat: () => void }) => {
   const [now, setNow] = React.useState(new Date());
 
   React.useEffect(() => {
@@ -260,37 +265,62 @@ const Header = ({ onOpenSidebar }: { onOpenSidebar: () => void }) => {
   }, []);
 
   return (
-    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 md:px-8 py-3 transition-colors duration-300">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onOpenSidebar}
-          className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors md:hidden"
-          aria-label="Abrir menu"
-        >
-          <span className="material-symbols-outlined">menu</span>
-        </button>
-        <h2 className="text-lg font-bold tracking-tight text-slate-800 dark:text-white">Qualidade em Tempo Real</h2>
-        <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 animate-pulse">
-          Ativo
-        </span>
-      </div>
-      <div className="flex items-center gap-3">
-        <button className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-          <span className="material-symbols-outlined">notifications</span>
-        </button>
-        <button className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-          <span className="material-symbols-outlined">help</span>
-        </button>
-        <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-2"></div>
-        <div className="text-right">
-          <p className="text-xs font-bold leading-none capitalize text-slate-700 dark:text-slate-300">
-            {now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
-          </p>
-          <p className="text-[10px] text-slate-500 font-medium">
-            {now.toLocaleTimeString('pt-BR')}
-          </p>
+    <header className="sticky top-0 z-10 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md transition-colors duration-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenSidebar}
+            className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors md:hidden"
+            aria-label="Abrir menu"
+          >
+            <span className="material-symbols-outlined">menu</span>
+          </button>
+          <h2 className="text-lg font-bold tracking-tight text-slate-800 dark:text-white">Qualidade em Tempo Real</h2>
+          <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 animate-pulse">
+            Ativo
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenChat}
+            className={`relative size-10 flex items-center justify-center rounded-lg transition-colors ${unreadCount > 0
+              ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 animate-pulse'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            aria-label="Abrir Chat da Qualidade"
+            data-tooltip="Abrir Chat da Qualidade"
+          >
+            <span className="material-symbols-outlined">notifications</span>
+            {unreadCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <button className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+            <span className="material-symbols-outlined">help</span>
+          </button>
+          <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-2"></div>
+          <div className="text-right">
+            <p className="text-xs font-bold leading-none capitalize text-slate-700 dark:text-slate-300">
+              {now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+            <p className="text-[10px] text-slate-500 font-medium">
+              {now.toLocaleTimeString('pt-BR')}
+            </p>
+          </div>
         </div>
       </div>
+      {unreadCount > 0 && (
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="flex w-full items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-center text-[11px] font-black uppercase tracking-widest text-white transition hover:bg-amber-600"
+        >
+          <span className="material-symbols-outlined text-base">mark_chat_unread</span>
+          Há {unreadCount} mensagem{unreadCount > 1 ? 's' : ''} do Chat da Qualidade para o turno visualizar
+        </button>
+      )}
     </header>
   );
 };
@@ -353,7 +383,7 @@ export default function App() {
 }
 
 function AppShell({ session }: { session: any }) {
-  const { isSupervisor, loading: profileLoading } = useUser();
+  const { isSupervisor, profile, loading: profileLoading } = useUser();
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingRequests, setPendingRequests] = useState(0);
@@ -439,6 +469,12 @@ function AppShell({ session }: { session: any }) {
     );
   }
 
+  const userRole = profile?.role ?? 'analista';
+  const fallbackPath = isSupervisor ? '/' : '/inspections';
+  const RoleRoute = ({ roles, children }: { roles: string[]; children: React.ReactElement }) => (
+    roles.includes(userRole) ? children : <Navigate to={fallbackPath} replace />
+  );
+
   return (
     <HashRouter>
       <div className={`flex h-full w-full bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300 ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -460,28 +496,70 @@ function AppShell({ session }: { session: any }) {
           />
         )}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Header onOpenSidebar={() => setIsMobileSidebarOpen(true)} />
+          <Header
+            onOpenSidebar={() => setIsMobileSidebarOpen(true)}
+            unreadCount={unreadCount}
+            onOpenChat={() => setIsChatOpen(true)}
+          />
           <main className="flex-1 overflow-y-auto">
             <Routes>
-              <Route path="/" element={<DashboardView />} />
-              <Route path="/inspections" element={<InspectionView />} />
-              <Route path="/finishing" element={<FinishingView />} />
-              <Route path="/finishing-analysis" element={<FinishingAnalysisView />} />
-              <Route path="/reports" element={<ReportsView />} />
+              <Route path="/" element={
+                <RoleRoute roles={['supervisor']}>
+                  <DashboardView />
+                </RoleRoute>
+              } />
+              <Route path="/inspections" element={
+                <RoleRoute roles={['analista', 'supervisor']}>
+                  <InspectionView />
+                </RoleRoute>
+              } />
+              <Route path="/finishing-analysis" element={
+                <RoleRoute roles={['analista', 'supervisor']}>
+                  <FinishingAnalysisView />
+                </RoleRoute>
+              } />
+              <Route path="/reports" element={
+                <RoleRoute roles={['supervisor']}>
+                  <ReportsView />
+                </RoleRoute>
+              } />
               <Route path="/shift-log" element={<ShiftLogView />} />
-              <Route path="/orders" element={<OrdersView />} />
-              <Route path="/op-trace" element={<OPTraceView />} />
-              <Route path="/records" element={<RecordsView />} />
-              <Route path="/docs" element={<DocumentationView />} />
-              {/* Supervisor-only routes */}
-              <Route path="/historical-import" element={isSupervisor ? <HistoricalUploadView /> : <Navigate to="/" replace />} />
-              <Route path="/supervisor" element={isSupervisor ? <SupervisorView /> : <Navigate to="/" replace />} />
-              <Route path="/admin" element={isSupervisor ? <AdminView /> : <Navigate to="/" replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="/records" element={
+                <RoleRoute roles={['analista', 'supervisor']}>
+                  <RecordsView />
+                </RoleRoute>
+              } />
+              <Route path="/docs" element={
+                <RoleRoute roles={['analista', 'supervisor']}>
+                  <DocumentationView />
+                </RoleRoute>
+              } />
+              <Route path="/lgpd" element={
+                <RoleRoute roles={['supervisor']}>
+                  <LgpdView />
+                </RoleRoute>
+              } />
+              <Route path="/historical-import" element={
+                <RoleRoute roles={['supervisor']}>
+                  <HistoricalUploadView />
+                </RoleRoute>
+              } />
+              <Route path="/supervisor" element={
+                <RoleRoute roles={['supervisor']}>
+                  <SupervisorView />
+                </RoleRoute>
+              } />
+              <Route path="/admin" element={
+                <RoleRoute roles={['supervisor']}>
+                  <AdminView />
+                </RoleRoute>
+              } />
+              <Route path="*" element={<Navigate to={fallbackPath} replace />} />
             </Routes>
           </main>
         </div>
         <ChatPopup isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+        <PrivacyNoticeModal userId={session.user.id} />
       </div>
     </HashRouter>
   );

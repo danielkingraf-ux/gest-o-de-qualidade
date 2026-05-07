@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
-import { ProcessType, Analyst, InspectionStatus, Order } from '../types';
+import { ProcessType, Analyst, InspectionStatus, Order, Machine, Operator } from '../types';
+import { useUser } from '../contexts/UserContext';
 
 const DEFECT_COLUMNS = [
     { key: 'manchas', label: 'Manchas', icon: 'texture' },
@@ -76,11 +77,16 @@ const DefectCounter: React.FC<{
 
 export default function FinishingAnalysisView() {
     const { showToast } = useToast();
+    const { profile } = useUser();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [machines, setMachines] = useState<Machine[]>([]);
+    const [operators, setOperators] = useState<Operator[]>([]);
     const [analysts, setAnalysts] = useState<Analyst[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [selectedOrderId, setSelectedOrderId] = useState('');
+    const [selectedMachineId, setSelectedMachineId] = useState('');
+    const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
     // Filters
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -104,11 +110,21 @@ export default function FinishingAnalysisView() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [aRes, ordRes] = await Promise.all([
+            const [mRes, oRes, aRes, ordRes] = await Promise.all([
+                supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
+                supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado', 'ambos']).order('name'),
                 supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento', 'ambos']).order('name'),
                 supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
             ]);
 
+            if (mRes.data) {
+                setMachines(mRes.data);
+                if (!selectedMachineId && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id);
+            }
+            if (oRes.data) {
+                setOperators(oRes.data);
+                if (!selectedOperatorId && oRes.data.length > 0) setSelectedOperatorId(oRes.data[0].id);
+            }
             if (aRes.data) setAnalysts(aRes.data);
             if (ordRes.data) setOrders(ordRes.data);
         } catch (err) {
@@ -117,7 +133,7 @@ export default function FinishingAnalysisView() {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedMonth, selectedYear, showToast]);
+    }, [selectedMachineId, selectedMonth, selectedOperatorId, selectedYear, showToast]);
 
     useEffect(() => {
         fetchData();
@@ -125,8 +141,8 @@ export default function FinishingAnalysisView() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedOrderId || !formData.laudo_numero || !formData.analyst_id) {
-            showToast('OP, Nº do Laudo e Analista são obrigatórios', 'warning');
+        if (!selectedOrderId || !selectedMachineId || !selectedOperatorId || !formData.laudo_numero || !formData.analyst_id) {
+            showToast('OP, Máquina, Operador, Nº do Laudo e Analista são obrigatórios', 'warning');
             return;
         }
         const selectedOrder = orders.find(o => o.id === selectedOrderId);
@@ -136,16 +152,22 @@ export default function FinishingAnalysisView() {
             const dataToSave = {
                 op: selectedOrder?.op ?? '',
                 order_id: selectedOrderId,
+                machine_id: selectedMachineId,
+                operator_id: selectedOperatorId,
                 analyst_id: formData.analyst_id,
                 status: InspectionStatus.APPROVED,
                 samples_count: formData.amostragem,
                 process_type: ProcessType.ACABAMENTO,
                 created_at: new Date().toISOString(),
+                created_by_user_id: profile?.user_id ?? null,
                 observations: JSON.stringify({
                     is_spreadsheet_analysis: true,
                     laudo_numero: formData.laudo_numero,
                     num_analises: formData.num_analises,
                     defects: formData.defects,
+                    all_operator_ids: [selectedOperatorId],
+                    all_analyst_ids: [formData.analyst_id],
+                    process_area: 'produto_acabado',
                     month: months[selectedMonth],
                     year: selectedYear
                 })
@@ -156,6 +178,8 @@ export default function FinishingAnalysisView() {
 
             showToast('Análise salva com sucesso!', 'success');
             setSelectedOrderId('');
+            setSelectedMachineId(machines[0]?.id ?? '');
+            setSelectedOperatorId(operators[0]?.id ?? '');
             setFormData({
                 op: '',
                 laudo_numero: '',
@@ -184,10 +208,10 @@ export default function FinishingAnalysisView() {
             {/* Header Compact */}
             <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="space-y-1">
-                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Análises de Produto Acabado</h1>
+                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Processo de Produto Acabado</h1>
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
                         <span className="size-1.5 rounded-full bg-violet-500 animate-pulse"></span>
-                        Qualidade • {months[selectedMonth]} / {selectedYear}
+                        Análise de amostragem • {months[selectedMonth]} / {selectedYear}
                     </p>
                 </div>
                 <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
@@ -211,7 +235,7 @@ export default function FinishingAnalysisView() {
             {/* Quick Add Form Section Compact */}
             <section className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <form onSubmit={handleSave} className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
                         <div className="space-y-1">
                             <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Ordem Proc. (OP)</label>
                             <select
@@ -221,6 +245,28 @@ export default function FinishingAnalysisView() {
                             >
                                 <option value="">Selecionar OP...</option>
                                 {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Máquina</label>
+                            <select
+                                value={selectedMachineId}
+                                onChange={e => setSelectedMachineId(e.target.value)}
+                                className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
+                            >
+                                <option value="">Selecionar...</option>
+                                {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Operador</label>
+                            <select
+                                value={selectedOperatorId}
+                                onChange={e => setSelectedOperatorId(e.target.value)}
+                                className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
+                            >
+                                <option value="">Selecionar...</option>
+                                {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1">
@@ -311,7 +357,7 @@ export default function FinishingAnalysisView() {
         className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] tracking-widest hover:bg-violet-700 transition-all shadow-xl shadow-violet-500/20 flex items-center justify-center gap-2 disabled:opacity-50 uppercase"
     >
         {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">add_task</span>}
-        SALVAR LAUDO
+        SALVAR ANÁLISE
     </button>
 </footer>
         </div>

@@ -302,7 +302,8 @@ export default function OrdersView() {
                                             <button
                                                 onClick={() => setEditing(o)}
                                                 className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all"
-                                                title="Editar"
+                                                aria-label="Editar"
+                                                data-tooltip="Editar"
                                             >
                                                 <span className="material-symbols-outlined text-lg">edit</span>
                                             </button>
@@ -310,7 +311,8 @@ export default function OrdersView() {
                                                 <button
                                                     onClick={() => handleDelete(o.id)}
                                                     className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                                                    title="Excluir"
+                                                    aria-label="Excluir"
+                                                    data-tooltip="Excluir"
                                                 >
                                                     <span className="material-symbols-outlined text-lg">delete</span>
                                                 </button>

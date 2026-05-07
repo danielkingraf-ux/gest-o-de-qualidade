@@ -75,11 +75,9 @@ export default function LoginView() {
                     </div>
 
                     <div className="flex items-center justify-between px-1">
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="checkbox" className="size-4 rounded border-slate-300 text-primary focus:ring-primary transition-all cursor-pointer" />
-                            <span className="text-xs font-medium text-slate-500 group-hover:text-slate-700 transition-colors">Lembrar acesso</span>
-                        </label>
-                        <a href="#" className="text-xs font-bold text-primary hover:text-primary/80 transition-colors">Esqueceu a senha?</a>
+                        <p className="text-[11px] font-medium leading-relaxed text-slate-500">
+                            Acesso individual. O uso é registrado para segurança, auditoria e conformidade LGPD.
+                        </p>
                     </div>
 
                     <button
