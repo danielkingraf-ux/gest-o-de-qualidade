@@ -154,17 +154,60 @@ export default function FinishingAnalysisView() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedOrderId || !selectedMachineId || !selectedOperatorId || !formData.laudo_numero || !formData.analyst_id) {
+        const typedOp = newOrder.op.trim().toUpperCase();
+        if ((!selectedOrderId && !typedOp) || !selectedMachineId || !selectedOperatorId || !formData.laudo_numero || !formData.analyst_id) {
             showToast('OP, Máquina, Operador, Nº do Laudo e Analista são obrigatórios', 'warning');
             return;
         }
-        const selectedOrder = orders.find(o => o.id === selectedOrderId);
+        let selectedOrder = orders.find(o => o.id === selectedOrderId) || null;
+        let orderId = selectedOrderId;
 
         setIsSaving(true);
         try {
+            if (!selectedOrder && typedOp) {
+                selectedOrder = orders.find(o => o.op.toUpperCase() === typedOp) || null;
+
+                if (!selectedOrder) {
+                    const payload = {
+                        op: typedOp,
+                        cliente: newOrder.cliente.trim(),
+                        produto: newOrder.produto.trim(),
+                        qtd_total: Math.max(0, Number(newOrder.qtd_total) || 0),
+                        status: 'em_producao',
+                        created_by_user_id: profile?.user_id ?? null
+                    };
+
+                    const { data: created, error: createError } = await supabase
+                        .from('orders')
+                        .insert([payload])
+                        .select()
+                        .single();
+
+                    if (createError) {
+                        const { data: existing, error: findError } = await supabase
+                            .from('orders')
+                            .select('*')
+                            .eq('op', typedOp)
+                            .single();
+
+                        if (findError || !existing) throw createError;
+                        selectedOrder = existing;
+                    } else {
+                        selectedOrder = created;
+                    }
+                }
+
+                orderId = selectedOrder?.id ?? '';
+            }
+
+            if (!selectedOrder || !orderId) {
+                showToast('Não foi possível identificar a OP', 'error');
+                return;
+            }
+
             const dataToSave = {
-                op: selectedOrder?.op ?? '',
-                order_id: selectedOrderId,
+                op: selectedOrder.op,
+                order_id: orderId,
                 machine_id: selectedMachineId,
                 operator_id: selectedOperatorId,
                 analyst_id: formData.analyst_id,
@@ -192,6 +235,7 @@ export default function FinishingAnalysisView() {
             showToast('Análise salva com sucesso!', 'success');
             setSelectedOrderId('');
             setOrderFilter('');
+            setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
             setSelectedMachineId(machines[0]?.id ?? '');
             setSelectedOperatorId(operators[0]?.id ?? '');
             setFormData({
