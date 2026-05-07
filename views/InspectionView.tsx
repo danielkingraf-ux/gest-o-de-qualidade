@@ -61,7 +61,7 @@ const getStatusText = (status: InspectionStatus) => {
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR'); // v2
 
-type OccurrenceEntry = { folha: number | null; faca: number | null };
+type FacaCount = Record<number, number>;
 
 const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
   { key: 'manchas', label: 'Manchas', icon: 'texture' },
@@ -73,95 +73,118 @@ const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
   { key: 'texto_fechado', label: 'Texto Fechado', icon: 'block' },
 ];
 
-const emptyOccurrences = (): Record<string, OccurrenceEntry[]> =>
-  Object.fromEntries(UNIT_DEFECT_KEYS.map(d => [d.key, [] as OccurrenceEntry[]]));
+const emptyFacaCounts = (): Record<string, FacaCount> =>
+  Object.fromEntries(UNIT_DEFECT_KEYS.map(d => [d.key, {} as FacaCount]));
 
-const DetailedDefectCounter: React.FC<{
+const facaTotal = (fc: FacaCount) =>
+  Object.values(fc).reduce((s, v) => s + (Number(v) || 0), 0);
+
+const FacaDefectCounter: React.FC<{
   name: string;
   icon: string;
-  occurrences: OccurrenceEntry[];
+  facaCounts: FacaCount;
   unidadesPorFolha: number;
-  onAdd: (entry: OccurrenceEntry) => void;
-  onRemove: (index: number) => void;
-}> = ({ name, icon, occurrences, unidadesPorFolha, onAdd, onRemove }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [folhaInput, setFolhaInput] = useState('');
-  const [facaInput, setFacaInput] = useState('1');
-  const count = occurrences.length;
+  onUpdate: (faca: number, count: number) => void;
+}> = ({ name, icon, facaCounts, unidadesPorFolha, onUpdate }) => {
+  const [modal, setModal] = useState<{ faca: number; value: string } | null>(null);
+  const total = facaTotal(facaCounts);
 
-  const addPositioned = () => {
-    const folha = folhaInput.trim() ? Number(folhaInput) : null;
-    const faca = Number(facaInput) || 1;
-    onAdd({ folha, faca });
-    setFolhaInput('');
+  const openModal = (faca: number) => {
+    setModal({ faca, value: String(facaCounts[faca] ?? 0) });
+  };
+
+  const confirmModal = () => {
+    if (!modal) return;
+    onUpdate(modal.faca, Math.max(0, Number(modal.value) || 0));
+    setModal(null);
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 overflow-hidden">
-      <div className="flex items-center gap-2 p-3">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-2.5">
         <span className="material-symbols-outlined text-slate-400 text-base">{icon}</span>
-        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 flex-1 min-w-0 truncate">{name}</span>
-        <span className={`text-sm font-black w-7 text-center tabular-nums ${count > 0 ? 'text-rose-600' : 'text-slate-800 dark:text-white'}`}>{count}</span>
-        <button
-          type="button"
-          onClick={() => count > 0 && onRemove(count - 1)}
-          disabled={count === 0}
-          className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs disabled:opacity-40"
-        >-</button>
-        <button
-          type="button"
-          onClick={() => onAdd({ folha: null, faca: null })}
-          className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs"
-        >+</button>
-        <button
-          type="button"
-          onClick={() => setExpanded(e => !e)}
-          className={`size-6 rounded flex items-center justify-center transition-colors ${expanded ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
-        >
-          <span className="material-symbols-outlined text-sm">{expanded ? 'expand_less' : 'expand_more'}</span>
-        </button>
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 flex-1 truncate">{name}</span>
+        {total > 0 && (
+          <span className="text-[10px] font-black text-white bg-rose-500 rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+            {total}
+          </span>
+        )}
       </div>
-      {expanded && (
-        <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2">
-          {count > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {occurrences.map((occ, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
-                >
-                  {occ.folha !== null ? `F${occ.folha}·${occ.faca}` : '—'}
-                  <button type="button" onClick={() => onRemove(i)} className="text-rose-400 hover:text-rose-600 leading-none">×</button>
+
+      {/* Grid de facas */}
+      <div className="flex flex-wrap gap-1.5">
+        {Array.from({ length: unidadesPorFolha }, (_, i) => i + 1).map(faca => {
+          const count = facaCounts[faca] ?? 0;
+          const active = count > 0;
+          return (
+            <button
+              key={faca}
+              type="button"
+              onClick={() => openModal(faca)}
+              className={`relative flex flex-col items-center justify-center w-11 h-11 rounded-xl border-2 transition-all ${
+                active
+                  ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/40 text-rose-700'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-400 hover:border-primary/40 hover:bg-primary/5'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[13px] leading-none">inventory_2</span>
+              <span className="text-[9px] font-black leading-none mt-0.5">{faca}</span>
+              {active && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-3.5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center px-0.5 leading-none">
+                  {count}
                 </span>
-              ))}
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Modal */}
+      {modal && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+          onClick={() => setModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xl w-72"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-base">inventory_2</span>
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Faca {modal.faca}</p>
+                <p className="text-sm font-black text-slate-800 dark:text-white">{name}</p>
+              </div>
             </div>
-          )}
-          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Quantidade de defeitos nesta posição</label>
             <input
               type="number"
-              min={1}
-              placeholder="Nº Folha"
-              value={folhaInput}
-              onChange={(e) => setFolhaInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addPositioned()}
-              className="h-8 w-24 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20"
+              min={0}
+              value={modal.value}
+              onChange={e => setModal(prev => prev ? { ...prev, value: e.target.value } : prev)}
+              onKeyDown={e => e.key === 'Enter' && confirmModal()}
+              autoFocus
+              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-primary/20 text-center"
             />
-            <select
-              value={facaInput}
-              onChange={(e) => setFacaInput(e.target.value)}
-              className="h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none"
-            >
-              {Array.from({ length: unidadesPorFolha }, (_, i) => i + 1).map(n => (
-                <option key={n} value={n}>Faca {n}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={addPositioned}
-              className="h-8 px-3 rounded-lg bg-primary text-white text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-colors"
-            >
-              + Registrar
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setModal(null)}
+                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal}
+                className="flex-1 h-10 rounded-xl bg-primary text-white text-xs font-black hover:bg-primary/90 transition-colors"
+              >
+                Confirmar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -205,7 +228,7 @@ export default function InspectionView() {
     defects: { cor: 0 } as Record<string, number>,
     metrics: { rework: 0, samples: 5 },
   });
-  const [offsetOccurrences, setOffsetOccurrences] = useState<Record<string, OccurrenceEntry[]>>(emptyOccurrences);
+  const [offsetFacaCounts, setOffsetFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts);
 
   const [uvData, setUvData] = useState({
     process: 'APPLIED' as 'APPLIED' | 'NA',
@@ -249,7 +272,7 @@ export default function InspectionView() {
     if (activeTab === ProcessType.OFFSET) {
       const colorFolhas = Number(offsetData.defects.cor) || 0;
       const colorUnidades = colorFolhas * unidadesPorFolha;
-      const occurrenceCount = (Object.values(offsetOccurrences) as OccurrenceEntry[][]).reduce((sum, occ) => sum + occ.length, 0);
+      const occurrenceCount = (Object.values(offsetFacaCounts) as FacaCount[]).reduce((sum, fc) => sum + facaTotal(fc), 0);
       const unitFailures = occurrenceCount + offsetData.metrics.rework;
       const totalFailures = colorUnidades + unitFailures;
       const colorRate = productionMetrics.printedSheets > 0 ? (colorFolhas / productionMetrics.printedSheets) * 100 : 0;
@@ -262,7 +285,7 @@ export default function InspectionView() {
       : sumDefects(hotStampingData.defects) + hotStampingData.metrics.rejected;
     const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
     return { colorFolhas: 0, colorUnidades: 0, unitFailures, totalFailures: unitFailures, colorRate: 0, unitRate, combinedRate: unitRate };
-  }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, offsetOccurrences, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected, unidadesPorFolha]);
+  }, [activeTab, hotStampingData.defects, hotStampingData.metrics.rejected, offsetData.defects, offsetData.metrics.rework, offsetFacaCounts, productionMetrics.printedSheets, realProducedUnits, uvData.defects, uvData.metrics.rejected, unidadesPorFolha]);
 
   const saldo = useMemo(() => {
     const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
@@ -344,7 +367,7 @@ export default function InspectionView() {
 
   const resetAll = useCallback(() => {
     setOffsetData({ defects: { cor: 0 }, metrics: { rework: 0, samples: 5 } });
-    setOffsetOccurrences(emptyOccurrences());
+    setOffsetFacaCounts(emptyFacaCounts());
     setUvData({ process: 'APPLIED', defects: { cor: 0, registro: 0, falha_verniz: 0, acabamento_aspero: 0 }, metrics: { rejected: 0, samples: 5 } });
     setHotStampingData({ process: 'APPLIED', defects: { falha: 0, enchimento_texto: 0, ausencia: 0 }, metrics: { rejected: 0, samples: 5 } });
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
@@ -424,9 +447,9 @@ export default function InspectionView() {
       };
 
       if (activeTab === ProcessType.OFFSET) {
-        const defeitosUnidade: Record<string, { count: number; occurrences: OccurrenceEntry[] }> = {};
-        for (const [k, occ] of Object.entries(offsetOccurrences) as [string, OccurrenceEntry[]][]) {
-          defeitosUnidade[k] = { count: occ.length, occurrences: occ };
+        const defeitosUnidade: Record<string, { count: number; por_faca: FacaCount }> = {};
+        for (const [k, fc] of Object.entries(offsetFacaCounts) as [string, FacaCount][]) {
+          defeitosUnidade[k] = { count: facaTotal(fc), por_faca: fc };
         }
         dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
@@ -533,7 +556,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, offsetOccurrences, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, activeFailureCount, failureRate, activeTab, offsetData, offsetFacaCounts, uvData, hotStampingData, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -841,14 +864,16 @@ export default function InspectionView() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                 {UNIT_DEFECT_KEYS.map(d => (
-                  <DetailedDefectCounter
+                  <FacaDefectCounter
                     key={d.key}
                     name={d.label}
                     icon={d.icon}
-                    occurrences={offsetOccurrences[d.key] ?? []}
+                    facaCounts={offsetFacaCounts[d.key] ?? {}}
                     unidadesPorFolha={unidadesPorFolha}
-                    onAdd={(entry) => setOffsetOccurrences(prev => ({ ...prev, [d.key]: [...(prev[d.key] ?? []), entry] }))}
-                    onRemove={(idx) => setOffsetOccurrences(prev => ({ ...prev, [d.key]: prev[d.key].filter((_, i) => i !== idx) }))}
+                    onUpdate={(faca, count) => setOffsetFacaCounts(prev => ({
+                      ...prev,
+                      [d.key]: { ...prev[d.key], [faca]: count }
+                    }))}
                   />
                 ))}
               </div>
