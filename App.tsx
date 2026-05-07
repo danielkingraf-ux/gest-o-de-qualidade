@@ -131,7 +131,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
 
   return (
     <aside
-      className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 relative z-40 fixed md:static inset-y-0 left-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+      className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col p-4 shrink-0 h-full transition-all duration-300 relative z-40 fixed md:static inset-y-0 left-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
       aria-hidden={!isMobileOpen ? true : undefined}
     >
       {/* Collapse Toggle Button */}
@@ -144,15 +144,15 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
         </span>
       </button>
 
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-center px-4 py-6 border-b border-slate-100 dark:border-slate-800/50 mb-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex shrink-0 items-center justify-center px-4 py-6 border-b border-slate-100 dark:border-slate-800/50">
           {isCollapsed ? (
             <img src="/logo-symbol.png" alt="K" className="h-20 w-20 object-contain transition-all" />
           ) : (
             <img src="/logo-full.png" alt="Kingraf" className="h-12 w-auto object-contain transition-all" />
           )}
         </div>
-        <nav className="flex flex-col gap-1">
+        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
             const badgeCount = (item as any).badge;
@@ -206,7 +206,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
           })}
         </nav>
       </div>
-      <div className="flex flex-col gap-4 border-t border-slate-200 dark:border-slate-800 pt-4">
+      <div className="mt-4 flex shrink-0 flex-col gap-4 border-t border-slate-200 dark:border-slate-800 pt-4">
 
         <button
           onClick={toggleTheme}
