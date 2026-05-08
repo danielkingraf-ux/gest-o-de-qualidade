@@ -406,7 +406,7 @@ export default function SupervisorView() {
                         {new Intl.NumberFormat('pt-BR').format(reimp.quantidade_unid)} unid.
                       </span>
                     </div>
-                    <p className="text-xs font-medium text-slate-500">{reimp.cliente} · {reimp.produto}</p>
+                    <p className="text-xs font-medium text-slate-500">{reimp.op}</p>
                     {reimp.operator_name && (
                       <p className="text-xs text-slate-500">
                         <span className="font-black">Operador:</span> {reimp.operator_name}
@@ -597,8 +597,7 @@ export default function SupervisorView() {
                   <tr key={op.key} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
                     <td className="py-3 font-black">{op.op}</td>
                     <td className="py-3">
-                      <p>{op.cliente}</p>
-                      <p className="text-xs text-slate-400">{op.produto}</p>
+                      <p className="text-xs text-slate-400">—</p>
                     </td>
                     <td className="py-3">
                       <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${STATUS_META[op.status].color}`}>

@@ -241,7 +241,7 @@ export default function FinishingView() {
                             className="w-full h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-bold text-sm"
                         >
                             <option value="">Selecionar OP...</option>
-                            {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+                            {orders.map(o => <option key={o.id} value={o.id}>{o.op}</option>)}
                         </select>
                     </div>
                     <div className="space-y-1">

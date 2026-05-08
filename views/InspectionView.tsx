@@ -667,12 +667,10 @@ export default function InspectionView() {
               className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-1 focus:ring-primary/20"
             >
               <option value="">Selecionar OP...</option>
-              {orders.map(o => <option key={o.id} value={o.id}>{o.op} — {o.cliente}</option>)}
+              {orders.map(o => <option key={o.id} value={o.id}>{o.op}</option>)}
             </select>
             <div className="grid grid-cols-2 gap-2">
-              <input value={newOrder.op} onChange={(e) => { setSelectedOrderId(''); updateNewOrder('op', e.target.value); }} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-black outline-none focus:ring-1 focus:ring-primary/20" placeholder="Nova OP" />
-              <input value={newOrder.cliente} onChange={(e) => updateNewOrder('cliente', e.target.value)} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20" placeholder="Cliente" />
-              <input value={newOrder.produto} onChange={(e) => updateNewOrder('produto', e.target.value)} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20" placeholder="Produto" />
+              <input value={newOrder.op} onChange={(e) => { setSelectedOrderId(''); updateNewOrder('op', e.target.value); }} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-black outline-none focus:ring-1 focus:ring-primary/20" placeholder="Código interno (OP)" />
               <input type="number" min={0} value={newOrder.qtd_total} onChange={(e) => updateNewOrder('qtd_total', e.target.value)} className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-1 focus:ring-primary/20" placeholder="Qtd. total" />
             </div>
           </div>

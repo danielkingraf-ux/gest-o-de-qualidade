@@ -510,7 +510,7 @@ export default function FinishingAnalysisView() {
                                 className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
                             >
                                 <option value="">Selecionar OP...</option>
-                                {filteredOrders.map(o => <option key={`${o.id}:${o.op}`} value={o.op}>{o.op} — {o.cliente || 'Processo inicial'} {o.status !== 'em_producao' ? `(${o.status})` : ''}</option>)}
+                                {filteredOrders.map(o => <option key={`${o.id}:${o.op}`} value={o.op}>{o.op}{o.status !== 'em_producao' ? ` (${o.status})` : ''}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1 lg:col-span-2">

@@ -329,8 +329,6 @@ export default function OPTraceView() {
                                         {order.status === 'em_producao' ? 'Produção' : order.status === 'concluido' ? 'Concluído' : 'Suspenso'}
                                     </span>
                                 </div>
-                                <p className="mt-0.5 text-[10px] font-medium text-slate-500">{order.cliente || 'Sem cliente'}</p>
-                                <p className="text-[10px] font-medium text-slate-400">{order.produto || 'Sem produto'}</p>
                             </button>
                         ))}
                     </div>
@@ -348,9 +346,8 @@ export default function OPTraceView() {
                             <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                                 <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{selectedOrder.cliente || 'Sem cliente'}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rastreabilidade da OP</p>
                                         <h2 className="text-2xl font-black uppercase text-slate-900 dark:text-white">{selectedOrder.op}</h2>
-                                        <p className="text-sm font-medium text-slate-500">{selectedOrder.produto || 'Sem produto'}</p>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                         <Kpi label="FPY" value={`${totals.fpy}%`} tone={totals.fpy >= 80 ? 'emerald' : totals.fpy >= 60 ? 'amber' : 'rose'} />
