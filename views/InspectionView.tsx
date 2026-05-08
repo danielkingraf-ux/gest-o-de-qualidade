@@ -77,6 +77,7 @@ const HS_DEFECT_KEYS: { key: string; label: string; icon: string }[] = [
 ];
 
 const UNIT_DEFECT_KEYS: { key: string; label: string; icon: string; hasDescription?: boolean }[] = [
+  { key: 'inicio_impressao', label: 'Início Impressão', icon: 'play_circle' },
   { key: 'manchas', label: 'Manchas', icon: 'texture' },
   { key: 'pintas', label: 'Pintas', icon: 'blur_on' },
   { key: 'fiapos', label: 'Fiapos', icon: 'straighten' },
@@ -103,6 +104,7 @@ const FacaDefectCounter: React.FC<{
   onDescricaoChange?: (v: string) => void;
 }> = ({ name, icon, facaCounts, unidadesPorFolha, onUpdate, descricao, onDescricaoChange }) => {
   const [modal, setModal] = useState<{ faca: number; value: string } | null>(null);
+  const [allModal, setAllModal] = useState<{ value: string } | null>(null);
   const total = facaTotal(facaCounts);
 
   const openModal = (faca: number) => {
@@ -115,12 +117,26 @@ const FacaDefectCounter: React.FC<{
     setModal(null);
   };
 
+  const confirmAllModal = () => {
+    if (!allModal) return;
+    const count = Math.max(0, Number(allModal.value) || 0);
+    Array.from({ length: unidadesPorFolha }, (_, i) => i + 1).forEach(faca => onUpdate(faca, count));
+    setAllModal(null);
+  };
+
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2.5">
         <span className="material-symbols-outlined text-slate-400 text-base">{icon}</span>
         <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 flex-1 truncate">{name}</span>
+        <button
+          type="button"
+          onClick={() => setAllModal({ value: '' })}
+          className="text-[8px] font-black uppercase tracking-widest px-2 h-5 rounded-full border border-primary/30 text-primary hover:bg-primary/10 transition-colors"
+        >
+          Todos
+        </button>
         {total > 0 && (
           <span className="text-[10px] font-black text-white bg-rose-500 rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
             {total}
@@ -170,7 +186,7 @@ const FacaDefectCounter: React.FC<{
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal — faca individual */}
       {modal && (
         <div
           className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
@@ -200,20 +216,45 @@ const FacaDefectCounter: React.FC<{
               className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-primary/20 text-center"
             />
             <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmModal}
-                className="flex-1 h-10 rounded-xl bg-primary text-white text-xs font-black hover:bg-primary/90 transition-colors"
-              >
-                Confirmar
-              </button>
+              <button type="button" onClick={() => setModal(null)} className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800">Cancelar</button>
+              <button type="button" onClick={confirmModal} className="flex-1 h-10 rounded-xl bg-primary text-white text-xs font-black hover:bg-primary/90 transition-colors">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — todas as facas */}
+      {allModal && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+          onClick={() => setAllModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xl w-72"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-base">select_all</span>
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Todas as {unidadesPorFolha} posições</p>
+                <p className="text-sm font-black text-slate-800 dark:text-white">{name}</p>
+              </div>
+            </div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Defeitos por posição (aplica em todas)</label>
+            <input
+              type="number"
+              min={0}
+              value={allModal.value}
+              onChange={e => setAllModal({ value: e.target.value })}
+              onKeyDown={e => e.key === 'Enter' && confirmAllModal()}
+              autoFocus
+              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-primary/20 text-center"
+            />
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => setAllModal(null)} className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800">Cancelar</button>
+              <button type="button" onClick={confirmAllModal} className="flex-1 h-10 rounded-xl bg-primary text-white text-xs font-black hover:bg-primary/90 transition-colors">Aplicar a Todos</button>
             </div>
           </div>
         </div>
