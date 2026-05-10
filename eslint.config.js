@@ -20,6 +20,7 @@ export default [
       'services/authService.ts',
       'services/odsService.ts',
       'services/reportService.ts',
+      'supabase/functions',
       'types.ts',
     ],
   },

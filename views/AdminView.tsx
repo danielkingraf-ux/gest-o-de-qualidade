@@ -4,8 +4,9 @@ import { supabase } from '../services/supabase';
 import { Machine, Operator, Analyst, DefectType, UserProfile, UserRole, ProductionArea } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
+import { AQL_OPTIONS, INSPECTION_LEVELS } from '../utils/nbr5426';
 
-type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users';
+type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users' | 'nqa';
 
 const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
     { value: 'producao_inicial', label: 'Produção inicial' },
@@ -33,6 +34,7 @@ export default function AdminView() {
         { id: 'analysts', label: 'Analistas', icon: 'shield_person' },
         { id: 'defects', label: 'Defeitos', icon: 'error' },
         { id: 'users', label: 'Usuários', icon: 'manage_accounts' },
+        { id: 'nqa', label: 'NQA', icon: 'fact_check' },
     ];
 
     return (
@@ -70,6 +72,7 @@ export default function AdminView() {
                 {activeTab === 'analysts' && <AnalystsManager />}
                 {activeTab === 'defects' && <DefectTypesManager />}
                 {activeTab === 'users' && <UsersManager />}
+                {activeTab === 'nqa' && <NqaProfilesManager />}
             </div>
         </div>
     );
@@ -798,6 +801,23 @@ function UsersManager() {
     const [isSaving, setIsSaving] = useState(false);
     const { showToast } = useToast();
     const { refreshProfile } = useUser();
+    const roleMeta: Record<UserRole, { label: string; avatarClass: string; badgeClass: string }> = {
+        supervisor: {
+            label: 'Supervisão',
+            avatarClass: 'bg-amber-500',
+            badgeClass: 'bg-amber-50 text-amber-600 border border-amber-100',
+        },
+        analista: {
+            label: 'Analista',
+            avatarClass: 'bg-primary',
+            badgeClass: 'bg-blue-50 text-blue-600 border border-blue-100',
+        },
+        auxiliar: {
+            label: 'Auxiliar',
+            avatarClass: 'bg-violet-500',
+            badgeClass: 'bg-violet-50 text-violet-600 border border-violet-100',
+        },
+    };
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -929,6 +949,7 @@ function UsersManager() {
                             onChange={e => setEditing({ ...editing, role: e.target.value as UserRole })}
                         >
                             <option value="analista">Analista</option>
+                            <option value="auxiliar">Auxiliar</option>
                             <option value="supervisor">Supervisão</option>
                         </select>
                     </div>
@@ -964,21 +985,21 @@ function UsersManager() {
                             <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs italic">
                                 Nenhum usuário cadastrado. Usuários aparecem aqui após o primeiro login.
                             </td></tr>
-                        ) : users.map(u => (
+                        ) : users.map(u => {
+                            const meta = roleMeta[u.role] ?? roleMeta.analista;
+                            return (
                             <tr key={u.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
                                 <td className="px-6 py-3">
                                     <div className="flex items-center gap-3">
-                                        <div className={`size-10 rounded-full flex items-center justify-center text-white text-sm font-black ${u.role === 'supervisor' ? 'bg-amber-500' : 'bg-primary'}`}>
+                                        <div className={`size-10 rounded-full flex items-center justify-center text-white text-sm font-black ${meta.avatarClass}`}>
                                             {u.name.charAt(0).toUpperCase()}
                                         </div>
                                         <span className="text-sm font-black text-slate-700 dark:text-white uppercase">{u.name}</span>
                                     </div>
                                 </td>
                                 <td className="px-6 py-3">
-                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.role === 'supervisor'
-                                        ? 'bg-amber-50 text-amber-600 border border-amber-100'
-                                        : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
-                                        {u.role === 'supervisor' ? 'Supervisão' : 'Analista'}
+                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${meta.badgeClass}`}>
+                                        {meta.label}
                                     </span>
                                 </td>
                                 <td className="px-6 py-3">
@@ -1000,9 +1021,309 @@ function UsersManager() {
                                     </div>
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                     </tbody>
                 </table>
+            </div>
+        </div>
+    );
+}
+
+// -----------------------------------------------------------------------------
+// NQA PROFILES (Perfis de amostragem NBR 5426)
+// -----------------------------------------------------------------------------
+
+type NqaProfile = {
+    id: string;
+    name: string;
+    description: string;
+    aql_critical: string;
+    aql_major: string;
+    aql_minor: string;
+    inspection_level: string;
+    active: boolean;
+    created_at?: string;
+    updated_at?: string;
+};
+
+const EMPTY_NQA: Partial<NqaProfile> = {
+    name: '',
+    description: '',
+    aql_critical: '0.065',
+    aql_major: '1.0',
+    aql_minor: '4.0',
+    inspection_level: 'II',
+    active: true,
+};
+
+function NqaProfilesManager() {
+    const [profiles, setProfiles] = useState<NqaProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [editing, setEditing] = useState<Partial<NqaProfile> | null>(null);
+    const { showToast } = useToast();
+
+    const fetchProfiles = useCallback(async () => {
+        setLoading(true);
+        const { data, error } = await supabase
+            .from('nqa_profiles')
+            .select('*')
+            .order('name');
+        if (error) showToast('Erro ao carregar perfis NQA', 'error');
+        else setProfiles(data || []);
+        setLoading(false);
+    }, [showToast]);
+
+    useEffect(() => { fetchProfiles(); }, [fetchProfiles]);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editing?.name) {
+            showToast('Nome do perfil é obrigatório', 'warning');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const payload: any = { ...editing };
+            delete payload.created_at;
+            delete payload.updated_at;
+
+            if (editing.id) {
+                const { id, ...updateData } = payload;
+                const { error } = await supabase.from('nqa_profiles').update(updateData).eq('id', id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('nqa_profiles').insert([payload]);
+                if (error) throw error;
+            }
+
+            showToast(`Perfil NQA ${editing.id ? 'atualizado' : 'cadastrado'} com sucesso`, 'success');
+            setEditing(null);
+            fetchProfiles();
+        } catch (error: any) {
+            showToast(`Erro ao salvar: ${error.message}`, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const toggleActive = async (id: string, current: boolean) => {
+        const { error } = await supabase.from('nqa_profiles').update({ active: !current }).eq('id', id);
+        if (error) showToast('Erro ao atualizar status', 'error');
+        else fetchProfiles();
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('Excluir este perfil NQA? Laudos já registrados com este perfil não serão afetados.')) return;
+        const { error } = await supabase.from('nqa_profiles').delete().eq('id', id);
+        if (error) showToast('Erro ao excluir perfil', 'error');
+        else {
+            showToast('Perfil excluído', 'info');
+            fetchProfiles();
+        }
+    };
+
+    const aqlBadgeColor = (val: string) => {
+        const n = parseFloat(val);
+        if (n <= 0.10) return 'bg-rose-50 text-rose-600 border border-rose-100';
+        if (n <= 1.0) return 'bg-amber-50 text-amber-600 border border-amber-100';
+        return 'bg-blue-50 text-blue-600 border border-blue-100';
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Cabeçalho + botão novo */}
+            <div className="flex justify-between items-center">
+                <div>
+                    <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                        <span className="material-symbols-outlined text-primary">fact_check</span>
+                        Perfis de Amostragem NQA
+                    </h2>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5 ml-8">NBR 5426 / ISO 2859-1 — Inspeção Normal, Plano Simples</p>
+                </div>
+                <button
+                    onClick={() => setEditing({ ...EMPTY_NQA })}
+                    className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                >
+                    <span className="material-symbols-outlined text-sm">add</span> Novo Perfil
+                </button>
+            </div>
+
+            {/* Formulário de edição/criação */}
+            {editing && (
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 space-y-6 animate-slide-in">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome do Perfil *</label>
+                            <input
+                                required
+                                className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                value={editing.name ?? ''}
+                                onChange={e => setEditing({ ...editing, name: e.target.value })}
+                                placeholder="Ex: Padrão Geral, Farmacêutico..."
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Descrição</label>
+                            <input
+                                className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                value={editing.description ?? ''}
+                                onChange={e => setEditing({ ...editing, description: e.target.value })}
+                                placeholder="Ex: Alta exigência para embalagens farmacêuticas"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                                <span className="inline-block size-2 rounded-full bg-rose-500 mr-1.5 align-middle"></span>
+                                AQL Crítico
+                            </label>
+                            <select
+                                className="h-14 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                                value={editing.aql_critical ?? '0.065'}
+                                onChange={e => setEditing({ ...editing, aql_critical: e.target.value })}
+                            >
+                                {AQL_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                                <span className="inline-block size-2 rounded-full bg-amber-500 mr-1.5 align-middle"></span>
+                                AQL Maior
+                            </label>
+                            <select
+                                className="h-14 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                                value={editing.aql_major ?? '1.0'}
+                                onChange={e => setEditing({ ...editing, aql_major: e.target.value })}
+                            >
+                                {AQL_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                                <span className="inline-block size-2 rounded-full bg-blue-500 mr-1.5 align-middle"></span>
+                                AQL Menor
+                            </label>
+                            <select
+                                className="h-14 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                                value={editing.aql_minor ?? '4.0'}
+                                onChange={e => setEditing({ ...editing, aql_minor: e.target.value })}
+                            >
+                                {AQL_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nível de Inspeção</label>
+                            <select
+                                className="h-14 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                                value={editing.inspection_level ?? 'II'}
+                                onChange={e => setEditing({ ...editing, inspection_level: e.target.value })}
+                            >
+                                {INSPECTION_LEVELS.map(l => <option key={l} value={l}>Nível {l}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Aviso sobre hierarquia de AQL */}
+                    {editing.aql_critical && editing.aql_major && editing.aql_minor &&
+                        parseFloat(editing.aql_critical) >= parseFloat(editing.aql_major) && (
+                            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-amber-700 text-xs font-bold">
+                                <span className="material-symbols-outlined text-base">warning</span>
+                                AQL Crítico deve ser menor que AQL Maior. Verifique os valores.
+                            </div>
+                        )
+                    }
+
+                    <div className="flex gap-3 justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="px-8 h-12 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSaving}
+                            className="px-10 h-12 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                        >
+                            {isSaving
+                                ? <><span className="material-symbols-outlined animate-spin text-base">progress_activity</span> Salvando...</>
+                                : <><span className="material-symbols-outlined text-base">check</span> {editing.id ? 'Atualizar' : 'Cadastrar'}</>
+                            }
+                        </button>
+                    </div>
+                </form>
+            )}
+
+            {/* Tabela de perfis */}
+            <ManagerTable
+                loading={loading}
+                items={profiles}
+                emptyMessage="Nenhum perfil NQA cadastrado. Clique em 'Novo Perfil' para começar."
+                columns={[
+                    {
+                        key: 'name', label: 'Perfil', render: (p: NqaProfile) => (
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-black text-slate-800 dark:text-white uppercase">{p.name}</span>
+                                {p.description && <span className="text-[10px] text-slate-400 font-medium">{p.description}</span>}
+                            </div>
+                        )
+                    },
+                    {
+                        key: 'aql_critical', label: 'AQL Crítico', render: (p: NqaProfile) => (
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${aqlBadgeColor(p.aql_critical)}`}>
+                                {p.aql_critical}
+                            </span>
+                        )
+                    },
+                    {
+                        key: 'aql_major', label: 'AQL Maior', render: (p: NqaProfile) => (
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${aqlBadgeColor(p.aql_major)}`}>
+                                {p.aql_major}
+                            </span>
+                        )
+                    },
+                    {
+                        key: 'aql_minor', label: 'AQL Menor', render: (p: NqaProfile) => (
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${aqlBadgeColor(p.aql_minor)}`}>
+                                {p.aql_minor}
+                            </span>
+                        )
+                    },
+                    {
+                        key: 'inspection_level', label: 'Nível', render: (p: NqaProfile) => (
+                            <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 border border-slate-200">
+                                Nível {p.inspection_level}
+                            </span>
+                        )
+                    },
+                    {
+                        key: 'active', label: 'Status', render: (p: NqaProfile) => (
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${p.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'}`}>
+                                {p.active ? 'Ativo' : 'Inativo'}
+                            </span>
+                        )
+                    },
+                ]}
+                onEdit={setEditing}
+                onToggleActive={toggleActive}
+                onDelete={handleDelete}
+            />
+
+            {/* Legenda de AQL */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Referência de AQL — NBR 5426</p>
+                <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-500">
+                    <span><span className="font-black text-rose-600">Crítico</span> — Defeitos que inviabilizam o uso do produto (ex: impressão invertida, falha de corte)</span>
+                    <span><span className="font-black text-amber-600">Maior</span> — Defeitos que comprometem função ou aparência relevante</span>
+                    <span><span className="font-black text-blue-600">Menor</span> — Defeitos cosméticos que não afetam a função</span>
+                </div>
             </div>
         </div>
     );

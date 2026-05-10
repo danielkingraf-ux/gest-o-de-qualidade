@@ -1,510 +1,588 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * OPTraceView — Rastreabilidade completa de uma Ordem de Produção
+ * Mostra do início ao fim: Processo Inicial → Produto Acabado → Pallets
+ */
+import React, { useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
-import { InspectionStatus, Order, ProcessType } from '../types';
-import { useToast } from '../contexts/ToastContext';
 
-type AreaKey = 'initial' | 'final';
+// ─── helpers ─────────────────────────────────────────────────────────────────
+const parseObs = (v: any): any => {
+    if (!v) return {};
+    if (typeof v === 'object') return v;
+    try { return JSON.parse(v); } catch { return {}; }
+};
+const asN = (v: any) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n) : 0; };
+const fmt = new Intl.NumberFormat('pt-BR');
+const fmtDate = (s: string) =>
+    new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-type TraceInspection = {
-    id: string;
-    op: string;
-    laudoNumero: string;
-    status: InspectionStatus;
-    processType: string;
-    area: AreaKey;
-    createdAt: string;
-    samples: number;
-    rework: number;
-    totalDefects: number;
-    defects: Array<{ name: string; count: number }>;
-    machineName: string;
-    operatorName: string;
-    analystName: string;
-    observationsText: string;
+const STATUS_META: Record<string, { label: string; dot: string; badge: string }> = {
+    APPROVED: { label: 'Aprovado',          dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+    REJECTED: { label: 'Reprovado',         dot: 'bg-rose-500',    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+    RESTRICTED: { label: 'Com Restrição',   dot: 'bg-amber-500',   badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+    approved: { label: 'Aprovado',          dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+    rejected: { label: 'Reprovado',         dot: 'bg-rose-500',    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+    restricted: { label: 'Com Restrição',   dot: 'bg-amber-500',   badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+};
+const statusMeta = (s: string) => STATUS_META[s] ?? { label: s, dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600' };
+
+const Badge = ({ status }: { status: string }) => {
+    const m = statusMeta(status);
+    return (
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${m.badge}`}>
+            <span className={`size-1.5 rounded-full ${m.dot}`} />
+            {m.label}
+        </span>
+    );
 };
 
-type TraceOrder = Order & {
-    synthetic?: boolean;
-    laudos?: string[];
-};
+// Extrai todos os defeitos do observations como array [{name, count}]
+function extractDefects(obs: any): Array<{ name: string; count: number }> {
+    const result: Array<{ name: string; count: number }> = [];
 
-const PROCESS_LABELS: Record<string, string> = {
-    OFFSET: 'Offset',
-    UV: 'UV',
-    HOT_STAMPING: 'Hot Stamping',
-    ESCOLHAS: 'Escolhas',
-    ACABAMENTO: 'Acabamento',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-    APPROVED: 'Aprovado',
-    RESTRICTED: 'Aprovado c/ restrição',
-    REJECTED: 'Reprovado',
-};
-
-const STATUS_STYLE: Record<InspectionStatus, { bg: string; text: string; border: string; icon: string }> = {
-    [InspectionStatus.APPROVED]: { bg: 'bg-emerald-50 dark:bg-emerald-950/20', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-800', icon: 'check_circle' },
-    [InspectionStatus.RESTRICTED]: { bg: 'bg-amber-50 dark:bg-amber-950/20', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800', icon: 'warning' },
-    [InspectionStatus.REJECTED]: { bg: 'bg-rose-50 dark:bg-rose-950/20', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800', icon: 'cancel' },
-};
-
-const asNumber = (value: any) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
-
-const parseObservations = (value: any) => {
-    if (!value) return {};
-    if (typeof value === 'object') return value;
-    try {
-        return JSON.parse(value);
-    } catch {
-        return {};
-    }
-};
-
-const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
-    if (!raw) return [];
-
-    if (Array.isArray(raw)) {
-        return raw
-            .map((item) => ({
-                name: String(item?.name || item?.label || 'Outros').replace(/_/g, ' '),
-                count: asNumber(item?.count ?? item?.value ?? item?.qty),
-            }))
-            .filter((item) => item.count > 0);
-    }
-
-    if (typeof raw === 'object') {
-        const groups = ['critical', 'major', 'minor'];
-        const hasGroups = groups.some((group) => raw[group] && typeof raw[group] === 'object');
-
-        if (hasGroups) {
-            return groups
-                .flatMap((group) =>
-                    Object.entries(raw[group] || {}).map(([name, count]) => ({
-                        name: name.replace(/_/g, ' '),
-                        count: asNumber(count),
-                    }))
-                )
-                .filter((item) => item.count > 0);
-        }
-
-        return Object.entries(raw)
-            .map(([name, count]) => ({ name: name.replace(/_/g, ' '), count: asNumber(count) }))
-            .filter((item) => item.count > 0);
-    }
-
-    return [];
-};
-
-const getArea = (record: any, obs: any): AreaKey => {
-    if (
-        record.process_type === ProcessType.ACABAMENTO ||
-        obs.process_type === ProcessType.ACABAMENTO ||
-        obs.process_area === 'produto_acabado' ||
-        obs.is_spreadsheet_analysis === true ||
-        obs.is_finishing_laudo === true
-    ) {
-        return 'final';
-    }
-    return 'initial';
-};
-
-const getObservationText = (obs: any, original?: string) => {
-    if (!original) return '';
-    if (!original.trim().startsWith('{')) return original;
-    return obs.escolha?.observacoes || obs.observacoes || obs.restriction_reason || '';
-};
-
-const normalizeInspection = (record: any): TraceInspection => {
-    const obs = parseObservations(record.observations);
-    const defects = normalizeDefects(obs.defects);
-    const total = asNumber(obs.totalDefects) || defects.reduce((sum, defect) => sum + defect.count, 0);
-    const processType = record.process_type || obs.process_type || ProcessType.OFFSET;
-
-    return {
-        id: record.id,
-        op: record.op,
-        laudoNumero: String(obs.laudo_numero || ''),
-        status: record.status,
-        processType,
-        area: getArea(record, obs),
-        createdAt: record.created_at || record.timestamp,
-        samples: asNumber(record.samples_count),
-        rework: asNumber(record.rework_count),
-        totalDefects: total,
-        defects,
-        machineName: record.machines?.name || 'N/A',
-        operatorName: record.operators?.name || 'N/A',
-        analystName: record.analysts?.name || 'N/A',
-        observationsText: getObservationText(obs, record.observations),
+    const push = (key: string, val: any) => {
+        const n = asN(typeof val === 'object' ? val?.count ?? val : val);
+        if (n > 0) result.push({ name: key.replace(/_/g, ' '), count: n });
     };
-};
 
-const fpy = (items: TraceInspection[]) => {
-    if (!items.length) return 0;
-    const approved = items.filter((item) => item.status === InspectionStatus.APPROVED).length;
-    return Math.round((approved / items.length) * 100);
-};
+    // Produto Acabado: obs.defects é Record<string, number>
+    if (obs.defects && typeof obs.defects === 'object' && !Array.isArray(obs.defects)) {
+        Object.entries(obs.defects).forEach(([k, v]) => push(k, v));
+    }
+    // Processo Inicial: obs.defeitos.por_unidade
+    if (obs.defeitos?.por_unidade) {
+        Object.entries(obs.defeitos.por_unidade).forEach(([k, v]) => push(k, v));
+    }
+    // UV
+    if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos) {
+        Object.entries(obs.verniz_uv.defeitos).forEach(([k, v]: [string, any]) => {
+            const n = asN(v?.count ?? v);
+            if (n > 0) result.push({ name: `UV: ${k.replace(/_/g, ' ')}`, count: n });
+        });
+    }
+    // Hot Stamping
+    if (obs.hot_stamping?.aplicavel && obs.hot_stamping?.defeitos) {
+        Object.entries(obs.hot_stamping.defeitos).forEach(([k, v]: [string, any]) => {
+            const n = asN(v?.count ?? v);
+            if (n > 0) result.push({ name: `HS: ${k.replace(/_/g, ' ')}`, count: n });
+        });
+    }
 
-const sum = (items: TraceInspection[], key: 'samples' | 'rework' | 'totalDefects') =>
-    items.reduce((total, item) => total + item[key], 0);
+    return result.sort((a, b) => b.count - a.count);
+}
 
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+interface InspRecord {
+    id: string;
+    created_at: string;
+    status: string;
+    area: 'inicial' | 'acabado';
+    numero: string;
+    machineName: string;
+    operatorNames: string[];
+    analystNames: string[];
+    defects: Array<{ name: string; count: number }>;
+    qtyProduzida: number;
+    qtyEscolha: number;
+    qtyRefugo: number;
+    observacoes: string;
+}
+
+interface PalletRecord {
+    id: string;
+    pallet_number: number;
+    result: 'APPROVED' | 'REJECTED' | 'RESTRICTED';
+    completed_at: string;
+    analyst_name: string | null;
+    machine_name: string | null;
+    defects_critical: number;
+    defects_major: number;
+    defects_minor: number;
+    sample_size: number;
+    boxes_to_inspect: number;
+    observations: string | null;
+}
+
+interface OrderInfo {
+    op: string;
+    produto: string;
+    qtd_total: number;
+    status: string;
+    created_at: string;
+}
+
+interface TraceData {
+    order: OrderInfo | null;
+    inicial: InspRecord[];
+    acabado: InspRecord[];
+    pallets: PalletRecord[];
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 export default function OPTraceView() {
-    const [orders, setOrders] = useState<TraceOrder[]>([]);
-    const [selectedOrder, setSelectedOrder] = useState<TraceOrder | null>(null);
-    const [inspections, setInspections] = useState<TraceInspection[]>([]);
-    const [loadingOrders, setLoadingOrders] = useState(true);
-    const [loadingInsp, setLoadingInsp] = useState(false);
-    const [search, setSearch] = useState('');
-    const { showToast } = useToast();
+    const [search, setSearch]     = useState('');
+    const [loading, setLoading]   = useState(false);
+    const [trace, setTrace]       = useState<TraceData | null>(null);
+    const [notFound, setNotFound] = useState(false);
+    const [opOptions, setOpOptions] = useState<string[]>([]);
 
-    const fetchOrders = useCallback(async () => {
-        setLoadingOrders(true);
-        const [ordersRes, inspectionsRes] = await Promise.all([
-            supabase
-                .from('orders')
-                .select('*')
-                .order('created_at', { ascending: false }),
-            supabase
-                .from('inspections')
-                .select('op, order_id, created_at, observations')
-                .order('created_at', { ascending: false })
-                .limit(2000)
+    // Carrega sugestões de OP ao abrir
+    React.useEffect(() => {
+        supabase.from('inspections').select('op').order('op').limit(300).then(({ data }) => {
+            const ops = Array.from(new Set((data || []).map((r: any) => String(r.op)))).sort();
+            setOpOptions(ops);
+        });
+    }, []);
+
+    const load = useCallback(async (op: string) => {
+        const opUp = op.trim().toUpperCase();
+        if (!opUp) return;
+        setLoading(true);
+        setNotFound(false);
+        setTrace(null);
+
+        const [ordRes, inspRes, palRes, opListRes, anListRes] = await Promise.all([
+            supabase.from('orders').select('op, produto, descricao, qtd_total, status, created_at').ilike('op', opUp).maybeSingle(),
+            supabase.from('inspections')
+                .select('id, op, created_at, status, machine_id, operator_id, analyst_id, observations, machines(name)')
+                .ilike('op', opUp)
+                .order('created_at', { ascending: true }),
+            supabase.from('pallet_inspections')
+                .select('id, pallet_number, result, completed_at, analyst_name, machine_name, defects_critical, defects_major, defects_minor, sample_size, boxes_to_inspect, observations')
+                .ilike('op', opUp)
+                .order('pallet_number', { ascending: true }),
+            supabase.from('operators').select('id, name'),
+            supabase.from('analysts').select('id, name'),
         ]);
 
-        if (ordersRes.error || inspectionsRes.error) {
-            showToast('Erro ao carregar OPs', 'error');
-        } else {
-            const byOp = new Map<string, TraceOrder>();
-            (ordersRes.data || []).forEach((order: Order) => {
-                byOp.set(String(order.op || '').toUpperCase(), { ...order, laudos: [] });
-            });
+        const opMap: Record<string, string> = {};
+        (opListRes.data || []).forEach((o: any) => { opMap[o.id] = o.name; });
+        const anMap: Record<string, string> = {};
+        (anListRes.data || []).forEach((a: any) => { anMap[a.id] = a.name; });
 
-            (inspectionsRes.data || []).forEach((inspection: any) => {
-                const op = String(inspection.op || '').trim().toUpperCase();
-                if (!op) return;
+        const inspections = (inspRes.data || []).map((r: any): InspRecord => {
+            const obs = parseObs(r.observations);
+            const isAcabado = obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis;
 
-                const obs = parseObservations(inspection.observations);
-                const laudo = String(obs.laudo_numero || '').trim();
-                const existing = byOp.get(op);
+            const operatorIds: string[] = Array.isArray(obs.all_operator_ids) && obs.all_operator_ids.length > 0
+                ? obs.all_operator_ids : r.operator_id ? [r.operator_id] : [];
+            const analystIds: string[] = Array.isArray(obs.all_analyst_ids) && obs.all_analyst_ids.length > 0
+                ? obs.all_analyst_ids : r.analyst_id ? [r.analyst_id] : [];
 
-                if (existing) {
-                    if (laudo && !existing.laudos?.includes(laudo)) {
-                        existing.laudos = [...(existing.laudos || []), laudo];
-                    }
-                    return;
-                }
+            const saldo = obs.saldo_unidades || {};
+            const prod  = obs.producao || {};
 
-                byOp.set(op, {
-                    id: `inspection:${op}`,
-                    op,
-                    cliente: '',
-                    produto: '',
-                    descricao: '',
-                    qtd_total: 0,
-                    status: 'em_producao',
-                    created_at: inspection.created_at,
-                    updated_at: inspection.created_at,
-                    synthetic: true,
-                    laudos: laudo ? [laudo] : []
-                });
-            });
-
-            setOrders(Array.from(byOp.values()));
-        }
-        setLoadingOrders(false);
-    }, [showToast]);
-
-    useEffect(() => {
-        fetchOrders();
-    }, [fetchOrders]);
-
-    const selectOrder = useCallback(async (order: TraceOrder) => {
-        setSelectedOrder(order);
-        setLoadingInsp(true);
-
-        const query = supabase
-            .from('inspections')
-            .select('*, machines(name), operators(name), analysts(name, tipo)')
-            .order('created_at', { ascending: true });
-
-        const { data, error } = order.synthetic
-            ? await query.eq('op', order.op)
-            : await query.or(`order_id.eq.${order.id},op.eq.${order.op}`);
-
-        if (error) {
-            showToast('Erro ao carregar inspeções da OP', 'error');
-            setInspections([]);
-        } else {
-            setInspections((data || []).map(normalizeInspection));
-        }
-        setLoadingInsp(false);
-    }, [showToast]);
-
-    const filteredOrders = useMemo(() => {
-        const value = search.trim().toLowerCase();
-        return orders.filter((order) => {
-            if (!value) return true;
-            return (
-                String(order.op || '').toLowerCase().includes(value) ||
-                String(order.cliente || '').toLowerCase().includes(value) ||
-                String(order.produto || '').toLowerCase().includes(value) ||
-                (order.laudos || []).some((laudo) => laudo.toLowerCase().includes(value))
-            );
-        });
-    }, [orders, search]);
-
-    const grouped = useMemo(() => ({
-        initial: inspections.filter((item) => item.area === 'initial'),
-        final: inspections.filter((item) => item.area === 'final'),
-    }), [inspections]);
-
-    const defectPareto = useMemo(() => {
-        const map = new Map<string, number>();
-        inspections.forEach((inspection) => {
-            inspection.defects.forEach((defect) => {
-                map.set(defect.name, (map.get(defect.name) || 0) + defect.count);
-            });
+            return {
+                id: r.id,
+                created_at: r.created_at,
+                status: r.status || obs.status_final || obs.status || '',
+                area: isAcabado ? 'acabado' : 'inicial',
+                numero: obs.laudo_numero || obs.numero_rodada || '',
+                machineName: r.machines?.name || '—',
+                operatorNames: operatorIds.map(id => opMap[id] || id),
+                analystNames:  analystIds.map(id => anMap[id] || id),
+                defects: extractDefects(obs),
+                qtyProduzida: isAcabado ? asN(prod.qty_produzida) : asN(saldo.rodadas),
+                qtyEscolha:   isAcabado ? asN(prod.qty_escolha)   : asN(saldo.em_escolha),
+                qtyRefugo:    isAcabado ? asN(prod.qty_refugo)     : asN(saldo.reprovadas),
+                observacoes: obs.observacoes || obs.observacoes_analista || '',
+            };
         });
 
-        return Array.from(map.entries())
-            .map(([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 8);
-    }, [inspections]);
+        const order = ordRes.data ? {
+            op: ordRes.data.op,
+            produto: ordRes.data.produto || ordRes.data.descricao || '—',
+            qtd_total: asN(ordRes.data.qtd_total),
+            status: ordRes.data.status,
+            created_at: ordRes.data.created_at,
+        } : inspections.length > 0 ? {
+            op: opUp, produto: '—', qtd_total: 0, status: '—', created_at: inspections[0].created_at,
+        } : null;
 
-    const totals = {
-        fpy: fpy(inspections),
-        defects: sum(inspections, 'totalDefects'),
-        samples: sum(inspections, 'samples'),
-        rework: sum(inspections, 'rework'),
-    };
+        if (!order && inspections.length === 0 && (palRes.data || []).length === 0) {
+            setNotFound(true);
+        } else {
+            setTrace({
+                order,
+                inicial: inspections.filter(r => r.area === 'inicial'),
+                acabado: inspections.filter(r => r.area === 'acabado'),
+                pallets: (palRes.data || []) as PalletRecord[],
+            });
+        }
+        setLoading(false);
+    }, []);
+
+    // ── Totais consolidados ─────────────────────────────────────────────────
+    const totals = React.useMemo(() => {
+        if (!trace) return null;
+        const all = [...trace.inicial, ...trace.acabado];
+        const produzida = all.reduce((s, r) => s + r.qtyProduzida, 0);
+        const escolha   = all.reduce((s, r) => s + r.qtyEscolha, 0);
+        const refugo    = all.reduce((s, r) => s + r.qtyRefugo, 0);
+
+        // Defeitos consolidados
+        const defMap = new Map<string, number>();
+        all.forEach(r => r.defects.forEach(d => defMap.set(d.name, (defMap.get(d.name) || 0) + d.count)));
+        const topDefects = Array.from(defMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+        // Todos operadores únicos
+        const ops = Array.from(new Set(all.flatMap(r => r.operatorNames).filter(Boolean)));
+
+        // Status geral
+        const allStatuses = [
+            ...trace.inicial.map(r => r.status),
+            ...trace.acabado.map(r => r.status),
+            ...trace.pallets.map(r => r.result),
+        ];
+        const hasRejected    = allStatuses.some(s => s === 'REJECTED' || s === 'rejected');
+        const hasRestricted  = allStatuses.some(s => s === 'RESTRICTED' || s === 'restricted');
+        const overallStatus  = hasRejected ? 'REJECTED' : hasRestricted ? 'RESTRICTED' : 'APPROVED';
+
+        return { produzida, escolha, refugo, topDefects, ops, overallStatus };
+    }, [trace]);
 
     return (
-        <div className="mx-auto max-w-7xl animate-fade-in space-y-4 p-4 pb-20 md:p-6">
-            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    <span className="size-1.5 rounded-full bg-primary" />
-                    Rastreabilidade por ordem de produção
-                </p>
-                <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 dark:text-white">Rastreio por OP</h1>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                    Consulte tudo que foi registrado na OP, separado entre Processo Inicial e Produto Acabado.
-                </p>
-            </div>
+        <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5 pb-10 animate-fade-in">
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <div className="space-y-3 lg:col-span-1">
-                    <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-slate-400">search</span>
+            {/* Header + Busca */}
+            <header className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="space-y-1">
+                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none flex items-center gap-2">
+                        <span className="material-symbols-outlined text-violet-500">manage_search</span>
+                        Rastreabilidade de OP
+                    </h1>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                        Processo Inicial → Produto Acabado → Pallets — tudo em uma visão
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    <div className="relative flex-1">
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-base">search</span>
                         <input
-                            type="text"
+                            list="op-options"
                             value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Buscar OP, cliente, produto ou laudo..."
-                            className="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900"
+                            onChange={e => setSearch(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && load(search)}
+                            placeholder="Digite ou selecione a OP..."
+                            className="w-full h-11 pl-10 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20"
                         />
+                        <datalist id="op-options">
+                            {opOptions.map(op => <option key={op} value={op} />)}
+                        </datalist>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => load(search)}
+                        disabled={loading || !search.trim()}
+                        className="h-11 px-6 rounded-xl bg-violet-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center gap-2 disabled:opacity-50"
+                    >
+                        {loading
+                            ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                            : <span className="material-symbols-outlined text-sm">manage_search</span>}
+                        Buscar
+                    </button>
+                </div>
+            </header>
+
+            {/* Não encontrado */}
+            {notFound && (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
+                    <span className="material-symbols-outlined text-5xl text-slate-300">search_off</span>
+                    <p className="text-sm font-bold text-slate-400">OP <strong>"{search}"</strong> não encontrada</p>
+                    <p className="text-xs text-slate-300">Verifique o código e tente novamente</p>
+                </div>
+            )}
+
+            {trace && totals && (
+                <>
+                    {/* Cabeçalho da OP */}
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                                        OP {trace.order?.op ?? search.toUpperCase()}
+                                    </h2>
+                                    <Badge status={totals.overallStatus} />
+                                </div>
+                                {trace.order?.produto && trace.order.produto !== '—' && (
+                                    <p className="text-sm font-bold text-slate-500 mt-0.5">{trace.order.produto}</p>
+                                )}
+                                {trace.order?.created_at && (
+                                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">Abertura: {fmtDate(trace.order.created_at)}</p>
+                                )}
+                            </div>
+                            {trace.order?.qtd_total ? (
+                                <div className="text-right">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. OP</p>
+                                    <p className="text-2xl font-black text-slate-800 dark:text-white">{fmt.format(trace.order.qtd_total)} <span className="text-sm font-bold text-slate-400">un.</span></p>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        {/* Resumo consolidado */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            {/* Produzido */}
+                                <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">inventory_2</span>Produzido
+                                    </p>
+                                    <p className="text-2xl font-black text-slate-800 dark:text-slate-100">{fmt.format(totals.produzida)}</p>
+                                </div>
+                                {/* Em escolha */}
+                                <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">rule</span>Em Escolha
+                                    </p>
+                                    <p className="text-2xl font-black text-amber-700 dark:text-amber-300">{fmt.format(totals.escolha)}</p>
+                                    {totals.produzida > 0 && <p className="text-[10px] font-bold text-amber-500">{((totals.escolha/totals.produzida)*100).toFixed(1)}%</p>}
+                                </div>
+                                {/* Refugo */}
+                                <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-rose-500 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">delete_sweep</span>Refugo
+                                    </p>
+                                    <p className="text-2xl font-black text-rose-700 dark:text-rose-300">{fmt.format(totals.refugo)}</p>
+                                    {totals.produzida > 0 && <p className="text-[10px] font-bold text-rose-500">{((totals.refugo/totals.produzida)*100).toFixed(1)}%</p>}
+                                </div>
+                                {/* Pallets */}
+                                <div className="p-3 rounded-2xl bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-500 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">stacks</span>Pallets
+                                    </p>
+                                    <p className="text-2xl font-black text-violet-700 dark:text-violet-300">{trace.pallets.length}</p>
+                                </div>
+                        </div>
+
+                        {/* Operadores + defeitos top */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            {totals.ops.length > 0 && (
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">badge</span>Operadores envolvidos
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {totals.ops.map(name => (
+                                            <span key={name} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold">
+                                                <span className="material-symbols-outlined text-xs text-slate-400">person</span>{name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {totals.topDefects.length > 0 && (
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">emergency_home</span>Principais problemas
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {totals.topDefects.map(([name, count]) => (
+                                            <span key={name} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900 text-rose-700 dark:text-rose-400 text-xs font-bold capitalize">
+                                                {name} <span className="font-black text-rose-500">{count}</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                        {loadingOrders ? (
-                            <div className="p-8 text-center">
-                                <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+                    {/* ── PROCESSO INICIAL ─────────────────────────────────────────── */}
+                    {trace.inicial.length > 0 && (
+                        <Section
+                            icon="assignment_turned_in" color="blue"
+                            title="Processo Inicial"
+                            subtitle={`${trace.inicial.length} rodada${trace.inicial.length !== 1 ? 's' : ''}`}
+                        >
+                            {trace.inicial.map((r, i) => (
+                                <InspCard key={r.id} record={r} index={i + 1} />
+                            ))}
+                        </Section>
+                    )}
+
+                    {/* ── PRODUTO ACABADO ───────────────────────────────────────────── */}
+                    {trace.acabado.length > 0 && (
+                        <Section
+                            icon="table_chart" color="violet"
+                            title="Produto Acabado"
+                            subtitle={`${trace.acabado.length} laudo${trace.acabado.length !== 1 ? 's' : ''}`}
+                        >
+                            {trace.acabado.map((r, i) => (
+                                <InspCard key={r.id} record={r} index={i + 1} />
+                            ))}
+                        </Section>
+                    )}
+
+                    {/* ── PALLETS ──────────────────────────────────────────────────── */}
+                    {trace.pallets.length > 0 && (
+                        <Section
+                            icon="stacks" color="violet"
+                            title="Inspeção de Pallets"
+                            subtitle={`${trace.pallets.length} pallet${trace.pallets.length !== 1 ? 's' : ''}`}
+                        >
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {trace.pallets.map(p => (
+                                    <div key={p.id} className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="font-black text-sm text-slate-800 dark:text-white">Pallet #{p.pallet_number}</p>
+                                                <p className="text-[10px] font-bold text-slate-400">{fmtDate(p.completed_at)}</p>
+                                            </div>
+                                            <Badge status={p.result} />
+                                        </div>
+                                        <div className="flex gap-3 text-[10px] font-black">
+                                            <span className="text-rose-600">{p.defects_critical} críticos</span>
+                                            <span className="text-amber-600">{p.defects_major} maiores</span>
+                                            <span className="text-slate-500">{p.defects_minor} menores</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-bold text-slate-400">
+                                                {p.analyst_name || '—'} · {p.machine_name || '—'}
+                                            </p>
+                                            <Link
+                                                to={`/pallet/${p.id}`}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/30 text-violet-600 text-[9px] font-black uppercase tracking-widest hover:bg-violet-100 transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-xs">qr_code_2</span>QR
+                                            </Link>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ) : filteredOrders.length === 0 ? (
-                            <div className="p-8 text-center text-xs text-slate-400">Nenhuma OP encontrada</div>
-                        ) : filteredOrders.map((order) => (
-                            <button
-                                key={order.id}
-                                onClick={() => selectOrder(order)}
-                                className={`w-full border-b border-l-4 border-slate-100 p-4 text-left transition hover:bg-primary/5 dark:border-slate-800 ${selectedOrder?.id === order.id ? 'border-l-primary bg-primary/10' : 'border-l-transparent'}`}
-                            >
-                                <div className="flex items-center justify-between gap-2">
-                                    <p className="text-sm font-black uppercase text-slate-800 dark:text-white">{order.op}</p>
-                                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${order.status === 'em_producao' ? 'bg-blue-100 text-blue-600' : order.status === 'concluido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                                        {order.status === 'em_producao' ? 'Produção' : order.status === 'concluido' ? 'Concluído' : 'Suspenso'}
-                                    </span>
-                                </div>
-                            </button>
-                        ))}
+                        </Section>
+                    )}
+
+                    {/* Nenhum dado */}
+                    {trace.inicial.length === 0 && trace.acabado.length === 0 && trace.pallets.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 gap-3">
+                            <span className="material-symbols-outlined text-5xl text-slate-300">folder_open</span>
+                            <p className="text-sm font-bold text-slate-400">OP encontrada, mas sem registros de inspeção ainda</p>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
+function Section({ icon, color, title, subtitle, children }: {
+    icon: string; color: string; title: string; subtitle: string; children: React.ReactNode;
+}) {
+    const [open, setOpen] = useState(true);
+    const colorMap: Record<string, string> = {
+        blue: 'text-blue-500 bg-blue-600',
+        violet: 'text-violet-500 bg-violet-600',
+    };
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className="w-full flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+            >
+                <span className={`material-symbols-outlined ${colorMap[color]?.split(' ')[0] ?? 'text-slate-500'}`}>{icon}</span>
+                <div className="flex-1">
+                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">{title}</h3>
+                    <p className="text-[10px] text-slate-400 font-bold">{subtitle}</p>
+                </div>
+                <span className={`material-symbols-outlined text-slate-400 transition-transform ${open ? '' : '-rotate-90'}`}>expand_more</span>
+            </button>
+            {open && <div className="p-4 space-y-3">{children}</div>}
+        </div>
+    );
+}
+
+function InspCard({ record, index }: { key?: React.Key; record: InspRecord; index: number }) {
+    const [expanded, setExpanded] = useState(false);
+    const hasDefects = record.defects.length > 0;
+
+    return (
+        <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setExpanded(e => !e)}
+                className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+                <span className="size-7 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-[10px] font-black text-slate-500 shrink-0">
+                    {index}
+                </span>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {record.numero && (
+                            <span className="text-xs font-black text-violet-600">#{record.numero}</span>
+                        )}
+                        <Badge status={record.status} />
+                        <span className="text-[10px] font-bold text-slate-400">{fmtDate(record.created_at)}</span>
+                    </div>
+                    <div className="flex gap-3 mt-1 text-[10px] font-bold text-slate-500 flex-wrap">
+                        {record.machineName !== '—' && <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-xs">precision_manufacturing</span>{record.machineName}</span>}
+                        {record.operatorNames.length > 0 && <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-xs">badge</span>{record.operatorNames.join(', ')}</span>}
                     </div>
                 </div>
+                {/* Mini quantidades */}
+                {(record.qtyProduzida > 0 || record.qtyRefugo > 0) && (
+                    <div className="hidden md:flex gap-3 text-[10px] font-black shrink-0">
+                        {record.qtyProduzida > 0 && <span className="text-slate-500">{fmt.format(record.qtyProduzida)} un.</span>}
+                        {record.qtyEscolha > 0 && <span className="text-amber-500">{fmt.format(record.qtyEscolha)} escolha</span>}
+                        {record.qtyRefugo > 0 && <span className="text-rose-500">{fmt.format(record.qtyRefugo)} refugo</span>}
+                    </div>
+                )}
+                <span className={`material-symbols-outlined text-slate-300 transition-transform shrink-0 ${expanded ? '' : '-rotate-90'}`}>expand_more</span>
+            </button>
 
-                <div className="space-y-4 lg:col-span-2">
-                    {!selectedOrder ? (
-                        <EmptyState title="Selecione uma OP à esquerda" subtitle="O histórico completo de qualidade aparecerá aqui." icon="route" />
-                    ) : loadingInsp ? (
-                        <div className="rounded-lg border border-slate-200 bg-white p-16 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                            <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
-                        </div>
-                    ) : (
-                        <>
-                            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rastreabilidade da OP</p>
-                                        <h2 className="text-2xl font-black uppercase text-slate-900 dark:text-white">{selectedOrder.op}</h2>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                        <Kpi label="FPY" value={`${totals.fpy}%`} tone={totals.fpy >= 80 ? 'emerald' : totals.fpy >= 60 ? 'amber' : 'rose'} />
-                                        <Kpi label="Registros" value={formatNumber(inspections.length)} />
-                                        <Kpi label="Desvios" value={formatNumber(totals.defects)} tone="rose" />
-                                        <Kpi label="Qtd OP" value={formatNumber(selectedOrder.qtd_total || 0)} />
-                                    </div>
-                                </div>
+            {expanded && (
+                <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+                    {/* Quantidades */}
+                    {(record.qtyProduzida > 0 || record.qtyEscolha > 0 || record.qtyRefugo > 0) && (
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="p-2 rounded-xl text-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                                <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Produzido</p>
+                                <p className="text-base font-black text-slate-800 dark:text-slate-100">{fmt.format(record.qtyProduzida)}</p>
                             </div>
+                            <div className="p-2 rounded-xl text-center bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+                                <p className="text-[8px] font-black uppercase tracking-widest text-amber-500">Escolha</p>
+                                <p className="text-base font-black text-amber-700 dark:text-amber-300">{fmt.format(record.qtyEscolha)}</p>
+                            </div>
+                            <div className="p-2 rounded-xl text-center bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
+                                <p className="text-[8px] font-black uppercase tracking-widest text-rose-500">Refugo</p>
+                                <p className="text-base font-black text-rose-700 dark:text-rose-300">{fmt.format(record.qtyRefugo)}</p>
+                            </div>
+                        </div>
+                    )}
 
-                            {inspections.length === 0 ? (
-                                <EmptyState title="Nenhum registro para esta OP" subtitle="Quando a inspeção ou a análise de amostragem for salva, aparecerá aqui." icon="assignment" />
-                            ) : (
-                                <>
-                                    <ProcessSection title="Processo Inicial" icon="print" inspections={grouped.initial} />
-                                    <ProcessSection title="Produto Acabado" icon="inventory_2" inspections={grouped.final} />
+                    {/* Defeitos */}
+                    {hasDefects && (
+                        <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Defeitos registrados</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {record.defects.map(d => (
+                                    <span key={d.name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900 text-rose-700 dark:text-rose-400 text-[10px] font-bold capitalize">
+                                        {d.name} <span className="font-black">{d.count}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                                    {defectPareto.length > 0 && (
-                                        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                                            <h3 className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                                <span className="material-symbols-outlined text-primary">bar_chart</span>
-                                                Principais desvios desta OP
-                                            </h3>
-                                            <div className="space-y-3">
-                                                {defectPareto.map((defect, index) => {
-                                                    const pct = totals.defects > 0 ? Math.round((defect.count / totals.defects) * 100) : 0;
-                                                    return (
-                                                        <div key={defect.name}>
-                                                            <div className="mb-1 flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                                                <span>{index + 1}. {defect.name}</span>
-                                                                <span className="text-rose-500">{defect.count} ({pct}%)</span>
-                                                            </div>
-                                                            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                                                                <div className="h-full rounded-full bg-rose-400" style={{ width: `${pct}%` }} />
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </>
+                    {/* Observações */}
+                    {record.observacoes && (
+                        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-500 mb-1">Observações</p>
+                            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">{record.observacoes}</p>
+                        </div>
+                    )}
+
+                    {/* Analistas */}
+                    {record.analystNames.length > 0 && (
+                        <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs">microscope</span>
+                            Analista{record.analystNames.length > 1 ? 's' : ''}: {record.analystNames.join(', ')}
+                        </p>
                     )}
                 </div>
-            </div>
-        </div>
-    );
-}
-
-function Kpi({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'emerald' | 'amber' | 'rose' }) {
-    const color = {
-        slate: 'text-slate-900 dark:text-white',
-        emerald: 'text-emerald-500',
-        amber: 'text-amber-500',
-        rose: 'text-rose-500',
-    }[tone];
-
-    return (
-        <div className="min-w-[88px] rounded-lg bg-slate-50 p-3 text-center dark:bg-slate-950">
-            <p className={`text-xl font-black ${color}`}>{value}</p>
-            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-        </div>
-    );
-}
-
-function ProcessSection({ title, icon, inspections }: { title: string; icon: string; inspections: TraceInspection[] }) {
-    if (inspections.length === 0) {
-        return (
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-3 text-slate-400">
-                    <span className="material-symbols-outlined">{icon}</span>
-                    <p className="text-xs font-black uppercase tracking-widest">{title}: sem registros</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
-                <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <span className="material-symbols-outlined text-[20px]">{icon}</span>
-                    </div>
-                    <div>
-                        <p className="text-sm font-black uppercase text-slate-800 dark:text-white">{title}</p>
-                        <p className="text-[10px] font-medium text-slate-400">{inspections.length} registro{inspections.length !== 1 ? 's' : ''}</p>
-                    </div>
-                </div>
-                <Kpi label="FPY" value={`${fpy(inspections)}%`} tone={fpy(inspections) >= 80 ? 'emerald' : fpy(inspections) >= 60 ? 'amber' : 'rose'} />
-            </div>
-
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {inspections.map((inspection) => {
-                    const style = STATUS_STYLE[inspection.status] || STATUS_STYLE[InspectionStatus.RESTRICTED];
-                    return (
-                        <div key={inspection.id} className={`border-l-4 p-4 ${style.bg} ${style.border.replace('border-', 'border-l-')}`}>
-                            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                                <div className="flex gap-3">
-                                    <span className={`material-symbols-outlined text-2xl ${style.text}`}>{style.icon}</span>
-                                    <div>
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${style.bg} ${style.text} ${style.border}`}>
-                                                {STATUS_LABELS[inspection.status] || inspection.status}
-                                            </span>
-                                            <span className="text-[10px] font-bold text-slate-500">
-                                                {PROCESS_LABELS[inspection.processType] || inspection.processType}
-                                            </span>
-                                            {inspection.laudoNumero && (
-                                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">
-                                                    Laudo {inspection.laudoNumero}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="mt-1 text-[10px] font-medium text-slate-400">
-                                            {new Date(inspection.createdAt).toLocaleString('pt-BR')} · {formatNumber(inspection.samples)} amostras · {formatNumber(inspection.rework)} revisão
-                                        </p>
-                                        <p className="mt-1 text-[10px] font-bold text-slate-500">
-                                            Máquina: {inspection.machineName} · Operador: {inspection.operatorName} · Analista: {inspection.analystName}
-                                        </p>
-                                        {inspection.observationsText && (
-                                            <p className="mt-2 text-[11px] italic text-slate-500">"{inspection.observationsText}"</p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="sm:text-right">
-                                    <p className="text-lg font-black text-rose-500">{formatNumber(inspection.totalDefects)}</p>
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">desvios</p>
-                                </div>
-                            </div>
-
-                            {inspection.defects.length > 0 && (
-                                <div className="mt-3 flex flex-wrap gap-1 pl-0 sm:pl-9">
-                                    {inspection.defects.map((defect) => (
-                                        <span key={`${inspection.id}-${defect.name}`} className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-rose-600 dark:bg-rose-950/30">
-                                            {defect.name}: {defect.count}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-function EmptyState({ title, subtitle, icon }: { title: string; subtitle: string; icon: string }) {
-    return (
-        <div className="rounded-lg border border-slate-200 bg-white p-16 text-center text-slate-400 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <span className="material-symbols-outlined mb-3 block text-6xl opacity-20">{icon}</span>
-            <p className="text-sm font-black uppercase tracking-widest">{title}</p>
-            <p className="mt-1 text-xs font-medium opacity-70">{subtitle}</p>
+            )}
         </div>
     );
 }

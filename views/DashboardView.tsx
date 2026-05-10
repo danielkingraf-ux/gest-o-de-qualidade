@@ -45,27 +45,27 @@ interface NormalizedInspection {
     date: Date;
     status: string;
     area: AreaKey;
-    samples: number;
-    rework: number;
-    defectsTotal: number;
-    folhasImpressas: number;
-    folhasRevisadas: number;
-    unidadesEscolha: number;
+    folhasRodadas: number;
+    folhasVerificadas: number;
+    folhasAprovadas: number;
+    folhasEscolha: number;
+    folhasReprovadas: number;
+    desviosTotal: number;
     defects: NormalizedDefect[];
     operatorIds: string[];
 }
 
 interface Summary {
-    inspections: number;
-    samples: number;
-    rework: number;
-    defects: number;
-    folhasImpressas: number;
-    folhasRevisadas: number;
-    unidadesEscolha: number;
-    aprovadas: number;
+    laudos: number;
+    folhasRodadas: number;
+    folhasVerificadas: number;
+    folhasAprovadas: number;
+    folhasEscolha: number;
+    folhasReprovadas: number;
     saldoSemRevisao: number;
-    reprovacaoPercent: number;
+    desviosTotal: number;
+    taxaAprovacao: number;
+    taxaReprovacao: number;
 }
 
 const PERIOD_OPTIONS: Array<{ value: Period; label: string }> = [
@@ -82,16 +82,16 @@ const AREA_OPTIONS: Array<{ value: AreaFilter; label: string }> = [
 ];
 
 const emptySummary = (): Summary => ({
-    inspections: 0,
-    samples: 0,
-    rework: 0,
-    defects: 0,
-    folhasImpressas: 0,
-    folhasRevisadas: 0,
-    unidadesEscolha: 0,
-    aprovadas: 0,
+    laudos: 0,
+    folhasRodadas: 0,
+    folhasVerificadas: 0,
+    folhasAprovadas: 0,
+    folhasEscolha: 0,
+    folhasReprovadas: 0,
     saldoSemRevisao: 0,
-    reprovacaoPercent: 0,
+    desviosTotal: 0,
+    taxaAprovacao: 0,
+    taxaReprovacao: 0,
 });
 
 const asNumber = (value: any) => {
@@ -122,9 +122,19 @@ const normalizeDefects = (raw: any): NormalizedDefect[] => {
     }
 
     if (typeof raw === 'object') {
+        // Formato InspectionView v2: { por_unidade: { key: { count: N } } }
+        if (raw.por_unidade && typeof raw.por_unidade === 'object') {
+            return Object.entries(raw.por_unidade)
+                .map(([name, val]: [string, any]) => ({
+                    name: name.replace(/_/g, ' '),
+                    count: asNumber(typeof val === 'object' ? val?.count : val),
+                }))
+                .filter((item) => item.count > 0);
+        }
+
+        // Formato FinishingView: { critical, major, minor }
         const groups = ['critical', 'major', 'minor'];
         const hasFinishingGroups = groups.some((group) => raw[group] && typeof raw[group] === 'object');
-
         if (hasFinishingGroups) {
             return groups.flatMap((group) =>
                 Object.entries(raw[group] || {}).map(([name, count]) => ({
@@ -140,6 +150,17 @@ const normalizeDefects = (raw: any): NormalizedDefect[] => {
     }
 
     return [];
+};
+
+const extractAllDefects = (obs: any): NormalizedDefect[] => {
+    const result: NormalizedDefect[] = [];
+    // InspectionView salva em "defeitos" (pt), FinishingView em "defects" (en)
+    result.push(...normalizeDefects(obs.defeitos ?? obs.defects));
+    if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos)
+        normalizeDefects(obs.verniz_uv.defeitos).forEach(d => result.push({ name: `UV: ${d.name}`, count: d.count }));
+    if (obs.hot_stamping?.aplicavel && obs.hot_stamping?.defeitos)
+        normalizeDefects(obs.hot_stamping.defeitos).forEach(d => result.push({ name: `HS: ${d.name}`, count: d.count }));
+    return result;
 };
 
 const getProcessArea = (record: any, obs: any): AreaKey => {
@@ -207,21 +228,20 @@ const bucketKey = (date: Date, period: Period) => {
 };
 
 const summarize = (items: NormalizedInspection[]): Summary => {
-    const summary = items.reduce((acc, item) => {
-        acc.inspections += 1;
-        acc.samples += item.samples;
-        acc.rework += item.rework;
-        acc.defects += item.defectsTotal;
-        acc.folhasImpressas += item.folhasImpressas;
-        acc.folhasRevisadas += item.folhasRevisadas;
-        acc.unidadesEscolha += item.unidadesEscolha;
+    const s = items.reduce((acc, item) => {
+        acc.laudos += 1;
+        acc.folhasRodadas += item.folhasRodadas;
+        acc.folhasVerificadas += item.folhasVerificadas;
+        acc.folhasAprovadas += item.folhasAprovadas;
+        acc.folhasEscolha += item.folhasEscolha;
+        acc.folhasReprovadas += item.folhasReprovadas;
+        acc.desviosTotal += item.desviosTotal;
         return acc;
     }, emptySummary());
-    const revisadas = summary.folhasRevisadas || summary.samples;
-    summary.aprovadas = Math.max(0, revisadas - summary.rework);
-    summary.saldoSemRevisao = Math.max(0, summary.folhasImpressas - revisadas);
-    summary.reprovacaoPercent = revisadas > 0 ? (summary.rework / revisadas) * 100 : 0;
-    return summary;
+    s.saldoSemRevisao = Math.max(0, s.folhasRodadas - s.folhasVerificadas);
+    s.taxaAprovacao = s.folhasVerificadas > 0 ? (s.folhasAprovadas / s.folhasVerificadas) * 100 : 0;
+    s.taxaReprovacao = s.folhasVerificadas > 0 ? (s.folhasReprovadas / s.folhasVerificadas) * 100 : 0;
+    return s;
 };
 
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
@@ -274,9 +294,11 @@ export default function DashboardView() {
     const normalized = useMemo<NormalizedInspection[]>(() => {
         return rawInspections.map((record) => {
             const obs = parseObs(record.observations);
-            const defects = normalizeDefects(obs.defects);
-            const totalDefects = asNumber(obs.totalDefects) || defects.reduce((sum, defect) => sum + defect.count, 0);
-            const escolha = obs.escolha || record.escolha || {};
+            const defects = extractAllDefects(obs);
+
+            // Produção: InspectionView salva em obs.producao
+            const producao = obs.producao || {};
+            const folhasPorPilha = Math.max(1, asNumber(producao.folhas_por_pilha ?? 1));
 
             return {
                 id: record.id,
@@ -284,12 +306,15 @@ export default function DashboardView() {
                 date: new Date(record.created_at || record.timestamp),
                 status: record.status,
                 area: getProcessArea(record, obs),
-                samples: asNumber(record.samples_count),
-                rework: asNumber(record.rework_count),
-                defectsTotal: totalDefects,
-                folhasImpressas: asNumber(escolha.folhas_impressas_total),
-                folhasRevisadas: asNumber(escolha.folhas_revisadas_pilha),
-                unidadesEscolha: asNumber(escolha.escolhas_unidades),
+                folhasRodadas: asNumber(producao.quantidade_rodada_folhas),
+                folhasVerificadas: asNumber(producao.pilhas_verificadas) * folhasPorPilha,
+                folhasAprovadas: asNumber(producao.pilhas_aprovadas) * folhasPorPilha,
+                folhasEscolha: asNumber(producao.folhas_escolha),
+                folhasReprovadas: asNumber(producao.folhas_reprovadas),
+                desviosTotal:
+                    asNumber(obs.metricas_falha?.falhas_por_unidade) ||
+                    asNumber(obs.totalDefects) ||
+                    defects.reduce((sum, d) => sum + d.count, 0),
                 defects,
                 operatorIds: getOperatorIds(record, obs),
             };
@@ -324,7 +349,7 @@ export default function DashboardView() {
         const final = summarize(filtered.filter((item) => item.area === 'final'));
 
         const defectMap = new Map<string, number>();
-        const operatorMap = new Map<string, { name: string; defects: number; inspections: number; samples: number }>();
+        const operatorMap = new Map<string, { name: string; defects: number; inspections: number }>();
         const timelineMap = new Map<string, { periodo: string; inicial: number; final: number; desvios: number }>();
 
         filtered.forEach((item) => {
@@ -335,8 +360,8 @@ export default function DashboardView() {
             const ids = item.operatorIds.length > 0 ? item.operatorIds : ['sem-operador'];
             ids.forEach((id) => {
                 const name = id === 'sem-operador' ? 'Sem operador' : operators[id] || 'Desconhecido';
-                const current = operatorMap.get(id) || { name, defects: 0, inspections: 0, samples: 0 };
-                current.defects += item.defectsTotal;
+                const current = operatorMap.get(id) || { name, defects: 0, inspections: 0 };
+                current.defects += item.desviosTotal;
                 current.inspections += 1;
                 operatorMap.set(id, current);
             });
@@ -345,7 +370,7 @@ export default function DashboardView() {
             const current = timelineMap.get(key) || { periodo: key, inicial: 0, final: 0, desvios: 0 };
             if (item.area === 'initial') current.inicial += 1;
             if (item.area === 'final') current.final += 1;
-            current.desvios += item.defectsTotal;
+            current.desvios += item.desviosTotal;
             timelineMap.set(key, current);
         });
 
@@ -357,7 +382,7 @@ export default function DashboardView() {
         const byOperator = Array.from(operatorMap.values())
             .map((item) => ({
                 ...item,
-                sharePercent: total.defects > 0 ? (item.defects / total.defects) * 100 : 0,
+                sharePercent: total.desviosTotal > 0 ? (item.defects / total.desviosTotal) * 100 : 0,
                 defectsPerRecord: item.inspections > 0 ? item.defects / item.inspections : 0,
             }))
             .sort((a, b) => b.defects - a.defects)
@@ -373,8 +398,8 @@ export default function DashboardView() {
             byOperator,
             timeline,
             areaPie: [
-                { name: 'Processo inicial', value: initial.defects, color: '#2563eb' },
-                { name: 'Produto acabado', value: final.defects, color: '#f97316' },
+                { name: 'Processo inicial', value: initial.desviosTotal, color: '#2563eb' },
+                { name: 'Produto acabado', value: final.desviosTotal, color: '#f97316' },
             ].filter((item) => item.value > 0),
         };
     }, [filtered, operators, period]);
@@ -477,13 +502,14 @@ export default function DashboardView() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-                <MetricCard title="Folhas impressas" value={formatNumber(analytics.total.folhasImpressas)} icon={<FileText />} />
-                <MetricCard title="Folhas revisadas" value={formatNumber(analytics.total.folhasRevisadas)} icon={<ClipboardList />} />
-                <MetricCard title="Aprovadas" value={formatNumber(analytics.total.aprovadas)} icon={<Layers />} tone="blue" />
-                <MetricCard title="Reprovadas" value={formatNumber(analytics.total.rework)} icon={<AlertTriangle />} tone="rose" />
-                <MetricCard title="Saldo sem revisao" value={formatNumber(analytics.total.saldoSemRevisao)} icon={<TrendingUp />} tone="amber" />
-                <MetricCard title="% reprov. revisao" value={formatPercent(analytics.total.reprovacaoPercent)} icon={<BarChart3 />} tone="rose" />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+                <MetricCard title="OPs Analisadas" value={String(analytics.total.laudos)} icon={<ClipboardList />} />
+                <MetricCard title="Folhas Rodadas" value={formatNumber(analytics.total.folhasRodadas)} icon={<FileText />} />
+                <MetricCard title="Verificadas" value={formatNumber(analytics.total.folhasVerificadas)} icon={<Search />} tone="blue" />
+                <MetricCard title="Aprovadas" value={formatNumber(analytics.total.folhasAprovadas)} icon={<Layers />} tone="blue" />
+                <MetricCard title="Em Escolha" value={formatNumber(analytics.total.folhasEscolha)} icon={<TrendingUp />} tone="amber" />
+                <MetricCard title="Reprovadas" value={formatNumber(analytics.total.folhasReprovadas)} icon={<AlertTriangle />} tone="rose" />
+                <MetricCard title="Sem Revisao" value={formatNumber(analytics.total.saldoSemRevisao)} icon={<BarChart3 />} tone="amber" />
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -608,17 +634,21 @@ function AreaSummary({ title, summary, color }: { title: string; summary: Summar
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">{title}</h2>
-                    <p className="mt-1 text-xs font-bold text-slate-400">{formatNumber(summary.inspections)} registros analisados</p>
+                    <p className="mt-1 text-xs font-bold text-slate-400">{formatNumber(summary.laudos)} registros analisados</p>
                 </div>
-                <p className="text-lg font-black">{formatPercent(summary.reprovacaoPercent)}</p>
+                <div className="text-right">
+                    <p className="text-lg font-black">{formatPercent(summary.taxaAprovacao)}</p>
+                    <p className="text-xs font-bold text-slate-400">Aprovacao</p>
+                    <p className="text-xs font-bold text-rose-500">{formatPercent(summary.taxaReprovacao)} reprovacao</p>
+                </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <SmallMetric label="Folhas impressas" value={summary.folhasImpressas} />
-                <SmallMetric label="Folhas revisadas" value={summary.folhasRevisadas} />
-                <SmallMetric label="Aprovadas" value={summary.aprovadas} />
-                <SmallMetric label="Reprovadas" value={summary.rework} />
-                <SmallMetric label="Saldo sem revisao" value={summary.saldoSemRevisao} />
-                <SmallMetric label="Amostras" value={summary.samples} />
+                <SmallMetric label="Folhas rodadas" value={summary.folhasRodadas} />
+                <SmallMetric label="Verificadas" value={summary.folhasVerificadas} />
+                <SmallMetric label="Aprovadas" value={summary.folhasAprovadas} />
+                <SmallMetric label="Em Escolha" value={summary.folhasEscolha} />
+                <SmallMetric label="Reprovadas" value={summary.folhasReprovadas} />
+                <SmallMetric label="Aguardando Revisao" value={summary.saldoSemRevisao} />
             </div>
         </div>
     );

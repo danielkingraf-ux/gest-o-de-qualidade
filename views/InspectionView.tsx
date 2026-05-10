@@ -11,11 +11,13 @@ const MetricInput: React.FC<{
   value: number;
   onChange: (val: number) => void;
   icon: string;
-}> = ({ label, value, onChange, icon }) => (
-  <div className="flex flex-col gap-1 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+  subtitle?: string;
+  accent?: boolean;
+}> = ({ label, value, onChange, icon, subtitle, accent }) => (
+  <div className={`flex flex-col gap-1 p-3 rounded-xl border ${accent ? 'bg-primary/5 border-primary/20' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800'}`}>
     <div className="flex items-center gap-1.5 mb-1">
-      <span className="material-symbols-outlined text-xs text-slate-400">{icon}</span>
-      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</label>
+      <span className={`material-symbols-outlined text-xs ${accent ? 'text-primary' : 'text-slate-400'}`}>{icon}</span>
+      <label className={`text-[9px] font-black uppercase tracking-widest ${accent ? 'text-primary' : 'text-slate-400'}`}>{label}</label>
     </div>
     <div className="flex items-center gap-2">
       <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">-</button>
@@ -27,6 +29,7 @@ const MetricInput: React.FC<{
       />
       <button type="button" onClick={() => onChange(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
     </div>
+    {subtitle && <p className="text-[9px] font-bold text-slate-400 text-center mt-0.5">{subtitle}</p>}
   </div>
 );
 
@@ -34,14 +37,15 @@ type ApprovalRuleMode = 'percent' | 'quantity';
 type ApprovalRule = { mode: ApprovalRuleMode; restrictedLimit: number; rejectLimit: number };
 type ProductionMetrics = { printedSheets: number; expectedUnits: number };
 type FolhasData = {
-  folhas_verificadas: number;
-  folhas_aprovadas: number;
+  pilhas_verificadas: number;
+  pilhas_aprovadas: number;
   folhas_escolha: number;
   folhas_reprovadas: number;
 };
 
 const DEFAULT_APPROVAL_RULE: ApprovalRule = { mode: 'percent', restrictedLimit: 2, rejectLimit: 5 };
 const APPROVAL_RULE_STORAGE_KEY = 'kg_initial_process_approval_rule';
+const DRAFT_KEY = 'kg_inspection_draft';
 
 const sumDefects = (defects: Record<string, number>) =>
   Object.values(defects).reduce((total, value) => total + (Number(value) || 0), 0);
@@ -279,7 +283,7 @@ export default function InspectionView() {
 
   // OP / form
   const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [newOrder, setNewOrder] = useState({ op: '', cliente: '', produto: '', qtd_total: '' });
+  const [newOrder, setNewOrder] = useState({ op: '', qtd_total: '' });
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [selectedOperatorRows, setSelectedOperatorRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
   const [selectedAnalystRows, setSelectedAnalystRows] = useState<SelectRow[]>([{ rowId: nextRowId(), value: '' }]);
@@ -307,6 +311,8 @@ export default function InspectionView() {
   );
 
   const [hotStampingApplicable, setHotStampingApplicable] = useState(false);
+  const [hotStampingMachineId, setHotStampingMachineId] = useState('');
+  const [hotStampingOperatorId, setHotStampingOperatorId] = useState('');
   const [hotStampingFacaCounts, setHotStampingFacaCounts] = useState<Record<string, FacaCount>>(
     () => Object.fromEntries(HS_DEFECT_KEYS.map(d => [d.key, {} as FacaCount]))
   );
@@ -315,8 +321,8 @@ export default function InspectionView() {
   const [unidadesPorFolha, setUnidadesPorFolha] = useState(1);
   const [folhasPorPilha, setFolhasPorPilha] = useState(500);
   const [folhasData, setFolhasData] = useState<FolhasData>({
-    folhas_verificadas: 0,
-    folhas_aprovadas: 0,
+    pilhas_verificadas: 0,
+    pilhas_aprovadas: 0,
     folhas_escolha: 0,
     folhas_reprovadas: 0,
   });
@@ -327,6 +333,8 @@ export default function InspectionView() {
   const [showReimpressaoForm, setShowReimpressaoForm] = useState(false);
   const [reimpressaoMotivo, setReimpressaoMotivo] = useState('');
   const [reimpressaoQtd, setReimpressaoQtd] = useState(0);
+  const [reimpressaoMachineId, setReimpressaoMachineId] = useState('');
+  const [reimpressaoOperatorId, setReimpressaoOperatorId] = useState('');
   const [isSubmittingReimpressao, setIsSubmittingReimpressao] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
@@ -355,10 +363,10 @@ export default function InspectionView() {
     const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
     const em_escolha = folhasData.folhas_escolha * unidadesPorFolha;
     const reprovadas = folhasData.folhas_reprovadas * unidadesPorFolha;
-    const aprovadas = folhasData.folhas_aprovadas * unidadesPorFolha;
+    const aprovadas = folhasData.pilhas_aprovadas * folhasPorPilha * unidadesPorFolha;
     const divergencia = rodadas - (aprovadas + em_escolha + reprovadas);
     return { rodadas, aprovadas, em_escolha, reprovadas, divergencia, alerta_divergencia: divergencia !== 0 };
-  }, [productionMetrics.printedSheets, unidadesPorFolha, folhasData]);
+  }, [productionMetrics.printedSheets, unidadesPorFolha, folhasPorPilha, folhasData]);
 
   const activeFailureCount = failureBasis.totalFailures;
   const calculatedStatus = useMemo(
@@ -407,19 +415,49 @@ export default function InspectionView() {
           supabase.from('analysts').select('*').eq('active', true).in('tipo', ['impressao', 'ambos']).order('name'),
           supabase.from('orders').select('*').eq('status', 'em_producao').order('op')
         ]);
-        if (mRes.data) {
-          setMachines(mRes.data);
-          if (mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id);
-        }
-        if (oRes.data) {
-          setOperators(oRes.data);
-          if (oRes.data.length > 0) setSelectedOperatorRows([{ rowId: nextRowId(), value: oRes.data[0].id }]);
-        }
-        if (aRes.data) {
-          setAnalysts(aRes.data);
-          if (aRes.data.length > 0) setSelectedAnalystRows([{ rowId: nextRowId(), value: aRes.data[0].id }]);
-        }
+        if (mRes.data) setMachines(mRes.data);
+        if (oRes.data) setOperators(oRes.data);
+        if (aRes.data) setAnalysts(aRes.data);
         if (ordRes.data) setOrders(ordRes.data);
+
+        // Restaurar rascunho salvo, se existir
+        try {
+          const raw = localStorage.getItem(DRAFT_KEY);
+          if (raw) {
+            const d = JSON.parse(raw);
+            if (d.selectedOrderId) setSelectedOrderId(d.selectedOrderId);
+            if (d.newOrder) setNewOrder(d.newOrder);
+            if (d.selectedMachineId) setSelectedMachineId(d.selectedMachineId);
+            else if (mRes.data && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id);
+            if (d.selectedOperatorRows) setSelectedOperatorRows(d.selectedOperatorRows.map((r: any) => ({ rowId: nextRowId(), value: r.value })));
+            else if (oRes.data && oRes.data.length > 0) setSelectedOperatorRows([{ rowId: nextRowId(), value: oRes.data[0].id }]);
+            if (d.selectedAnalystRows) setSelectedAnalystRows(d.selectedAnalystRows.map((r: any) => ({ rowId: nextRowId(), value: r.value })));
+            else if (aRes.data && aRes.data.length > 0) setSelectedAnalystRows([{ rowId: nextRowId(), value: aRes.data[0].id }]);
+            if (d.productionMetrics) setProductionMetrics(d.productionMetrics);
+            if (d.offsetData) setOffsetData(d.offsetData);
+            if (d.offsetFacaCounts) setOffsetFacaCounts(d.offsetFacaCounts);
+            if (d.offsetDescricoes) setOffsetDescricoes(d.offsetDescricoes);
+            if (d.uvApplicable !== undefined) setUvApplicable(d.uvApplicable);
+            if (d.uvFacaCounts) setUvFacaCounts(d.uvFacaCounts);
+            if (d.hotStampingApplicable !== undefined) setHotStampingApplicable(d.hotStampingApplicable);
+            if (d.hotStampingMachineId) setHotStampingMachineId(d.hotStampingMachineId);
+            if (d.hotStampingOperatorId) setHotStampingOperatorId(d.hotStampingOperatorId);
+            if (d.hotStampingFacaCounts) setHotStampingFacaCounts(d.hotStampingFacaCounts);
+            if (d.folhasData) setFolhasData(d.folhasData);
+            if (d.unidadesPorFolha) setUnidadesPorFolha(d.unidadesPorFolha);
+            if (d.folhasPorPilha) setFolhasPorPilha(d.folhasPorPilha);
+            if (d.observacoesAnalista !== undefined) setObservacoesAnalista(d.observacoesAnalista);
+          } else {
+            // Sem rascunho: defaults
+            if (mRes.data && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id);
+            if (oRes.data && oRes.data.length > 0) setSelectedOperatorRows([{ rowId: nextRowId(), value: oRes.data[0].id }]);
+            if (aRes.data && aRes.data.length > 0) setSelectedAnalystRows([{ rowId: nextRowId(), value: aRes.data[0].id }]);
+          }
+        } catch {
+          if (mRes.data && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id);
+          if (oRes.data && oRes.data.length > 0) setSelectedOperatorRows([{ rowId: nextRowId(), value: oRes.data[0].id }]);
+          if (aRes.data && aRes.data.length > 0) setSelectedAnalystRows([{ rowId: nextRowId(), value: aRes.data[0].id }]);
+        }
       } catch {
         showToast('Erro ao carregar dados mestres', 'error');
       } finally {
@@ -436,9 +474,11 @@ export default function InspectionView() {
     setUvApplicable(false);
     setUvFacaCounts(Object.fromEntries(UV_DEFECT_KEYS.map(d => [d.key, {} as FacaCount])));
     setHotStampingApplicable(false);
+    setHotStampingMachineId('');
+    setHotStampingOperatorId('');
     setHotStampingFacaCounts(Object.fromEntries(HS_DEFECT_KEYS.map(d => [d.key, {} as FacaCount])));
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
-    setFolhasData({ folhas_verificadas: 0, folhas_aprovadas: 0, folhas_escolha: 0, folhas_reprovadas: 0 });
+    setFolhasData({ pilhas_verificadas: 0, pilhas_aprovadas: 0, folhas_escolha: 0, folhas_reprovadas: 0 });
     setUnidadesPorFolha(1);
     setFolhasPorPilha(500);
     setObservacoesAnalista('');
@@ -446,7 +486,30 @@ export default function InspectionView() {
     setShowReimpressaoForm(false);
     setReimpressaoMotivo('');
     setReimpressaoQtd(0);
+    localStorage.removeItem(DRAFT_KEY);
   }, []);
+
+  // Auto-save do rascunho no localStorage (debounce 800ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const draft = {
+          selectedOrderId, newOrder, selectedMachineId,
+          selectedOperatorRows, selectedAnalystRows,
+          productionMetrics, offsetData, offsetFacaCounts, offsetDescricoes,
+          uvApplicable, uvFacaCounts,
+          hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts,
+          folhasData, unidadesPorFolha, folhasPorPilha, observacoesAnalista,
+        };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch { /* storage cheio */ }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [selectedOrderId, newOrder, selectedMachineId, selectedOperatorRows, selectedAnalystRows,
+      productionMetrics, offsetData, offsetFacaCounts, offsetDescricoes,
+      uvApplicable, uvFacaCounts,
+      hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts,
+      folhasData, unidadesPorFolha, folhasPorPilha, observacoesAnalista]);
 
   const handleSave = useCallback(async (andNew: boolean) => {
     const typedOp = newOrder.op.trim().toUpperCase();
@@ -479,8 +542,6 @@ export default function InspectionView() {
         if (!selectedOrder) {
           const payload = {
             op: typedOp,
-            cliente: newOrder.cliente.trim(),
-            produto: newOrder.produto.trim(),
             qtd_total: Math.max(0, Number(newOrder.qtd_total) || 0),
             status: 'em_producao',
             unidades_por_folha: unidadesPorFolha,
@@ -551,7 +612,7 @@ export default function InspectionView() {
             por_unidade: defeitosUnidade,
           },
           verniz_uv: { aplicavel: uvApplicable, defeitos: defeitosUV },
-          hot_stamping: { aplicavel: hotStampingApplicable, defeitos: defeitosHS },
+          hot_stamping: { aplicavel: hotStampingApplicable, machine_id: hotStampingMachineId || null, operator_id: hotStampingOperatorId || null, defeitos: defeitosHS },
           saldo_unidades: saldo,
           metricas_falha: {
             cor_folhas_com_defeito: failureBasis.colorFolhas,
@@ -580,14 +641,15 @@ export default function InspectionView() {
         }
       }
 
+      localStorage.removeItem(DRAFT_KEY);
       showToast('Registro salvo com sucesso!', 'success');
       if (andNew) {
         resetAll();
         setSelectedOrderId('');
-        setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
+        setNewOrder({ op: '', qtd_total: '' });
       } else if (!selectedOrderId) {
         setSelectedOrderId(orderId);
-        setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' });
+        setNewOrder({ op: '', qtd_total: '' });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -595,7 +657,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, offsetData, offsetFacaCounts, offsetDescricoes, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingFacaCounts, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, offsetData, offsetFacaCounts, offsetDescricoes, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -663,7 +725,7 @@ export default function InspectionView() {
             <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ordem de Produção (OP)</label>
             <select
               value={selectedOrderId}
-              onChange={(e) => { setSelectedOrderId(e.target.value); if (e.target.value) setNewOrder({ op: '', cliente: '', produto: '', qtd_total: '' }); }}
+              onChange={(e) => { setSelectedOrderId(e.target.value); if (e.target.value) setNewOrder({ op: '', qtd_total: '' }); }}
               className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-1 focus:ring-primary/20"
             >
               <option value="">Selecionar OP...</option>
@@ -970,7 +1032,34 @@ export default function InspectionView() {
                 </div>
               </div>
               {hotStampingApplicable && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="space-y-4">
+                  {/* Máquina e Operador do Hot Stamping */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-amber-600 ml-1">Máquina — Hot Stamping</label>
+                      <select
+                        value={hotStampingMachineId}
+                        onChange={e => setHotStampingMachineId(e.target.value)}
+                        className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 outline-none font-bold text-sm focus:ring-1 focus:ring-amber-400/30"
+                      >
+                        <option value="">Selecionar máquina...</option>
+                        {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-amber-600 ml-1">Operador — Hot Stamping</label>
+                      <select
+                        value={hotStampingOperatorId}
+                        onChange={e => setHotStampingOperatorId(e.target.value)}
+                        className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 outline-none font-bold text-sm focus:ring-1 focus:ring-amber-400/30"
+                      >
+                        <option value="">Selecionar operador...</option>
+                        {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  {/* Contadores de defeitos */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {HS_DEFECT_KEYS.map(d => (
                     <FacaDefectCounter
                       key={d.key}
@@ -981,6 +1070,7 @@ export default function InspectionView() {
                       onUpdate={(faca, count) => setHotStampingFacaCounts(prev => ({ ...prev, [d.key]: { ...prev[d.key], [faca]: count } }))}
                     />
                   ))}
+                  </div>
                 </div>
               )}
               {!hotStampingApplicable && (
@@ -990,19 +1080,51 @@ export default function InspectionView() {
 
             {/* Distribuição de Pilhas */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
                 <div>
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rastreabilidade</p>
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Distribuição de Folhas</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Distribuição de Pilhas</h3>
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-lg">1 folha = {fmt(unidadesPorFolha)} unid.</span>
+                <div className="flex flex-wrap gap-3 text-right">
+                  {currentOrder && (
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Folhas previstas (OP)</span>
+                      <span className="text-xs font-black text-slate-600 dark:text-slate-300">{fmt(Math.ceil(currentOrder.qtd_total / Math.max(1, unidadesPorFolha)))} fls</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Folhas rodadas</span>
+                    <span className="text-xs font-black text-primary">{fmt(productionMetrics.printedSheets)} fls</span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-lg self-end">1 pilha = {fmt(folhasPorPilha)} fls · 1 fls = {fmt(unidadesPorFolha)} un.</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <MetricInput label="Verificadas" icon="search" value={folhasData.folhas_verificadas} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_verificadas: v }))} />
-                <MetricInput label="Aprovadas" icon="check_circle" value={folhasData.folhas_aprovadas} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_aprovadas: v }))} />
-                <MetricInput label="P/ Escolha" icon="filter_list" value={folhasData.folhas_escolha} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_escolha: v }))} />
-                <MetricInput label="Reprovadas" icon="cancel" value={folhasData.folhas_reprovadas} onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_reprovadas: v }))} />
+                <MetricInput
+                  label="Verificadas (pilhas)" icon="search" accent
+                  value={folhasData.pilhas_verificadas}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, pilhas_verificadas: v }))}
+                  subtitle={`= ${fmt(folhasData.pilhas_verificadas * folhasPorPilha)} folhas`}
+                />
+                <MetricInput
+                  label="Aprovadas (pilhas)" icon="check_circle" accent
+                  value={folhasData.pilhas_aprovadas}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, pilhas_aprovadas: v }))}
+                  subtitle={`= ${fmt(folhasData.pilhas_aprovadas * folhasPorPilha)} folhas · ${fmt(folhasData.pilhas_aprovadas * folhasPorPilha * unidadesPorFolha)} un.`}
+                />
+                <MetricInput
+                  label="P/ Escolha (folhas)" icon="filter_list"
+                  value={folhasData.folhas_escolha}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_escolha: v }))}
+                  subtitle={`= ${fmt(folhasData.folhas_escolha * unidadesPorFolha)} un.`}
+                />
+                <MetricInput
+                  label="Reprovadas (folhas)" icon="cancel"
+                  value={folhasData.folhas_reprovadas}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_reprovadas: v }))}
+                  subtitle={`= ${fmt(folhasData.folhas_reprovadas * unidadesPorFolha)} un.`}
+                />
               </div>
             </div>
 
@@ -1127,11 +1249,11 @@ export default function InspectionView() {
         <button onClick={resetAll} className="h-10 px-6 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] tracking-widest hover:bg-slate-50 transition-all text-slate-500 uppercase w-full sm:w-auto">
           LIMPAR
         </button>
-        <button onClick={() => handleSave(false)} disabled={isSaving} className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase w-full sm:w-auto">
-          {isSaving ? '...' : 'SALVAR'}
+        <button onClick={() => handleSave(true)} disabled={isSaving} className="h-10 px-6 rounded-xl border-2 border-primary text-primary font-black text-[10px] tracking-widest hover:bg-primary/5 transition-all disabled:opacity-50 uppercase w-full sm:w-auto">
+          {isSaving ? '...' : 'SALVAR + NOVA OP'}
         </button>
-        <button onClick={() => handleSave(true)} disabled={isSaving} className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase w-full sm:w-auto">
-          {isSaving ? 'SINC...' : 'SALVAR E NOVO'}
+        <button onClick={() => handleSave(false)} disabled={isSaving} className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all disabled:opacity-50 uppercase w-full sm:w-auto">
+          {isSaving ? 'SALVANDO...' : 'SALVAR'}
         </button>
       </footer>
     </div>

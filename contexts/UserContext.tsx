@@ -58,7 +58,8 @@ export const UserProvider = ({ userId, children }: { userId: string; children: R
   }, [userId]);
 
   useEffect(() => {
-    fetchProfile();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchProfile();
   }, [fetchProfile]);
 
   const role = profile?.role ?? null;

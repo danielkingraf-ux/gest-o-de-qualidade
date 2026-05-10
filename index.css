@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Esconde scrollbar visualmente mas mantém funcionalidade */
+.no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
 .material-symbols-outlined {
     font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
     display: inline-block;
@@ -95,6 +104,23 @@ body {
 
 .animate-bounce-slow {
     animation: bounce-slow 2s infinite;
+}
+
+/* Animação de sino (notificações não lidas) */
+@keyframes bell-ring {
+    0%   { transform: rotate(0deg); }
+    4%   { transform: rotate(18deg); }
+    8%   { transform: rotate(-16deg); }
+    12%  { transform: rotate(14deg); }
+    16%  { transform: rotate(-10deg); }
+    20%  { transform: rotate(6deg); }
+    24%  { transform: rotate(0deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.animate-bell-ring {
+    transform-origin: top center;
+    animation: bell-ring 2.2s ease-in-out infinite;
 }
 
 [data-tooltip] {

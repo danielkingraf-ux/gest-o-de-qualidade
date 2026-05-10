@@ -1,4 +1,5 @@
 import React, { useState, createContext, useContext, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { HashRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabase';
@@ -10,16 +11,21 @@ import PrivacyNoticeModal from './components/PrivacyNoticeModal';
 import InspectionView from './views/InspectionView';
 import RecordsView from './views/RecordsView';
 import DocumentationView from './views/DocumentationView';
-import HistoryView from './views/HistoryView';
 import AdminView from './views/AdminView';
 import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import ShiftLogView from './views/ShiftLogView';
 import FinishingAnalysisView from './views/FinishingAnalysisView';
 import ReportsView from './views/ReportsView';
-import HistoricalUploadView from './views/HistoricalUploadView';
 import SupervisorView from './views/SupervisorView';
 import LgpdView from './views/LgpdView';
+import PalletAuditView from './views/PalletAuditView';
+import PalletListView from './views/PalletListView';
+import QualityPanelView from './views/QualityPanelView';
+import OPTraceView from './views/OPTraceView';
+import AcabamentoEscolhasView from './views/AcabamentoEscolhasView';
+import AcabamentoCortesVincoView from './views/AcabamentoCortesVincoView';
+import AcabamentoRevisaoFinalView from './views/AcabamentoRevisaoFinalView';
 
 
 // Theme System
@@ -80,45 +86,26 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   const location = useLocation();
   const { showToast } = useToast();
   const { theme, toggleTheme } = useTheme();
-  const { isSupervisor, profile } = useUser();
-  const [alertCount, setAlertCount] = useState(0);
-
-  // Subscribe to new alerts in Shift Log
-  useEffect(() => {
-    const subscription = supabase
-      .channel('sidebar_shift_alerts')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_logs' }, (payload) => {
-        const newLog = payload.new as { type: string };
-        if (newLog.type === 'alert' || newLog.type === 'critical') {
-          setAlertCount(prev => prev + 1);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Clear alerts when visiting the page
-  useEffect(() => {
-    if (location.pathname === '/shift-log') {
-      setAlertCount(0);
-    }
-  }, [location.pathname]);
+  const { profile } = useUser();
+  const isSupervisor = profile?.role === 'supervisor';
 
   const allMenuItems = [
     { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['supervisor'] },
     { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['analista', 'supervisor'] },
     { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['analista', 'supervisor'] },
+    { path: '/quality-panel', label: 'Painel de Qualidade', icon: 'query_stats', roles: ['supervisor'] },
+    { path: '/rastreabilidade', label: 'Rastreabilidade', icon: 'manage_search', roles: ['analista', 'supervisor'] },
     { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['supervisor'] },
-    { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true, roles: ['analista', 'supervisor'] },
+    { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true, roles: ['analista', 'supervisor', 'auxiliar'] },
     { path: '/records', label: 'Registros', icon: 'analytics', roles: ['analista', 'supervisor'] },
-    { path: '/historical-import', label: 'Importar Histórico', icon: 'history', roles: ['supervisor'] },
-    { path: '/supervisor', label: 'Aprovações', icon: 'rule', roles: ['supervisor'] },
+    { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['supervisor'] },
+    { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['supervisor'] },
     { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['supervisor'] },
     { path: '/docs', label: 'Documentação', icon: 'description', roles: ['analista', 'supervisor'] },
-    { path: '/lgpd', label: 'LGPD', icon: 'verified_user', roles: ['supervisor'] },
+    // ── Acabamento (auxiliar) ────────────────────────────────────────────────
+    { path: '/acabamento-escolhas', label: 'Revisão de Escolhas', icon: 'fact_check', roles: ['auxiliar', 'supervisor'] },
+    { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['auxiliar', 'supervisor'] },
+    { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['auxiliar', 'supervisor'] },
   ];
 
   const userRole = profile?.role ?? 'analista';
@@ -148,14 +135,14 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
       </button>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <div className="flex shrink-0 items-center justify-center px-4 py-6 border-b border-slate-100 dark:border-slate-800/50">
+        <div className="flex shrink-0 items-center justify-center px-2 py-5 border-b border-slate-100 dark:border-slate-800/50">
           {isCollapsed ? (
-            <img src="/logo-symbol.png" alt="K" className="h-20 w-20 object-contain transition-all" />
+            <img src="/logo-symbol.png" alt="K" className="w-full h-auto object-contain max-h-14 transition-all" />
           ) : (
             <img src="/logo-full.png" alt="Kingraf" className="h-12 w-auto object-contain transition-all" />
           )}
         </div>
-        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
+        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto no-scrollbar">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
             const badgeCount = (item as { badge?: number }).badge;
@@ -248,8 +235,12 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
           {!isCollapsed && (
             <div className="flex flex-col overflow-hidden">
               <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{profile?.name || user?.email?.split('@')[0] || 'Usuário'}</p>
-              <p className={`text-[10px] uppercase font-black tracking-widest leading-none ${isSupervisor ? 'text-amber-500' : 'text-emerald-500'}`}>
-                {isSupervisor ? 'Supervisão' : 'Analista'}
+              <p className={`text-[10px] uppercase font-black tracking-widest leading-none ${
+                isSupervisor ? 'text-amber-500' :
+                profile?.role === 'auxiliar' ? 'text-violet-500' :
+                'text-emerald-500'
+              }`}>
+                {isSupervisor ? 'Supervisão' : profile?.role === 'auxiliar' ? 'Auxiliar' : 'Analista'}
               </p>
             </div>
           )}
@@ -259,7 +250,122 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   );
 };
 
-const Header = ({ onOpenSidebar, unreadCount, onOpenChat }: { onOpenSidebar: () => void; unreadCount: number; onOpenChat: () => void }) => {
+// Modal de Segurança
+const SecurityModal = ({ onClose }: { onClose: () => void }) => createPortal(
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slide-in"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header do modal */}
+      <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-8 py-6 rounded-t-3xl flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-emerald-500 text-2xl">verified_user</span>
+            <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Segurança do Sistema</h2>
+          </div>
+          <p className="text-xs text-slate-500 font-medium">Como seus dados são protegidos nesta plataforma</p>
+        </div>
+        <button onClick={onClose} className="size-10 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors shrink-0">
+          <span className="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div className="px-8 py-6 space-y-5">
+
+        {/* Autenticação */}
+        <div className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-blue-600 text-xl">lock</span>
+            <h3 className="text-sm font-black text-blue-900 dark:text-blue-300 uppercase tracking-wide">Autenticação JWT</h3>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-widest">Supabase Auth</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Todo acesso exige login com e-mail e senha. Após autenticação, o sistema gera um <strong className="text-slate-800 dark:text-slate-200">token JWT</strong> assinado digitalmente com validade curta. Cada requisição ao banco carrega esse token — sem ele, nenhuma operação é executada. O token é renovado automaticamente enquanto a sessão está ativa e invalidado imediatamente no logout.
+          </p>
+        </div>
+
+        {/* RLS */}
+        <div className="rounded-2xl border border-violet-100 dark:border-violet-900/40 bg-violet-50 dark:bg-violet-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-violet-600 text-xl">shield</span>
+            <h3 className="text-sm font-black text-violet-900 dark:text-violet-300 uppercase tracking-wide">RLS — Row Level Security</h3>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-[9px] font-black uppercase text-violet-600 dark:text-violet-400 tracking-widest">PostgreSQL</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
+            O banco de dados aplica <strong className="text-slate-800 dark:text-slate-200">políticas de segurança linha a linha</strong>. Mesmo que alguém tente acessar diretamente o banco com credenciais válidas, o PostgreSQL filtra automaticamente o que cada papel pode ver ou modificar:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            {[
+              { label: 'inspections', desc: 'Analistas leem/criam; supervisores têm acesso total' },
+              { label: 'orders', desc: 'Leitura aberta para autenticados; escrita restrita' },
+              { label: 'user_profiles', desc: 'Cada usuário vê apenas seu próprio perfil' },
+              { label: 'edit_requests', desc: 'Aprovação exclusiva de supervisores' },
+              { label: 'nqa_profiles', desc: 'Leitura para todos; gerência só por supervisor' },
+              { label: 'blocklist / LGPD', desc: 'Acesso restrito a funções internas do sistema' },
+            ].map(item => (
+              <div key={item.label} className="flex gap-2 bg-white dark:bg-slate-800/60 rounded-xl p-3 border border-violet-100 dark:border-violet-900/30">
+                <span className="material-symbols-outlined text-violet-400 text-base shrink-0 mt-0.5">table_rows</span>
+                <div>
+                  <p className="font-black text-slate-700 dark:text-slate-200 font-mono">{item.label}</p>
+                  <p className="text-slate-500 dark:text-slate-400 leading-snug">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Funções de controle de acesso */}
+        <div className="rounded-2xl border border-amber-100 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-amber-600 text-xl">functions</span>
+            <h3 className="text-sm font-black text-amber-900 dark:text-amber-300 uppercase tracking-wide">Funções de Controle</h3>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-widest">SQL Functions</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            A função <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono font-bold">current_user_role()</code> é executada <strong className="text-slate-800 dark:text-slate-200">dentro do próprio banco</strong> a cada operação sensível. Ela consulta a tabela <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono font-bold">user_profiles</code> e retorna o papel do usuário autenticado (<em>analista</em> ou <em>supervisor</em>). As políticas RLS chamam essa função em tempo real — nenhuma lógica de permissão fica só no front-end.
+          </p>
+        </div>
+
+        {/* HTTPS + Infraestrutura */}
+        <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-emerald-600 text-xl">https</span>
+            <h3 className="text-sm font-black text-emerald-900 dark:text-emerald-300 uppercase tracking-wide">Transporte Seguro</h3>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest">TLS 1.3</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Toda comunicação entre o navegador, a aplicação (Vercel) e o banco (Supabase) trafega exclusivamente por <strong className="text-slate-800 dark:text-slate-200">HTTPS com TLS 1.3</strong>. Tokens JWT e dados operacionais nunca trafegam em texto claro. A chave de serviço do banco fica armazenada em variáveis de ambiente do servidor — jamais exposta no código-fonte ou no cliente.
+          </p>
+        </div>
+
+        {/* LGPD */}
+        <div className="rounded-2xl border border-rose-100 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-rose-600 text-xl">gpp_good</span>
+            <h3 className="text-sm font-black text-rose-900 dark:text-rose-300 uppercase tracking-wide">Conformidade LGPD</h3>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/50 text-[9px] font-black uppercase text-rose-600 dark:text-rose-400 tracking-widest">Lei 13.709/2018</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            O sistema coleta <strong className="text-slate-800 dark:text-slate-200">apenas dados operacionais necessários</strong>: nome, e-mail corporativo e nível de acesso. Não há coleta de dados pessoais sensíveis. Registros de consentimento são mantidos e o usuário pode consultar seus dados a qualquer momento pela seção <em>LGPD</em> no menu (visível para supervisores).
+          </p>
+        </div>
+
+        {/* Rodapé */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+          <p className="text-[10px] text-slate-400 font-medium">Infraestrutura: Supabase (PostgreSQL 15) + Vercel Edge Network</p>
+          <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 uppercase tracking-widest">
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+            Sistema Protegido
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>,
+  document.body
+);
+
+const Header = ({ onOpenSidebar, unreadCount, onOpenChat, onOpenSecurity }: { onOpenSidebar: () => void; unreadCount: number; onOpenChat: () => void; onOpenSecurity: () => void }) => {
   const [now, setNow] = React.useState(new Date());
 
   React.useEffect(() => {
@@ -286,21 +392,26 @@ const Header = ({ onOpenSidebar, unreadCount, onOpenChat }: { onOpenSidebar: () 
         <div className="flex items-center gap-3">
           <button
             onClick={onOpenChat}
-            className={`relative size-10 flex items-center justify-center rounded-lg transition-colors ${unreadCount > 0
-              ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 animate-pulse'
+            className={`relative size-10 flex items-center justify-center rounded-lg transition-all ${unreadCount > 0
+              ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
               : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             aria-label="Abrir Chat da Qualidade"
             data-tooltip="Abrir Chat da Qualidade"
           >
-            <span className="material-symbols-outlined">notifications</span>
+            <span className={`material-symbols-outlined${unreadCount > 0 ? ' animate-bell-ring' : ''}`}>notifications</span>
             {unreadCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </button>
-          <button className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+          <button
+            onClick={onOpenSecurity}
+            className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            aria-label="Segurança do sistema"
+            data-tooltip="Segurança do sistema"
+          >
             <span className="material-symbols-outlined">help</span>
           </button>
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-2"></div>
@@ -345,7 +456,7 @@ const App = () => {
     });
 
     // 2. Fica ouvindo mudanças (login/logout)
-    const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = authService.onAuthStateChange(async (_event, session) => {
       settled = true;
       setSession(session);
       setLoading(false);
@@ -388,6 +499,7 @@ const App = () => {
 const AppShell = ({ session }: { session: Session }) => {
   const { isSupervisor, profile, loading: profileLoading } = useUser();
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isSecurityOpen, setIsSecurityOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -473,10 +585,9 @@ const AppShell = ({ session }: { session: Session }) => {
   }
 
   const userRole = profile?.role ?? 'analista';
-  const fallbackPath = isSupervisor ? '/' : '/inspections';
-  const RoleRoute = ({ roles, children }: { roles: string[]; children: React.ReactElement }) => (
-    roles.includes(userRole) ? children : <Navigate to={fallbackPath} replace />
-  );
+  const fallbackPath = isSupervisor ? '/' : userRole === 'auxiliar' ? '/acabamento-escolhas' : '/inspections';
+  const protectedElement = (roles: string[], child: React.ReactElement) =>
+    roles.includes(userRole) ? child : <Navigate to={fallbackPath} replace />;
 
   return (
     <HashRouter>
@@ -498,71 +609,40 @@ const AppShell = ({ session }: { session: Session }) => {
             onClick={() => setIsMobileSidebarOpen(false)}
           />
         )}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0">
           <Header
             onOpenSidebar={() => setIsMobileSidebarOpen(true)}
             unreadCount={unreadCount}
             onOpenChat={() => setIsChatOpen(true)}
+            onOpenSecurity={() => setIsSecurityOpen(true)}
           />
           <main className="flex-1 overflow-y-auto">
             <Routes>
-              <Route path="/" element={
-                <RoleRoute roles={['supervisor']}>
-                  <DashboardView />
-                </RoleRoute>
-              } />
-              <Route path="/inspections" element={
-                <RoleRoute roles={['analista', 'supervisor']}>
-                  <InspectionView />
-                </RoleRoute>
-              } />
-              <Route path="/finishing-analysis" element={
-                <RoleRoute roles={['analista', 'supervisor']}>
-                  <FinishingAnalysisView />
-                </RoleRoute>
-              } />
-              <Route path="/reports" element={
-                <RoleRoute roles={['supervisor']}>
-                  <ReportsView />
-                </RoleRoute>
-              } />
+              <Route path="/" element={protectedElement(['supervisor'], <DashboardView />)} />
+              <Route path="/inspections" element={protectedElement(['analista', 'supervisor'], <InspectionView />)} />
+              <Route path="/finishing-analysis" element={protectedElement(['analista', 'supervisor'], <FinishingAnalysisView />)} />
+              <Route path="/pallet/:id" element={protectedElement(['analista', 'supervisor'], <PalletAuditView />)} />
+              <Route path="/pallets" element={protectedElement(['analista', 'supervisor'], <PalletListView />)} />
+              <Route path="/rastreabilidade" element={protectedElement(['analista', 'supervisor'], <OPTraceView />)} />
+              <Route path="/quality-panel" element={protectedElement(['supervisor'], <QualityPanelView />)} />
+              <Route path="/reports" element={protectedElement(['supervisor'], <ReportsView />)} />
               <Route path="/shift-log" element={<ShiftLogView />} />
-              <Route path="/records" element={
-                <RoleRoute roles={['analista', 'supervisor']}>
-                  <RecordsView />
-                </RoleRoute>
-              } />
-              <Route path="/docs" element={
-                <RoleRoute roles={['analista', 'supervisor']}>
-                  <DocumentationView />
-                </RoleRoute>
-              } />
-              <Route path="/lgpd" element={
-                <RoleRoute roles={['supervisor']}>
-                  <LgpdView />
-                </RoleRoute>
-              } />
-              <Route path="/historical-import" element={
-                <RoleRoute roles={['supervisor']}>
-                  <HistoricalUploadView />
-                </RoleRoute>
-              } />
-              <Route path="/supervisor" element={
-                <RoleRoute roles={['supervisor']}>
-                  <SupervisorView />
-                </RoleRoute>
-              } />
-              <Route path="/admin" element={
-                <RoleRoute roles={['supervisor']}>
-                  <AdminView />
-                </RoleRoute>
-              } />
+              <Route path="/records" element={protectedElement(['analista', 'supervisor'], <RecordsView />)} />
+              <Route path="/docs" element={protectedElement(['analista', 'supervisor'], <DocumentationView />)} />
+              <Route path="/lgpd" element={protectedElement(['supervisor'], <LgpdView />)} />
+              <Route path="/supervisor" element={protectedElement(['supervisor'], <SupervisorView />)} />
+              <Route path="/admin" element={protectedElement(['supervisor'], <AdminView />)} />
+              {/* ── Acabamento ──────────────────────────────────────────────── */}
+              <Route path="/acabamento-escolhas" element={protectedElement(['auxiliar', 'analista', 'supervisor'], <AcabamentoEscolhasView />)} />
+              <Route path="/acabamento-corte-vinco" element={protectedElement(['auxiliar', 'analista', 'supervisor'], <AcabamentoCortesVincoView />)} />
+              <Route path="/acabamento-revisao-final" element={protectedElement(['auxiliar', 'analista', 'supervisor'], <AcabamentoRevisaoFinalView />)} />
               <Route path="*" element={<Navigate to={fallbackPath} replace />} />
             </Routes>
           </main>
         </div>
         <ChatPopup isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
         <PrivacyNoticeModal userId={session.user.id} />
+        {isSecurityOpen && <SecurityModal onClose={() => setIsSecurityOpen(false)} />}
       </div>
     </HashRouter>
   );

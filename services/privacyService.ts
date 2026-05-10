@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 
 export const LGPD_NOTICE_VERSION = '2026-05-06';
 
-export async function logPrivacyEvent(action: string, resourceType: string, resourceId?: string, metadata: Record<string, any> = {}) {
+export async function logPrivacyEvent(action: string, resourceType: string, resourceId?: string, metadata: Record<string, unknown> = {}) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;

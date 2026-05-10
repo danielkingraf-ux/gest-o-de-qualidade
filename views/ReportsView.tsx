@@ -88,9 +88,19 @@ const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
   }
 
   if (typeof raw === 'object') {
+    // Formato InspectionView: { por_folha: {...}, por_unidade: { key: { count: N, por_faca: {...} } } }
+    if (raw.por_unidade && typeof raw.por_unidade === 'object') {
+      return Object.entries(raw.por_unidade)
+        .map(([name, val]: [string, any]) => ({
+          name: name.replace(/_/g, ' '),
+          count: asNumber(typeof val === 'object' ? val?.count : val),
+        }))
+        .filter((item) => item.count > 0);
+    }
+
+    // Formato FinishingView: { critical: {...}, major: {...}, minor: {...} }
     const groups = ['critical', 'major', 'minor'];
     const hasGroups = groups.some((group) => raw[group] && typeof raw[group] === 'object');
-
     if (hasGroups) {
       return groups
         .flatMap((group) =>
@@ -108,6 +118,30 @@ const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
   }
 
   return [];
+};
+
+// Extrai todos os defeitos de uma observação (offset + UV + HS)
+const extractAllDefects = (obs: any): Array<{ name: string; count: number }> => {
+  const result: Array<{ name: string; count: number }> = [];
+
+  // InspectionView: obs.defeitos (português)
+  const rawDefeitos = obs.defeitos ?? obs.defects;
+  result.push(...normalizeDefects(rawDefeitos));
+
+  // UV
+  if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos) {
+    normalizeDefects(obs.verniz_uv.defeitos).forEach(d =>
+      result.push({ name: `UV: ${d.name}`, count: d.count })
+    );
+  }
+  // Hot Stamping
+  if (obs.hot_stamping?.aplicavel && obs.hot_stamping?.defeitos) {
+    normalizeDefects(obs.hot_stamping.defeitos).forEach(d =>
+      result.push({ name: `HS: ${d.name}`, count: d.count })
+    );
+  }
+
+  return result;
 };
 
 const getArea = (record: InspectionRecord, obs: any): 'initial' | 'final' => {
@@ -189,8 +223,15 @@ const ReportsView = () => {
   const normalizedRecords = useMemo<NormalizedRecord[]>(() => {
     return records.map((record) => {
       const obs = parseObservations(record.observations);
-      const defects = normalizeDefects(obs.defects);
-      const total = asNumber(obs.totalDefects) || defects.reduce((sum, defect) => sum + defect.count, 0);
+      const defects = extractAllDefects(obs);
+
+      // Total: preferir metricas_falha (InspectionView v2), depois totalDefects, depois soma dos defeitos
+      const total =
+        asNumber(obs.metricas_falha?.falhas_por_unidade) ||
+        asNumber(obs.totalDefects) ||
+        defects.reduce((sum, d) => sum + d.count, 0) +
+        asNumber(record.rework_count);
+
       const operatorIds = Array.isArray(obs.all_operator_ids)
         ? obs.all_operator_ids
         : record.operator_id
