@@ -26,6 +26,9 @@ import OPTraceView from './views/OPTraceView';
 import AcabamentoEscolhasView from './views/AcabamentoEscolhasView';
 import AcabamentoCortesVincoView from './views/AcabamentoCortesVincoView';
 import AcabamentoRevisaoFinalView from './views/AcabamentoRevisaoFinalView';
+import EscolhaRevisaoView from './views/EscolhaRevisaoView';
+import OcorrenciasOpView from './views/OcorrenciasOpView';
+import { getRoleLabel, normalizeRole } from './utils/permissions';
 
 
 // Theme System
@@ -87,29 +90,31 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   const { showToast } = useToast();
   const { theme, toggleTheme } = useTheme();
   const { profile } = useUser();
-  const isSupervisor = profile?.role === 'supervisor';
+  const normalizedRole = normalizeRole(profile?.role);
 
   const allMenuItems = [
-    { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['supervisor'] },
-    { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['analista', 'supervisor'] },
-    { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['analista', 'supervisor'] },
-    { path: '/quality-panel', label: 'Painel de Qualidade', icon: 'query_stats', roles: ['supervisor'] },
-    { path: '/rastreabilidade', label: 'Rastreabilidade', icon: 'manage_search', roles: ['analista', 'supervisor'] },
-    { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['supervisor'] },
-    { path: 'chat', label: 'Chat da Qualidade', icon: 'forum', badge: unreadCount, isAction: true, roles: ['analista', 'supervisor', 'auxiliar'] },
-    { path: '/records', label: 'Registros', icon: 'analytics', roles: ['analista', 'supervisor'] },
-    { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['supervisor'] },
-    { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['supervisor'] },
-    { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['supervisor'] },
-    { path: '/docs', label: 'Documentação', icon: 'description', roles: ['analista', 'supervisor'] },
+    { path: '/ocorrencias-op', label: 'Ocorrências da OP', icon: 'forum', roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'direcao', 'consulta_auditoria'] },
+    { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['administrador', 'direcao', 'supervisao'] },
+    { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['administrador', 'analista_qualidade'] },
+    { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['administrador', 'analista_qualidade'] },
+    { path: '/quality-panel', label: 'Painel de Qualidade', icon: 'query_stats', roles: ['administrador', 'supervisao'] },
+    { path: '/rastreabilidade', label: 'Rastreabilidade', icon: 'manage_search', roles: ['administrador', 'direcao', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'consulta_auditoria'] },
+    { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['administrador', 'direcao', 'supervisao', 'consulta_auditoria'] },
+    { path: 'chat', label: 'Ocorrências', icon: 'forum', badge: unreadCount, isAction: true, roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'] },
+    { path: '/records', label: 'Registros', icon: 'analytics', roles: ['administrador', 'supervisao', 'analista_qualidade', 'consulta_auditoria'] },
+    { path: '/escolha-revisao', label: 'Controle Escolha/Revisão', icon: 'playlist_add_check', roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'direcao', 'consulta_auditoria'] },
+    { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['administrador', 'analista_qualidade', 'expedicao'] },
+    { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['administrador', 'supervisao'] },
+    { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['administrador'] },
+    { path: '/docs', label: 'Documentação', icon: 'description', roles: ['administrador', 'consulta_auditoria', 'analista_qualidade', 'supervisao'] },
     // ── Acabamento (auxiliar) ────────────────────────────────────────────────
-    { path: '/acabamento-escolhas', label: 'Revisão de Escolhas', icon: 'fact_check', roles: ['auxiliar', 'supervisor'] },
-    { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['auxiliar', 'supervisor'] },
-    { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['auxiliar', 'supervisor'] },
+    { path: '/acabamento-escolhas', label: 'Revisão de Escolhas', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+    { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+    { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
   ];
 
-  const userRole = profile?.role ?? 'analista';
-  const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
+  const userRole = profile?.role ?? 'consulta_auditoria';
+  const menuItems = allMenuItems.filter(item => item.roles.includes(normalizeRole(userRole)));
 
   const handleLogout = async () => {
     const { error } = await authService.signOut();
@@ -236,11 +241,12 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
             <div className="flex flex-col overflow-hidden">
               <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{profile?.name || user?.email?.split('@')[0] || 'Usuário'}</p>
               <p className={`text-[10px] uppercase font-black tracking-widest leading-none ${
-                isSupervisor ? 'text-amber-500' :
-                profile?.role === 'auxiliar' ? 'text-violet-500' :
+                normalizedRole === 'administrador' ? 'text-amber-500' :
+                normalizedRole === 'revisao_escolha' ? 'text-violet-500' :
+                normalizedRole === 'consulta_auditoria' ? 'text-slate-500' :
                 'text-emerald-500'
               }`}>
-                {isSupervisor ? 'Supervisão' : profile?.role === 'auxiliar' ? 'Auxiliar' : 'Analista'}
+                {getRoleLabel(profile?.role)}
               </p>
             </div>
           )}
@@ -323,7 +329,7 @@ const SecurityModal = ({ onClose }: { onClose: () => void }) => createPortal(
             <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-widest">SQL Functions</span>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            A função <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono font-bold">current_user_role()</code> é executada <strong className="text-slate-800 dark:text-slate-200">dentro do próprio banco</strong> a cada operação sensível. Ela consulta a tabela <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono font-bold">user_profiles</code> e retorna o papel do usuário autenticado (<em>analista</em> ou <em>supervisor</em>). As políticas RLS chamam essa função em tempo real — nenhuma lógica de permissão fica só no front-end.
+            A função <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono font-bold">current_user_role()</code> é executada <strong className="text-slate-800 dark:text-slate-200">dentro do próprio banco</strong> a cada operação sensível. Ela consulta a tabela <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono font-bold">user_profiles</code> e retorna o perfil do usuário autenticado. As políticas RLS chamam essa função em tempo real; a permissão não fica só no front-end.
           </p>
         </div>
 
@@ -584,10 +590,16 @@ const AppShell = ({ session }: { session: Session }) => {
     );
   }
 
-  const userRole = profile?.role ?? 'analista';
-  const fallbackPath = isSupervisor ? '/' : userRole === 'auxiliar' ? '/acabamento-escolhas' : '/inspections';
+  const userRole = profile?.role ?? 'consulta_auditoria';
+  const normalizedRole = normalizeRole(userRole);
+  const fallbackPath =
+    ['administrador', 'direcao', 'supervisao'].includes(normalizedRole) ? '/' :
+    normalizedRole === 'revisao_escolha' ? '/acabamento-escolhas' :
+    normalizedRole === 'expedicao' ? '/pallets' :
+    normalizedRole === 'consulta_auditoria' ? '/rastreabilidade' :
+    '/inspections';
   const protectedElement = (roles: string[], child: React.ReactElement) =>
-    roles.includes(userRole) ? child : <Navigate to={fallbackPath} replace />;
+    roles.includes(normalizedRole) ? child : <Navigate to={fallbackPath} replace />;
 
   return (
     <HashRouter>
@@ -618,24 +630,26 @@ const AppShell = ({ session }: { session: Session }) => {
           />
           <main className="flex-1 overflow-y-auto">
             <Routes>
-              <Route path="/" element={protectedElement(['supervisor'], <DashboardView />)} />
-              <Route path="/inspections" element={protectedElement(['analista', 'supervisor'], <InspectionView />)} />
-              <Route path="/finishing-analysis" element={protectedElement(['analista', 'supervisor'], <FinishingAnalysisView />)} />
-              <Route path="/pallet/:id" element={protectedElement(['analista', 'supervisor'], <PalletAuditView />)} />
-              <Route path="/pallets" element={protectedElement(['analista', 'supervisor'], <PalletListView />)} />
-              <Route path="/rastreabilidade" element={protectedElement(['analista', 'supervisor'], <OPTraceView />)} />
-              <Route path="/quality-panel" element={protectedElement(['supervisor'], <QualityPanelView />)} />
-              <Route path="/reports" element={protectedElement(['supervisor'], <ReportsView />)} />
-              <Route path="/shift-log" element={<ShiftLogView />} />
-              <Route path="/records" element={protectedElement(['analista', 'supervisor'], <RecordsView />)} />
-              <Route path="/docs" element={protectedElement(['analista', 'supervisor'], <DocumentationView />)} />
-              <Route path="/lgpd" element={protectedElement(['supervisor'], <LgpdView />)} />
-              <Route path="/supervisor" element={protectedElement(['supervisor'], <SupervisorView />)} />
-              <Route path="/admin" element={protectedElement(['supervisor'], <AdminView />)} />
+              <Route path="/" element={protectedElement(['administrador', 'direcao', 'supervisao'], <DashboardView />)} />
+              <Route path="/inspections" element={protectedElement(['administrador', 'analista_qualidade'], <InspectionView />)} />
+              <Route path="/finishing-analysis" element={protectedElement(['administrador', 'analista_qualidade'], <FinishingAnalysisView />)} />
+              <Route path="/pallet/:id" element={protectedElement(['administrador', 'analista_qualidade', 'expedicao'], <PalletAuditView />)} />
+              <Route path="/pallets" element={protectedElement(['administrador', 'analista_qualidade', 'expedicao'], <PalletListView />)} />
+              <Route path="/rastreabilidade" element={protectedElement(['administrador', 'direcao', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'consulta_auditoria'], <OPTraceView />)} />
+              <Route path="/quality-panel" element={protectedElement(['administrador', 'supervisao'], <QualityPanelView />)} />
+              <Route path="/reports" element={protectedElement(['administrador', 'direcao', 'supervisao', 'consulta_auditoria'], <ReportsView />)} />
+              <Route path="/ocorrencias-op" element={protectedElement(['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'direcao', 'consulta_auditoria'], <OcorrenciasOpView />)} />
+              <Route path="/shift-log" element={protectedElement(['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'], <ShiftLogView />)} />
+              <Route path="/records" element={protectedElement(['administrador', 'supervisao', 'analista_qualidade', 'consulta_auditoria'], <RecordsView />)} />
+              <Route path="/escolha-revisao" element={protectedElement(['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'direcao', 'consulta_auditoria'], <EscolhaRevisaoView />)} />
+              <Route path="/docs" element={protectedElement(['administrador', 'consulta_auditoria', 'analista_qualidade', 'supervisao'], <DocumentationView />)} />
+              <Route path="/lgpd" element={protectedElement(['administrador'], <LgpdView />)} />
+              <Route path="/supervisor" element={protectedElement(['administrador', 'supervisao'], <SupervisorView />)} />
+              <Route path="/admin" element={protectedElement(['administrador'], <AdminView />)} />
               {/* ── Acabamento ──────────────────────────────────────────────── */}
-              <Route path="/acabamento-escolhas" element={protectedElement(['auxiliar', 'analista', 'supervisor'], <AcabamentoEscolhasView />)} />
-              <Route path="/acabamento-corte-vinco" element={protectedElement(['auxiliar', 'analista', 'supervisor'], <AcabamentoCortesVincoView />)} />
-              <Route path="/acabamento-revisao-final" element={protectedElement(['auxiliar', 'analista', 'supervisor'], <AcabamentoRevisaoFinalView />)} />
+              <Route path="/acabamento-escolhas" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoEscolhasView />)} />
+              <Route path="/acabamento-corte-vinco" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoCortesVincoView />)} />
+              <Route path="/acabamento-revisao-final" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoRevisaoFinalView />)} />
               <Route path="*" element={<Navigate to={fallbackPath} replace />} />
             </Routes>
           </main>

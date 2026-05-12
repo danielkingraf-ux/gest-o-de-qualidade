@@ -292,32 +292,14 @@ export default function RecordsView() {
   };
 
   const handleDeleteClick = (id: string) => {
-    if (!isSupervisor) {
-      showToast('Analistas não podem excluir registros. Solicite à supervisão.', 'warning');
-      return;
-    }
-    setRecordToDelete(id);
-    setIsDeleteModalOpen(true);
+    void id;
+    showToast('Registros produtivos não são excluídos definitivamente. Use correção com justificativa e histórico.', 'warning');
   };
 
   const confirmDelete = async () => {
-    if (!recordToDelete) return;
-    if (!isSupervisor) {
-      showToast('Exclusão permitida somente para supervisão', 'error');
-      setRecordToDelete(null);
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('inspections').delete().eq('id', recordToDelete);
-      if (error) throw error;
-      showToast('Registro excluído com sucesso', 'success');
-      setRecords(prev => prev.filter(r => r.id !== recordToDelete));
-    } catch (error: any) {
-      showToast('Erro ao excluir registro', 'error');
-    } finally {
-      setRecordToDelete(null);
-    }
+    showToast('Exclusão definitiva bloqueada para preservar rastreabilidade.', 'warning');
+    setRecordToDelete(null);
+    setIsDeleteModalOpen(false);
   };
 
   const handleEdit = (record: any) => {
@@ -450,6 +432,7 @@ export default function RecordsView() {
       case 'APPROVED': return 'Aprovado';
       case 'REJECTED': return 'Reprovado';
       case 'RESTRICTED': return 'Aprovado com Restrição';
+      case 'PENDING_CLOSURE': return 'Pendente de fechamento';
       default: return s;
     }
   };
@@ -606,6 +589,7 @@ export default function RecordsView() {
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${record.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
                           record.status === 'REJECTED' ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' :
+                            record.status === 'PENDING_CLOSURE' ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400' :
                             'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
                           }`}>
                           {getStatusLabel(record.status)}
@@ -641,14 +625,6 @@ export default function RecordsView() {
                                 data-tooltip="Editar Registro"
                               >
                                 <span className="material-symbols-outlined text-xl">edit</span>
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(record.id)}
-                                className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
-                                aria-label="Excluir Registro"
-                                data-tooltip="Excluir Registro"
-                              >
-                                <span className="material-symbols-outlined text-xl">delete</span>
                               </button>
                             </>
                           )}
@@ -794,6 +770,7 @@ export default function RecordsView() {
                 <p className="text-[10px] font-bold text-slate-500 uppercase">Status</p>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase ${viewingRecord.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
                   viewingRecord.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                    viewingRecord.status === 'PENDING_CLOSURE' ? 'bg-sky-100 text-sky-800' :
                     'bg-amber-100 text-amber-800'
                   }`}>
                   {getStatusLabel(viewingRecord.status)}
@@ -925,10 +902,10 @@ export default function RecordsView() {
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={confirmDelete}
-        title="Excluir Registro"
-        message="Tem certeza que deseja excluir este registro de inspeção? Esta ação é irreversível."
-        confirmText="Excluir Definitivamente"
-        type="danger"
+        title="Exclusão bloqueada"
+        message="Registros produtivos não devem ser apagados definitivamente. Faça uma correção com justificativa para manter o histórico."
+        confirmText="Entendi"
+        type="warning"
       />
 
       {/* Modal: Solicitar Alteração (analista fora da janela de 30min) */}

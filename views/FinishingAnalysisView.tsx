@@ -57,6 +57,16 @@ type RodadaSummary = {
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 // ─── Chip de pessoa (operador/analista) ──────────────────────────────────────
+const FINISHING_STEPS = [
+    { id: 1, label: 'Identificação', short: 'Identificação' },
+    { id: 2, label: 'Dados da Análise', short: 'Dados' },
+    { id: 3, label: 'Resultado', short: 'Resultado' },
+    { id: 4, label: 'Não Conformidades', short: 'Não Conform.' },
+    { id: 5, label: 'Controle NQA', short: 'NQA' },
+    { id: 6, label: 'Inspeção por Pallet', short: 'Pallet' },
+    { id: 7, label: 'Conclusão', short: 'Conclusão' },
+];
+
 const PersonChip = ({ name, onRemove }: { key?: React.Key; name: string; onRemove: () => void }) => (
     <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200 text-xs font-bold border border-violet-200 dark:border-violet-800">
         {name}
@@ -160,6 +170,7 @@ export default function FinishingAnalysisView() {
     const [palletObs, setPalletObs]               = useState('');
     const [isSavingPallet, setIsSavingPallet]     = useState(false);
     const [completedPalletId, setCompletedPalletId] = useState<string | null>(null);
+    const [activeStep, setActiveStep] = useState(1);
 
     // ─── Carga inicial ────────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
@@ -407,6 +418,52 @@ export default function FinishingAnalysisView() {
     });
 
     const totalDefects = Object.values(defects).reduce<number>((s, v) => s + Number(v), 0);
+    const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
+    const selectedMachine = machines.find(m => m.id === selectedMachineId);
+    const operatorNames = selectedOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id).join(', ');
+    const analystNames = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
+
+    useEffect(() => {
+        if (activeStep === 5) setShowNqa(true);
+        if (activeStep === 6) setShowPallet(true);
+    }, [activeStep]);
+
+    const validateStep = (step: number) => {
+        const typedOp = newOrder.op.trim();
+        if (step === 1 && (!selectedOrderId && !typedOp)) return 'Informe a OP.';
+        if (step === 1 && selectedOperatorIds.length === 0) return 'Adicione ao menos um operador.';
+        if (step === 1 && selectedAnalystIds.length === 0) return 'Adicione ao menos um analista.';
+        if (step === 2 && !selectedMachineId) return 'Selecione a máquina.';
+        if (step === 2 && !laudoNumero.trim()) return 'Informe o número do laudo.';
+        if (step === 2 && amostragem <= 0) return 'Informe a amostragem.';
+        if (step === 3 && !status) return 'Informe o resultado.';
+        if (step === 5 && !nqaProfileId) return 'Selecione um perfil NQA.';
+        if (step === 5 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
+        if (step === 5 && nqaConfig.caixas_por_pallet <= 0) return 'Informe caixas por pallet.';
+        if (step === 6 && showPallet && !palletResult) return 'Informe o resultado do pallet.';
+        return null;
+    };
+
+    const goToStep = (target: number) => {
+        if (target <= activeStep) { setActiveStep(target); return; }
+        for (let step = 1; step < target; step += 1) {
+            const message = validateStep(step);
+            if (message) {
+                showToast(message, 'warning');
+                setActiveStep(step);
+                return;
+            }
+        }
+        setActiveStep(target);
+    };
+
+    const clearForm = () => {
+        setSelectedOrderId(''); setOrderFilter(''); setNewOrder({ op: '', qtd_total: '' });
+        setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero('');
+        setAmostragem(500); setStatus(InspectionStatus.APPROVED); setObservacoes('');
+        setDefects({ ...EMPTY_DEFECTS }); setNqaDefects({ critical: 0, major: 0, minor: 0 });
+        setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0); setActiveStep(1);
+    };
 
     // ─── Render ───────────────────────────────────────────────────────────
     if (isLoading) return (
@@ -416,13 +473,53 @@ export default function FinishingAnalysisView() {
     );
 
     return (
-        <div>
-        <form onSubmit={handleSave} id="finishing-form" className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto w-full pb-24">
+        <div className="h-screen overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
+            <header className="shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 md:px-6 py-4 z-30">
+                <div className="max-w-6xl mx-auto space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Produto Acabado</p>
+                            <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">{FINISHING_STEPS[activeStep - 1]?.label}</h1>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            {selectedOrderId && <span className="text-violet-600">OP: {selectedOrderId}</span>}
+                            {totalDefects > 0 && <span className="text-rose-500">{totalDefects} defeito{totalDefects > 1 ? 's' : ''}</span>}
+                        </div>
+                    </div>
+                    <nav className="flex gap-2 overflow-x-auto pb-1">
+                        {FINISHING_STEPS.map(step => {
+                            const done = step.id < activeStep && !validateStep(step.id);
+                            const active = step.id === activeStep;
+                            return (
+                                <button
+                                    key={step.id}
+                                    type="button"
+                                    onClick={() => goToStep(step.id)}
+                                    className={`shrink-0 h-10 px-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                                        active
+                                            ? 'bg-violet-600 border-violet-600 text-white shadow-lg shadow-violet-500/20'
+                                            : done
+                                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-800 dark:text-emerald-300'
+                                                : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                                    }`}
+                                >
+                                    <span className={`size-5 rounded-full flex items-center justify-center ${active ? 'bg-white/20' : done ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-white dark:bg-slate-900'}`}>
+                                        {done ? <span className="material-symbols-outlined text-xs">check</span> : step.id}
+                                    </span>
+                                    <span>{step.id} {step.short}</span>
+                                </button>
+                            );
+                        })}
+                    </nav>
+                </div>
+            </header>
+
+        <form onSubmit={handleSave} id="finishing-form" className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 max-w-6xl mx-auto w-full pb-28">
 
             {/* ══════════════════════════════════════════════════════════
                 SEÇÃO 1 — OP + Operadores + Analistas (RASTREABILIDADE)
             ══════════════════════════════════════════════════════════ */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 1 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 {/* Título da seção */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                     <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">1</span>
@@ -544,12 +641,12 @@ export default function FinishingAnalysisView() {
                         </div>
                     </div>
                 </div>
-            </div>
+            </div>}
 
             {/* ══════════════════════════════════════════════════════════
                 SEÇÃO 2 — Máquina · Laudo · Amostragem · Período
             ══════════════════════════════════════════════════════════ */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 2 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                     <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">2</span>
                     <div>
@@ -615,12 +712,12 @@ export default function FinishingAnalysisView() {
                     ))}
                 </div>
                 </div>
-            </div>
+            </div>}
 
             {/* ══════════════════════════════════════════════════════════
                 SEÇÃO 3 — Resultado e Observações
             ══════════════════════════════════════════════════════════ */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 3 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                     <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">3</span>
                     <div>
@@ -651,17 +748,17 @@ export default function FinishingAnalysisView() {
                             placeholder="Restrições, motivo de reprovação, observações gerais sobre o laudo..." />
                     </div>
                 </div>
-            </div>
+            </div>}
 
             {/* ══════════════════════════════════════════════════════════
                 SEÇÃO 4 — Não Conformidades (defeitos → relatórios)
             ══════════════════════════════════════════════════════════ */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 4 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                     <div className="flex items-center gap-3">
                         <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">4</span>
                         <div>
-                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Não Conformidades</h2>
+                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Contagem de defeitos</h2>
                             <p className="text-[10px] text-slate-400 font-bold">Contagem por tipo de defeito — aparece nos relatórios</p>
                         </div>
                     </div>
@@ -682,12 +779,12 @@ export default function FinishingAnalysisView() {
                             onSet={v => setDefects(p => ({ ...p, [col.key]: v }))} />
                     ))}
                 </div>
-            </div>
+            </div>}
 
             {/* ══════════════════════════════════════════════════════════
                 SEÇÃO 5 — NQA (colapsável)
             ══════════════════════════════════════════════════════════ */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 5 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <button type="button" onClick={() => setShowNqa(v => !v)}
                     className="w-full flex items-center justify-between px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -799,12 +896,12 @@ export default function FinishingAnalysisView() {
                         )}
                     </div>
                 )}
-            </div>
+            </div>}
 
             {/* ══════════════════════════════════════════════════════════
                 SEÇÃO 6 — Pallet (colapsável)
             ══════════════════════════════════════════════════════════ */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 6 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <button type="button" onClick={() => setShowPallet(v => !v)}
                     className="w-full flex items-center justify-between px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -946,7 +1043,46 @@ export default function FinishingAnalysisView() {
                         )}
                     </div>
                 )}
-            </div>
+            </div>}
+
+            {activeStep === 7 && (
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                        <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">7</span>
+                        <div>
+                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Conclusão</h2>
+                            <p className="text-[10px] text-slate-400 font-bold">Resumo geral antes de salvar</p>
+                        </div>
+                    </div>
+                    <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {[
+                                ['OP', selectedOrderId || newOrder.op || '-'],
+                                ['Laudo', laudoNumero || '-'],
+                                ['Máquina', selectedMachine?.name || '-'],
+                                ['Operador', operatorNames || '-'],
+                                ['Analista', analystNames || '-'],
+                                ['Quantidade produzida', qtyProduzida ? qtyProduzida.toLocaleString('pt-BR') : '0'],
+                                ['Em escolha', qtyEscolha ? qtyEscolha.toLocaleString('pt-BR') : '0'],
+                                ['Refugo', qtyRefugo ? qtyRefugo.toLocaleString('pt-BR') : '0'],
+                                ['Resultado geral', status === InspectionStatus.APPROVED ? 'Aprovado' : status === InspectionStatus.REJECTED ? 'Reprovado' : 'Com restrição'],
+                                ['Resultado NQA', nqaResult ? (nqaResult.overall ? 'Aprovado' : 'Reprovado') : 'Sem plano'],
+                                ['Resultado pallet', palletNqaResult ? (palletNqaResult.overall ? 'Aprovado' : 'Reprovado') : palletResult],
+                                ['Defeitos', totalDefects.toLocaleString('pt-BR')],
+                            ].map(([label, value]) => (
+                                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                                    <p className="mt-1 text-sm font-black text-slate-800 dark:text-slate-100">{value}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Observações</p>
+                            <p className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{observacoes || '-'}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── Modal QR ─────────────────────────────────────────── */}
             {completedPalletId && createPortal(
@@ -981,7 +1117,7 @@ export default function FinishingAnalysisView() {
         </form>
 
             {/* ── Footer sticky — cola no fundo da viewport ao rolar ── */}
-            <footer className="sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 px-8 py-3 z-40">
+            <footer className="shrink-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 px-4 md:px-8 py-3 z-40">
                 <div className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-widest flex-wrap">
                     {selectedOrderId && <span className="text-violet-600">OP: {selectedOrderId}</span>}
                     {selectedOperatorIds.length > 0 && <span>{selectedOperatorIds.length} operador{selectedOperatorIds.length > 1 ? 'es' : ''}</span>}
@@ -989,15 +1125,29 @@ export default function FinishingAnalysisView() {
                     {totalDefects > 0 && <span className="text-rose-500">{totalDefects} defeito{totalDefects > 1 ? 's' : ''}</span>}
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                    <button type="button" onClick={() => { setSelectedOrderId(''); setOrderFilter(''); setNewOrder({ op: '', qtd_total: '' }); setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero(''); setAmostragem(500); setStatus(InspectionStatus.APPROVED); setObservacoes(''); setDefects({ ...EMPTY_DEFECTS }); setNqaDefects({ critical: 0, major: 0, minor: 0 }); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0); }}
+                    <button type="button" onClick={clearForm}
                         className="h-10 px-5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
                         Limpar
                     </button>
-                    <button type="submit" form="finishing-form" disabled={isSaving}
+                    {activeStep > 1 && (
+                        <button type="button" onClick={() => setActiveStep(s => Math.max(1, s - 1))}
+                            className="h-10 px-5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                            Voltar
+                        </button>
+                    )}
+                    {activeStep < 7 ? (
+                        <button type="button" onClick={() => goToStep(activeStep + 1)}
+                            className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center gap-2">
+                            Próximo
+                            <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                        </button>
+                    ) : (
+                        <button type="submit" form="finishing-form" disabled={isSaving}
                         className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center gap-2 disabled:opacity-50">
                         {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">add_task</span>}
                         Salvar Análise
-                    </button>
+                        </button>
+                    )}
                 </div>
             </footer>
         </div>

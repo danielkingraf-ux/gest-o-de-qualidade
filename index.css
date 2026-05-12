@@ -21,6 +21,92 @@ body {
     font-family: 'Inter', sans-serif;
 }
 
+html,
+body,
+#root {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+* {
+    min-width: 0;
+}
+
+@layer components {
+    .responsive-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .responsive-table {
+        width: 100%;
+        min-width: 640px;
+    }
+
+    .responsive-form-card {
+        padding: 1rem;
+    }
+
+    .responsive-sticky-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .responsive-sticky-actions > button,
+    .responsive-sticky-actions > .action-fill {
+        width: 100%;
+    }
+
+    .input {
+        height: 2.75rem;
+        width: 100%;
+        border-radius: 0.5rem;
+        border: 1px solid rgb(226 232 240);
+        background: rgb(248 250 252);
+        padding: 0 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: rgb(15 23 42);
+        outline: none;
+        transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    }
+
+    .input:focus {
+        border-color: rgb(14 165 233 / 0.5);
+        box-shadow: 0 0 0 3px rgb(14 165 233 / 0.14);
+    }
+
+    .input:disabled {
+        cursor: not-allowed;
+        opacity: 0.65;
+    }
+
+    .dark .input {
+        border-color: rgb(51 65 85);
+        background: rgb(30 41 59);
+        color: rgb(248 250 252);
+    }
+
+    @media (min-width: 640px) {
+        .responsive-form-card {
+            padding: 2rem;
+        }
+
+        .responsive-sticky-actions {
+            flex-direction: row;
+        }
+
+        .responsive-sticky-actions > button,
+        .responsive-sticky-actions > .action-fill {
+            width: auto;
+        }
+    }
+}
+
 :root {
     --sidebar-width: 16rem;
 }

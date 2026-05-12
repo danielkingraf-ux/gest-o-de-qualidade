@@ -5,6 +5,8 @@ import { InspectionStatus, ProcessType, Machine, Operator, Analyst, Order } from
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import DefectCounter from '../components/DefectCounter';
+import { escolhaRevisaoService } from '../services/escolhaRevisaoService';
+import type { OrigemProblemaEscolha } from '../types';
 
 const MetricInput: React.FC<{
   label: string;
@@ -13,21 +15,23 @@ const MetricInput: React.FC<{
   icon: string;
   subtitle?: string;
   accent?: boolean;
-}> = ({ label, value, onChange, icon, subtitle, accent }) => (
+  disabled?: boolean;
+}> = ({ label, value, onChange, icon, subtitle, accent, disabled }) => (
   <div className={`flex flex-col gap-1 p-3 rounded-xl border ${accent ? 'bg-primary/5 border-primary/20' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800'}`}>
     <div className="flex items-center gap-1.5 mb-1">
       <span className={`material-symbols-outlined text-xs ${accent ? 'text-primary' : 'text-slate-400'}`}>{icon}</span>
       <label className={`text-[9px] font-black uppercase tracking-widest ${accent ? 'text-primary' : 'text-slate-400'}`}>{label}</label>
     </div>
     <div className="flex items-center gap-2">
-      <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">-</button>
+      <button type="button" disabled={disabled} onClick={() => onChange(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs disabled:opacity-40">-</button>
       <input
         type="number"
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
-        className="w-full h-6 bg-transparent text-center font-black text-xs outline-none"
+        className="w-full h-6 bg-transparent text-center font-black text-xs outline-none disabled:opacity-100"
       />
-      <button type="button" onClick={() => onChange(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
+      <button type="button" disabled={disabled} onClick={() => onChange(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs disabled:opacity-40">+</button>
     </div>
     {subtitle && <p className="text-[9px] font-bold text-slate-400 text-center mt-0.5">{subtitle}</p>}
   </div>
@@ -41,7 +45,41 @@ type FolhasData = {
   pilhas_aprovadas: number;
   folhas_escolha: number;
   folhas_reprovadas: number;
+  unidades_aprovadas: number;
+  unidades_escolha: number;
+  unidades_reprovadas: number;
 };
+
+const EMPTY_FOLHAS_DATA: FolhasData = {
+  pilhas_verificadas: 0,
+  pilhas_aprovadas: 0,
+  folhas_escolha: 0,
+  folhas_reprovadas: 0,
+  unidades_aprovadas: 0,
+  unidades_escolha: 0,
+  unidades_reprovadas: 0,
+};
+
+type EnvioEscolhaRow = {
+  rowId: string;
+  origem_problema: OrigemProblemaEscolha | '';
+  motivo_escolha: string;
+  tipo_defeito: string;
+  classificacao_defeito: string;
+  quantidade_enviada: number;
+  observacao: string;
+};
+
+const ORIGEM_PROBLEMA_OPTIONS: Array<{ value: OrigemProblemaEscolha; label: string }> = [
+  { value: 'impressao', label: 'Impressão' },
+  { value: 'verniz_uv', label: 'Verniz UV' },
+  { value: 'hot_stamping', label: 'Hot stamping' },
+  { value: 'corte_vinco', label: 'Corte/vinco' },
+  { value: 'outro', label: 'Outro' },
+];
+
+const DEFAULT_ESCOLHA_MOTIVO = 'Defeito enviado para escolha na análise inicial';
+const DEFAULT_ESCOLHA_CLASSIFICACAO = 'nao_aplicavel';
 
 const DEFAULT_APPROVAL_RULE: ApprovalRule = { mode: 'percent', restrictedLimit: 2, rejectLimit: 5 };
 const APPROVAL_RULE_STORAGE_KEY = 'kg_initial_process_approval_rule';
@@ -58,9 +96,24 @@ const calculateStatusByRule = (failureRate: number, failures: number, rule: Appr
 };
 
 const getStatusText = (status: InspectionStatus) => {
+  if (status === InspectionStatus.PENDING_CLOSURE) return 'Pendente de fechamento';
   if (status === InspectionStatus.REJECTED) return 'Reprovado';
   if (status === InspectionStatus.RESTRICTED) return 'Aprovado com restrição';
   return 'Aprovado';
+};
+
+const getStatusCardClass = (status: InspectionStatus) => {
+  if (status === InspectionStatus.APPROVED) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20';
+  if (status === InspectionStatus.REJECTED) return 'bg-rose-50 text-rose-700 dark:bg-rose-950/20';
+  if (status === InspectionStatus.PENDING_CLOSURE) return 'bg-sky-50 text-sky-700 dark:bg-sky-950/20';
+  return 'bg-amber-50 text-amber-700 dark:bg-amber-950/20';
+};
+
+const getStatusTextClass = (status: InspectionStatus) => {
+  if (status === InspectionStatus.APPROVED) return 'text-emerald-700';
+  if (status === InspectionStatus.REJECTED) return 'text-rose-700';
+  if (status === InspectionStatus.PENDING_CLOSURE) return 'text-sky-700';
+  return 'text-amber-700';
 };
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR'); // v2
@@ -320,12 +373,9 @@ export default function InspectionView() {
   // Production tracking
   const [unidadesPorFolha, setUnidadesPorFolha] = useState(1);
   const [folhasPorPilha, setFolhasPorPilha] = useState(500);
-  const [folhasData, setFolhasData] = useState<FolhasData>({
-    pilhas_verificadas: 0,
-    pilhas_aprovadas: 0,
-    folhas_escolha: 0,
-    folhas_reprovadas: 0,
-  });
+  const [folhasData, setFolhasData] = useState<FolhasData>(EMPTY_FOLHAS_DATA);
+  const [envioEscolhaRows, setEnvioEscolhaRows] = useState<EnvioEscolhaRow[]>([]);
+  const [lastEscolhaOp, setLastEscolhaOp] = useState<string | null>(null);
   const [observacoesAnalista, setObservacoesAnalista] = useState('');
 
   // Post-save reimpressão
@@ -343,7 +393,10 @@ export default function InspectionView() {
   // Derived
   const currentOrder = useMemo(() => orders.find(o => o.id === selectedOrderId) ?? null, [orders, selectedOrderId]);
   const numeroRodada = currentOrder ? (currentOrder.rodadas_realizadas ?? 0) + 1 : 1;
-  const realProducedUnits = productionMetrics.expectedUnits;
+  const quantidadeOpUnidades = productionMetrics.expectedUnits;
+  const quantidadeVerificadaRodada = productionMetrics.printedSheets * unidadesPorFolha;
+  const totalRodadoUnidades = quantidadeVerificadaRodada;
+  const excedenteRodada = Math.max(0, quantidadeVerificadaRodada - quantidadeOpUnidades);
 
   const failureBasis = useMemo(() => {
     const colorFolhas = Number(offsetData.defects.cor) || 0;
@@ -354,26 +407,68 @@ export default function InspectionView() {
     const unitFailures = offsetCount + uvCount + hsCount + offsetData.metrics.rework;
     const totalFailures = colorUnidades + unitFailures;
     const colorRate = productionMetrics.printedSheets > 0 ? (colorFolhas / productionMetrics.printedSheets) * 100 : 0;
-    const unitRate = realProducedUnits > 0 ? (unitFailures / realProducedUnits) * 100 : 0;
-    const combinedRate = realProducedUnits > 0 ? (totalFailures / realProducedUnits) * 100 : 0;
+    const unitRate = quantidadeVerificadaRodada > 0 ? (unitFailures / quantidadeVerificadaRodada) * 100 : 0;
+    const combinedRate = quantidadeVerificadaRodada > 0 ? (totalFailures / quantidadeVerificadaRodada) * 100 : 0;
     return { colorFolhas, colorUnidades, unitFailures, totalFailures, colorRate, unitRate, combinedRate };
-  }, [offsetData.defects, offsetData.metrics.rework, offsetFacaCounts, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingFacaCounts, productionMetrics.printedSheets, realProducedUnits, unidadesPorFolha]);
+  }, [offsetData.defects, offsetData.metrics.rework, offsetFacaCounts, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingFacaCounts, productionMetrics.printedSheets, quantidadeVerificadaRodada, unidadesPorFolha]);
 
   const saldo = useMemo(() => {
-    const rodadas = productionMetrics.printedSheets * unidadesPorFolha;
-    const em_escolha = folhasData.folhas_escolha * unidadesPorFolha;
-    const reprovadas = folhasData.folhas_reprovadas * unidadesPorFolha;
-    const aprovadas = folhasData.pilhas_aprovadas * folhasPorPilha * unidadesPorFolha;
+    const rodadas = quantidadeVerificadaRodada;
+    const em_escolha = folhasData.unidades_escolha;
+    const reprovadas = folhasData.unidades_reprovadas;
+    const aprovadas = folhasData.unidades_aprovadas;
     const divergencia = rodadas - (aprovadas + em_escolha + reprovadas);
     return { rodadas, aprovadas, em_escolha, reprovadas, divergencia, alerta_divergencia: divergencia !== 0 };
-  }, [productionMetrics.printedSheets, unidadesPorFolha, folhasPorPilha, folhasData]);
+  }, [quantidadeVerificadaRodada, folhasData]);
 
   const activeFailureCount = failureBasis.totalFailures;
-  const calculatedStatus = useMemo(
+  const qualityStatus = useMemo(
     () => calculateStatusByRule(failureBasis.combinedRate, activeFailureCount, approvalRule),
     [activeFailureCount, approvalRule, failureBasis.combinedRate]
   );
+  const calculatedStatus = saldo.alerta_divergencia ? InspectionStatus.PENDING_CLOSURE : qualityStatus;
   const failureRate = failureBasis.combinedRate;
+  const totalEnvioEscolha = useMemo(
+    () => envioEscolhaRows.reduce((sum, row) => sum + (Number(row.quantidade_enviada) || 0), 0),
+    [envioEscolhaRows]
+  );
+  const escolhaSemDetalhe = Math.max(0, saldo.em_escolha - totalEnvioEscolha);
+
+  const createEmptyEnvioEscolhaRow = useCallback((quantidade = 0): EnvioEscolhaRow => ({
+    rowId: nextRowId(),
+    origem_problema: '',
+    motivo_escolha: DEFAULT_ESCOLHA_MOTIVO,
+    tipo_defeito: '',
+    classificacao_defeito: DEFAULT_ESCOLHA_CLASSIFICACAO,
+    quantidade_enviada: quantidade,
+    observacao: '',
+  }), [nextRowId]);
+
+  const addEnvioEscolhaRow = useCallback(() => {
+    setEnvioEscolhaRows(prev => {
+      const usado = prev.reduce((sum, row) => sum + (Number(row.quantidade_enviada) || 0), 0);
+      const restante = Math.max(0, saldo.em_escolha - usado);
+      return [...prev, createEmptyEnvioEscolhaRow(restante)];
+    });
+  }, [createEmptyEnvioEscolhaRow, saldo.em_escolha]);
+
+  useEffect(() => {
+    setEnvioEscolhaRows(prev => {
+      if (saldo.em_escolha <= 0) return prev.length > 0 ? [] : prev;
+      if (prev.length === 0) return [createEmptyEnvioEscolhaRow(saldo.em_escolha)];
+      if (prev.length === 1 && prev[0].quantidade_enviada !== saldo.em_escolha) {
+        return [{ ...prev[0], quantidade_enviada: saldo.em_escolha }];
+      }
+      return prev;
+    });
+  }, [createEmptyEnvioEscolhaRow, saldo.em_escolha]);
+
+  useEffect(() => {
+    setFolhasData(prev => {
+      const aprovadasCalculadas = Math.max(0, totalRodadoUnidades - prev.unidades_escolha - prev.unidades_reprovadas);
+      return prev.unidades_aprovadas === aprovadasCalculadas ? prev : { ...prev, unidades_aprovadas: aprovadasCalculadas };
+    });
+  }, [totalRodadoUnidades, folhasData.unidades_escolha, folhasData.unidades_reprovadas]);
 
   const updateProductionMetric = (field: keyof ProductionMetrics, value: number) => {
     setProductionMetrics(prev => ({ ...prev, [field]: Math.max(0, Number(value) || 0) }));
@@ -443,7 +538,19 @@ export default function InspectionView() {
             if (d.hotStampingMachineId) setHotStampingMachineId(d.hotStampingMachineId);
             if (d.hotStampingOperatorId) setHotStampingOperatorId(d.hotStampingOperatorId);
             if (d.hotStampingFacaCounts) setHotStampingFacaCounts(d.hotStampingFacaCounts);
-            if (d.folhasData) setFolhasData(d.folhasData);
+            if (d.folhasData) {
+              const draftUnidadesPorFolha = Math.max(1, Number(d.unidadesPorFolha) || 1);
+              const draftFolhasData = { ...EMPTY_FOLHAS_DATA, ...d.folhasData };
+              setFolhasData({
+                ...draftFolhasData,
+                unidades_aprovadas: Number(d.folhasData.unidades_aprovadas ?? (Number(d.folhasData.pilhas_aprovadas) || 0) * (Number(d.folhasPorPilha) || 500) * draftUnidadesPorFolha) || 0,
+                unidades_escolha: Number(d.folhasData.unidades_escolha ?? (Number(d.folhasData.folhas_escolha) || 0) * draftUnidadesPorFolha) || 0,
+                unidades_reprovadas: Number(d.folhasData.unidades_reprovadas ?? (Number(d.folhasData.folhas_reprovadas) || 0) * draftUnidadesPorFolha) || 0,
+              });
+            }
+            if (Array.isArray(d.envioEscolhaRows)) {
+              setEnvioEscolhaRows(d.envioEscolhaRows.map((r: any) => ({ ...r, rowId: nextRowId() })));
+            }
             if (d.unidadesPorFolha) setUnidadesPorFolha(d.unidadesPorFolha);
             if (d.folhasPorPilha) setFolhasPorPilha(d.folhasPorPilha);
             if (d.observacoesAnalista !== undefined) setObservacoesAnalista(d.observacoesAnalista);
@@ -478,7 +585,9 @@ export default function InspectionView() {
     setHotStampingOperatorId('');
     setHotStampingFacaCounts(Object.fromEntries(HS_DEFECT_KEYS.map(d => [d.key, {} as FacaCount])));
     setProductionMetrics({ printedSheets: 0, expectedUnits: 0 });
-    setFolhasData({ pilhas_verificadas: 0, pilhas_aprovadas: 0, folhas_escolha: 0, folhas_reprovadas: 0 });
+    setFolhasData(EMPTY_FOLHAS_DATA);
+    setEnvioEscolhaRows([]);
+    setLastEscolhaOp(null);
     setUnidadesPorFolha(1);
     setFolhasPorPilha(500);
     setObservacoesAnalista('');
@@ -499,7 +608,7 @@ export default function InspectionView() {
           productionMetrics, offsetData, offsetFacaCounts, offsetDescricoes,
           uvApplicable, uvFacaCounts,
           hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts,
-          folhasData, unidadesPorFolha, folhasPorPilha, observacoesAnalista,
+          folhasData, envioEscolhaRows, unidadesPorFolha, folhasPorPilha, observacoesAnalista,
         };
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       } catch { /* storage cheio */ }
@@ -509,7 +618,7 @@ export default function InspectionView() {
       productionMetrics, offsetData, offsetFacaCounts, offsetDescricoes,
       uvApplicable, uvFacaCounts,
       hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts,
-      folhasData, unidadesPorFolha, folhasPorPilha, observacoesAnalista]);
+      folhasData, envioEscolhaRows, unidadesPorFolha, folhasPorPilha, observacoesAnalista]);
 
   const handleSave = useCallback(async (andNew: boolean) => {
     const typedOp = newOrder.op.trim().toUpperCase();
@@ -524,12 +633,40 @@ export default function InspectionView() {
       return;
     }
     if (productionMetrics.printedSheets <= 0 || productionMetrics.expectedUnits <= 0) {
-      showToast('Informe folhas rodadas e quantidade total de unidades', 'warning');
+      showToast('Informe folhas rodadas e quantidade da OP', 'warning');
       return;
     }
     if (approvalRule.rejectLimit < approvalRule.restrictedLimit) {
       showToast('A regra de reprovação deve ser maior ou igual à regra de restrição', 'warning');
       return;
+    }
+    const totalDistribuido = saldo.aprovadas + saldo.em_escolha + saldo.reprovadas;
+    if (totalDistribuido > quantidadeVerificadaRodada) {
+      showToast('Aprovadas, escolha e reprovadas não podem passar da quantidade verificada na rodada.', 'warning');
+      return;
+    }
+    const escolhaRowsComQuantidade = envioEscolhaRows.filter(row => (Number(row.quantidade_enviada) || 0) > 0);
+    if (totalEnvioEscolha > saldo.em_escolha) {
+      showToast('A soma das linhas de envio para escolha não pode ser maior que o total em escolha.', 'warning');
+      return;
+    }
+    for (const row of escolhaRowsComQuantidade) {
+      if (!row.origem_problema || !row.tipo_defeito.trim()) {
+        showToast('Preencha origem e tipo de defeito em todas as linhas de escolha.', 'warning');
+        return;
+      }
+    }
+    const duplicatedChoiceKey = new Set<string>();
+    for (const row of escolhaRowsComQuantidade) {
+      const key = `${row.tipo_defeito.trim().toLowerCase()}|${row.origem_problema}`;
+      if (duplicatedChoiceKey.has(key)) {
+        showToast('Não duplique o mesmo defeito com a mesma origem no envio para escolha.', 'warning');
+        return;
+      }
+      duplicatedChoiceKey.add(key);
+    }
+    if (saldo.em_escolha > 0 && totalEnvioEscolha < saldo.em_escolha) {
+      showToast('Existe quantidade em escolha sem detalhamento por defeito.', 'warning');
     }
 
     setIsSaving(true);
@@ -573,6 +710,7 @@ export default function InspectionView() {
         created_at: new Date().toISOString(),
         created_by_user_id: profile?.user_id ?? null,
       };
+      let observationsPayload: any = null;
 
       {
         const defeitosUnidade: Record<string, { count: number; por_faca: FacaCount; descricao?: string }> = {};
@@ -592,7 +730,10 @@ export default function InspectionView() {
         dataToSave.status = calculatedStatus;
         dataToSave.rework_count = offsetData.metrics.rework;
         dataToSave.samples_count = 0;
-        dataToSave.observations = JSON.stringify({
+        const pilhasAprovadasEquivalentes = Math.ceil(folhasData.unidades_aprovadas / Math.max(1, folhasPorPilha * unidadesPorFolha));
+        const folhasEscolhaEquivalentes = Math.ceil(folhasData.unidades_escolha / Math.max(1, unidadesPorFolha));
+        const folhasReprovadasEquivalentes = Math.ceil(folhasData.unidades_reprovadas / Math.max(1, unidadesPorFolha));
+        observationsPayload = {
           schema_version: 2,
           process_area: 'producao_inicial',
           process_type: ProcessType.OFFSET,
@@ -606,6 +747,9 @@ export default function InspectionView() {
             quantidade_rodada_unidades: saldo.rodadas,
             folhas_por_pilha: folhasPorPilha,
             ...folhasData,
+            pilhas_aprovadas: pilhasAprovadasEquivalentes,
+            folhas_escolha: folhasEscolhaEquivalentes,
+            folhas_reprovadas: folhasReprovadasEquivalentes,
           },
           defeitos: {
             por_folha: { cor: offsetData.defects.cor },
@@ -627,11 +771,92 @@ export default function InspectionView() {
           regra_aprovacao: approvalRule,
           status_final: calculatedStatus,
           observacoes_analista: observacoesAnalista,
-        });
+          envio_escolha: escolhaRowsComQuantidade.map(row => ({
+            origem_problema: row.origem_problema,
+            motivo_escolha: row.motivo_escolha.trim() || DEFAULT_ESCOLHA_MOTIVO,
+            tipo_defeito: row.tipo_defeito.trim(),
+            classificacao_defeito: row.classificacao_defeito || DEFAULT_ESCOLHA_CLASSIFICACAO,
+            quantidade_enviada: row.quantidade_enviada,
+            observacao: row.observacao.trim() || null,
+            escolha_revisao_id: null,
+          })),
+        };
+        dataToSave.observations = JSON.stringify(observationsPayload);
       }
 
       const { data: inserted, error } = await supabase.from('inspections').insert([dataToSave]).select('id').single();
       if (error) throw error;
+
+      const createdEscolhas: Array<{ rowKey: string; id: string }> = [];
+      const skippedEscolhas: string[] = [];
+      for (const row of escolhaRowsComQuantidade) {
+        const tipoDefeito = row.tipo_defeito.trim();
+        const origemProblema = row.origem_problema as OrigemProblemaEscolha;
+        const existing = await escolhaRevisaoService.findByOrigin({
+          origemRegistroTabela: 'inspections',
+          origemRegistroId: inserted.id,
+          tipoDefeito,
+          origemProblema,
+        });
+
+        if (existing) {
+          skippedEscolhas.push(tipoDefeito);
+          continue;
+        }
+
+        const createdEscolha = await escolhaRevisaoService.create({
+          op: selectedOrder.op,
+          cliente: selectedOrder.cliente ?? null,
+          produto: selectedOrder.produto ?? selectedOrder.descricao ?? null,
+          origem_escolha: 'analise_inicial',
+          setor_detectado: 'analise_inicial',
+          motivo_escolha: row.motivo_escolha.trim() || DEFAULT_ESCOLHA_MOTIVO,
+          tipo_defeito: tipoDefeito,
+          classificacao_defeito: row.classificacao_defeito || DEFAULT_ESCOLHA_CLASSIFICACAO,
+          quantidade_enviada: row.quantidade_enviada,
+          responsavel_envio_id: profile?.user_id ?? null,
+          responsavel_envio_nome: profile?.name ?? null,
+          entrada_at: new Date().toISOString(),
+          status: 'aberta',
+          responsavel_revisao_id: null,
+          responsavel_revisao_nome: null,
+          quantidade_revisada: 0,
+          quantidade_boa_recuperada: 0,
+          quantidade_refugada: 0,
+          quantidade_pendente: row.quantidade_enviada,
+          revisao_at: null,
+          observacao: row.observacao.trim() || null,
+          destino_material_bom: null,
+          outro_destino: null,
+          origem_registro_tabela: 'inspections',
+          origem_registro_id: inserted.id,
+          origem_tela: 'analise_inicial',
+          origem_problema: origemProblema,
+          created_by: profile?.user_id ?? null,
+          updated_by: profile?.user_id ?? null,
+        });
+        createdEscolhas.push({ rowKey: `${tipoDefeito}|${origemProblema}`, id: createdEscolha.id });
+      }
+
+      if (observationsPayload && createdEscolhas.length > 0) {
+        observationsPayload.envio_escolha = observationsPayload.envio_escolha.map((item: any) => {
+          const match = createdEscolhas.find(created => created.rowKey === `${item.tipo_defeito}|${item.origem_problema}`);
+          return match ? { ...item, escolha_revisao_id: match.id } : item;
+        });
+        const { error: observationsUpdateError } = await supabase
+          .from('inspections')
+          .update({ observations: JSON.stringify(observationsPayload) })
+          .eq('id', inserted.id);
+        if (observationsUpdateError) throw observationsUpdateError;
+      }
+
+      if (createdEscolhas.length > 0) {
+        setLastEscolhaOp(selectedOrder.op);
+        showToast('Material enviado para Controle de Escolha/Revisão.', 'success');
+      }
+      if (skippedEscolhas.length > 0) {
+        showToast('Esta análise já possui registro de escolha/revisão para este defeito.', 'warning');
+      }
 
       if (!andNew) {
         setSavedInspectionId(inserted.id);
@@ -657,7 +882,7 @@ export default function InspectionView() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, realProducedUnits, offsetData, offsetFacaCounts, offsetDescricoes, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts, orders, newOrder, resetAll, showToast, profile?.user_id, unidadesPorFolha, folhasPorPilha, folhasData, saldo, failureBasis, observacoesAnalista, numeroRodada]);
+  }, [selectedOrderId, selectedMachineId, selectedOperatorRows, selectedAnalystRows, productionMetrics, approvalRule, calculatedStatus, offsetData, offsetFacaCounts, offsetDescricoes, uvApplicable, uvFacaCounts, hotStampingApplicable, hotStampingMachineId, hotStampingOperatorId, hotStampingFacaCounts, orders, newOrder, resetAll, showToast, profile?.user_id, profile?.name, unidadesPorFolha, folhasPorPilha, folhasData, envioEscolhaRows, totalEnvioEscolha, saldo, failureBasis, observacoesAnalista, numeroRodada]);
 
   const handleSubmitReimpressao = useCallback(async () => {
     if (!reimpressaoMotivo.trim() || reimpressaoQtd <= 0 || !savedInspectionId || !currentOrder || !profile?.user_id) {
@@ -839,14 +1064,23 @@ export default function InspectionView() {
               )}
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Quantidade OP (unidades) *</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Quantidade da OP *</label>
               <input type="number" min={0} value={productionMetrics.expectedUnits} onChange={(e) => updateProductionMetric('expectedUnits', Number(e.target.value))} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800" />
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total real produzido</p>
-              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{fmt(realProducedUnits)}</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Quantidade da OP</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{fmt(quantidadeOpUnidades)}</p>
+            </div>
+            <div className="rounded-2xl bg-primary/5 p-4 dark:bg-primary/10">
+              <p className="text-[9px] font-black uppercase tracking-widest text-primary">Total rodado</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{fmt(totalRodadoUnidades)}</p>
+              {excedenteRodada > 0 && (
+                <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-sky-600">
+                  Sobra/excedente: {fmt(excedenteRodada)} un.
+                </p>
+              )}
             </div>
             <div className="rounded-2xl bg-rose-50 p-4 dark:bg-rose-950/20">
               <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Falhas registradas</p>
@@ -883,7 +1117,7 @@ export default function InspectionView() {
                 <input type="number" min={0} step={approvalRule.mode === 'percent' ? 0.1 : 1} value={approvalRule.rejectLimit} onChange={(e) => updateApprovalRule({ rejectLimit: Number(e.target.value) })} disabled={!isSupervisor} className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800" />
               </div>
             </div>
-            <div className={`rounded-2xl p-4 ${calculatedStatus === InspectionStatus.APPROVED ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20' : calculatedStatus === InspectionStatus.REJECTED ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/20'}`}>
+            <div className={`rounded-2xl p-4 ${getStatusCardClass(calculatedStatus)}`}>
               <p className="text-[9px] font-black uppercase tracking-widest opacity-70">Resultado calculado</p>
               <p className="mt-1 text-xl font-black uppercase">{getStatusText(calculatedStatus)}</p>
             </div>
@@ -899,11 +1133,12 @@ export default function InspectionView() {
         <div className="space-y-6">
 
             {/* Status indicators */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {[
                 { id: 'APPROVED', label: 'Aprovado', icon: 'check_circle', card: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10', icon_c: 'text-emerald-600', label_c: 'text-emerald-700' },
                 { id: 'RESTRICTED', label: 'Aprovado c/ Restrição', icon: 'warning', card: 'border-amber-500 bg-amber-50 dark:bg-amber-500/10', icon_c: 'text-amber-600', label_c: 'text-amber-700' },
                 { id: 'REJECTED', label: 'Reprovado', icon: 'cancel', card: 'border-rose-500 bg-rose-50 dark:bg-rose-500/10', icon_c: 'text-rose-600', label_c: 'text-rose-700' },
+                { id: 'PENDING_CLOSURE', label: 'Pendente fechamento', icon: 'pending_actions', card: 'border-sky-500 bg-sky-50 dark:bg-sky-500/10', icon_c: 'text-sky-600', label_c: 'text-sky-700' },
               ].map(s => (
                 <div key={s.id} className={`flex items-center gap-4 px-6 h-14 rounded-2xl border-2 transition-all ${calculatedStatus === s.id ? s.card : 'border-slate-100 dark:border-slate-800 opacity-40'}`}>
                   <span className={`material-symbols-outlined text-2xl ${s.icon_c}`}>{s.icon}</span>
@@ -1108,25 +1343,112 @@ export default function InspectionView() {
                   subtitle={`= ${fmt(folhasData.pilhas_verificadas * folhasPorPilha)} folhas`}
                 />
                 <MetricInput
-                  label="Aprovadas (pilhas)" icon="check_circle" accent
-                  value={folhasData.pilhas_aprovadas}
-                  onChange={(v) => setFolhasData(prev => ({ ...prev, pilhas_aprovadas: v }))}
-                  subtitle={`= ${fmt(folhasData.pilhas_aprovadas * folhasPorPilha)} folhas · ${fmt(folhasData.pilhas_aprovadas * folhasPorPilha * unidadesPorFolha)} un.`}
+                  label="Aprovadas (saldo)" icon="check_circle" accent disabled
+                  value={folhasData.unidades_aprovadas}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, unidades_aprovadas: v }))}
+                  subtitle={`Total rodado - escolha - reprovadas`}
                 />
                 <MetricInput
-                  label="P/ Escolha (folhas)" icon="filter_list"
-                  value={folhasData.folhas_escolha}
-                  onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_escolha: v }))}
-                  subtitle={`= ${fmt(folhasData.folhas_escolha * unidadesPorFolha)} un.`}
+                  label="P/ Escolha (unid.)" icon="filter_list"
+                  value={folhasData.unidades_escolha}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, unidades_escolha: v }))}
+                  subtitle={`~ ${fmt(Math.ceil(folhasData.unidades_escolha / Math.max(1, unidadesPorFolha)))} folhas`}
                 />
                 <MetricInput
-                  label="Reprovadas (folhas)" icon="cancel"
-                  value={folhasData.folhas_reprovadas}
-                  onChange={(v) => setFolhasData(prev => ({ ...prev, folhas_reprovadas: v }))}
-                  subtitle={`= ${fmt(folhasData.folhas_reprovadas * unidadesPorFolha)} un.`}
+                  label="Reprovadas (unid.)" icon="cancel"
+                  value={folhasData.unidades_reprovadas}
+                  onChange={(v) => setFolhasData(prev => ({ ...prev, unidades_reprovadas: v }))}
+                  subtitle={`~ ${fmt(Math.ceil(folhasData.unidades_reprovadas / Math.max(1, unidadesPorFolha)))} folhas`}
                 />
               </div>
             </div>
+
+            {(saldo.em_escolha > 0 || envioEscolhaRows.length > 0) && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-amber-200 dark:border-amber-900/60 p-5 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-500">Destino: escolha/revisão</p>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Envio para Escolha</h3>
+                    <p className="mt-1 text-xs font-bold text-slate-400">
+                      Total em escolha: {fmt(saldo.em_escolha)} un. · Detalhado: {fmt(totalEnvioEscolha)} un.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addEnvioEscolhaRow}
+                    className="h-9 rounded-lg bg-amber-500 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-600"
+                  >
+                    Adicionar defeito
+                  </button>
+                </div>
+
+                {envioEscolhaRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/70 p-4 text-xs font-bold text-amber-700 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+                    Informe um ou mais defeitos para gerar registros no Controle de Escolha/Revisão.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {envioEscolhaRows.map((row, index) => (
+                      <div key={row.rowId} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Defeito {index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEnvioEscolhaRows(prev => prev.filter(item => item.rowId !== row.rowId))}
+                            className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                          <label className="space-y-1">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Origem</span>
+                            <select
+                              value={row.origem_problema}
+                              onChange={e => setEnvioEscolhaRows(prev => prev.map(item => item.rowId === row.rowId ? { ...item, origem_problema: e.target.value as OrigemProblemaEscolha } : item))}
+                              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-900"
+                            >
+                              <option value="">Selecione</option>
+                              {ORIGEM_PROBLEMA_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                          </label>
+                          <label className="space-y-1 md:col-span-2">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Tipo de defeito</span>
+                            <input
+                              value={row.tipo_defeito}
+                              onChange={e => setEnvioEscolhaRows(prev => prev.map(item => item.rowId === row.rowId ? { ...item, tipo_defeito: e.target.value } : item))}
+                              placeholder="Ex: Pintas, falha de verniz..."
+                              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-900"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Quantidade</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={row.quantidade_enviada || ''}
+                              onChange={e => setEnvioEscolhaRows(prev => prev.map(item => item.rowId === row.rowId ? { ...item, quantidade_enviada: Math.max(0, Number(e.target.value) || 0) } : item))}
+                              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-black outline-none dark:border-slate-700 dark:bg-slate-900"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {totalEnvioEscolha > saldo.em_escolha && (
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-black text-rose-700">
+                    A soma detalhada excede o total em escolha.
+                  </div>
+                )}
+                {saldo.em_escolha > 0 && totalEnvioEscolha > 0 && totalEnvioEscolha < saldo.em_escolha && (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-black text-amber-700">
+                    Existe quantidade em escolha sem detalhamento por defeito.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Painel de Saldo */}
             {saldo.rodadas > 0 && (
@@ -1166,14 +1488,16 @@ export default function InspectionView() {
                   <div className="mt-3 flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800">
                     <span className="material-symbols-outlined text-rose-500">error</span>
                     <span className="text-xs font-black text-rose-700 dark:text-rose-400">
-                      Divergência: {fmt(Math.abs(saldo.divergencia))} unidades não contabilizadas — revise a distribuição de pilhas
+                      {saldo.divergencia > 0
+                        ? `Divergência: ${fmt(saldo.divergencia)} unidades sem destino — revise escolha e reprovadas`
+                        : `Divergência: ${fmt(Math.abs(saldo.divergencia))} unidades acima do total rodado — revise escolha e reprovadas`}
                     </span>
                   </div>
                 )}
 
-                <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${calculatedStatus === InspectionStatus.APPROVED ? 'bg-emerald-50 dark:bg-emerald-950/20' : calculatedStatus === InspectionStatus.REJECTED ? 'bg-rose-50 dark:bg-rose-950/20' : 'bg-amber-50 dark:bg-amber-950/20'}`}>
+                <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${getStatusCardClass(calculatedStatus)}`}>
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Taxa de falha: {failureRate.toFixed(2)}%</span>
-                  <span className={`text-xs font-black uppercase tracking-widest ${calculatedStatus === InspectionStatus.APPROVED ? 'text-emerald-700' : calculatedStatus === InspectionStatus.REJECTED ? 'text-rose-700' : 'text-amber-700'}`}>
+                  <span className={`text-xs font-black uppercase tracking-widest ${getStatusTextClass(calculatedStatus)}`}>
                     → {getStatusText(calculatedStatus)}
                   </span>
                 </div>
@@ -1240,6 +1564,26 @@ export default function InspectionView() {
               {isSubmittingReimpressao ? 'Enviando...' : 'Solicitar Reimpressão'}
             </button>
             <p className="text-[10px] font-bold text-rose-500">Aguarda aprovação do supervisor antes de iniciar nova rodada.</p>
+          </div>
+        </div>
+      )}
+
+      {lastEscolhaOp && (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Controle de Escolha/Revisão</p>
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                Material da OP {lastEscolhaOp} enviado para escolha/revisão.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.hash = '/escolha-revisao'; }}
+              className="h-10 rounded-xl bg-amber-500 px-5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-600"
+            >
+              Ver escolha/revisão
+            </button>
           </div>
         </div>
       )}

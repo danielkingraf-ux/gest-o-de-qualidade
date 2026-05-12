@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Verifica se quem chamou é supervisor
+    // Verifica se quem chamou pode administrar usuários.
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -49,17 +49,34 @@ Deno.serve(async (req) => {
       .eq('active', true)
       .single()
 
-    if (profile?.role !== 'supervisor') {
-      return new Response(JSON.stringify({ error: 'Apenas supervisores podem criar usuários' }), {
+    if (profile?.role !== 'administrador') {
+      return new Response(JSON.stringify({ error: 'Apenas administradores podem criar usuários' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const { email, name, role, password } = await req.json()
+    const { email, name, role, password, can_approve_critical_actions } = await req.json()
 
     if (!email || !name || !role) {
       return new Response(JSON.stringify({ error: 'Email, nome e papel são obrigatórios' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const allowedRoles = [
+      'administrador',
+      'direcao',
+      'supervisao',
+      'analista_qualidade',
+      'revisao_escolha',
+      'expedicao',
+      'consulta_auditoria',
+    ]
+
+    if (!allowedRoles.includes(role)) {
+      return new Response(JSON.stringify({ error: 'Perfil de acesso inválido' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -82,7 +99,13 @@ Deno.serve(async (req) => {
     // Cria o perfil do usuário
     const { error: profileError } = await supabaseAdmin
       .from('user_profiles')
-      .insert({ user_id: newUser.user.id, name, role, active: true })
+      .insert({
+        user_id: newUser.user.id,
+        name,
+        role,
+        active: true,
+        can_approve_critical_actions: can_approve_critical_actions === true,
+      })
 
     if (profileError) {
       await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)

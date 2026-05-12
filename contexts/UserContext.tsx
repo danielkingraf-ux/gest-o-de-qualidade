@@ -1,12 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { UserProfile, UserRole } from '../types';
+import { hasPermission, normalizeRole, type NormalizedRole, type PermissionAction, type PermissionResource } from '../utils/permissions';
 
 interface UserContextType {
   profile: UserProfile | null;
   role: UserRole | null;
+  normalizedRole: NormalizedRole;
   isSupervisor: boolean;
   isAnalista: boolean;
+  canApproveCriticalActions: boolean;
+  can: (resource: PermissionResource, action?: PermissionAction) => boolean;
   loading: boolean;
   refreshProfile: () => Promise<void>;
 }
@@ -42,7 +46,7 @@ export const UserProvider = ({ userId, children }: { userId: string; children: R
         .from('user_profiles')
         .select('id', { count: 'exact', head: true });
 
-      const role = (count === 0) ? 'supervisor' : 'analista';
+      const role = (count === 0) ? 'administrador' : 'analista_qualidade';
 
       const { data: created } = await supabase
         .from('user_profiles')
@@ -63,13 +67,21 @@ export const UserProvider = ({ userId, children }: { userId: string; children: R
   }, [fetchProfile]);
 
   const role = profile?.role ?? null;
+  const normalizedRole = normalizeRole(role);
+  const can = (resource: PermissionResource, action: PermissionAction = 'view') =>
+    hasPermission(role, resource, action);
+  const canApproveCriticalActions =
+    normalizedRole === 'administrador' || profile?.can_approve_critical_actions === true;
 
   return (
     <UserContext.Provider value={{
       profile,
       role,
-      isSupervisor: role === 'supervisor',
-      isAnalista: role === 'analista',
+      normalizedRole,
+      isSupervisor: normalizedRole === 'administrador' || normalizedRole === 'supervisao',
+      isAnalista: normalizedRole === 'analista_qualidade',
+      canApproveCriticalActions,
+      can,
       loading,
       refreshProfile: fetchProfile,
     }}>

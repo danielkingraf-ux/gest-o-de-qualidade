@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
+import { useUser } from '../contexts/UserContext';
+import { auditService } from '../services/auditService';
 import { InspectionStatus, Order, ProcessType } from '../types';
 
 type ReimpressaoPendente = {
@@ -73,6 +75,13 @@ const STATUS_META: Record<InspectionStatus, { label: string; color: string; dot:
     dot: 'bg-rose-500',
     chart: '#e11d48',
     priority: 3,
+  },
+  [InspectionStatus.PENDING_CLOSURE]: {
+    label: 'Pendentes fechamento',
+    color: 'text-sky-700 bg-sky-50 border-sky-200 dark:bg-sky-950/20 dark:text-sky-300 dark:border-sky-800',
+    dot: 'bg-sky-500',
+    chart: '#0284c7',
+    priority: 2,
   },
 };
 
@@ -159,6 +168,7 @@ const statusPriority = (status: InspectionStatus) => STATUS_META[status]?.priori
 
 export default function SupervisorView() {
   const { showToast } = useToast();
+  const { canApproveCriticalActions } = useUser();
   const [loading, setLoading] = useState(true);
   const [inspections, setInspections] = useState<ApprovalInspection[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -224,6 +234,10 @@ export default function SupervisorView() {
   };
 
   const handleAprovarReimpressao = async (reimp: ReimpressaoPendente) => {
+    if (!canApproveCriticalActions) {
+      showToast('Seu perfil pode visualizar aprovações, mas não aprovar decisões críticas.', 'warning');
+      return;
+    }
     setLoadingAction(reimp.id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -239,6 +253,17 @@ export default function SupervisorView() {
         .eq('id', reimp.order_id);
       if (orderError) throw orderError;
 
+      await auditService.logChange({
+        screen: 'Aprovações',
+        action: 'approve_reprint',
+        recordTable: 'op_reimpressoes',
+        recordId: reimp.id,
+        fieldName: 'status',
+        oldValue: 'pendente',
+        newValue: 'aprovada',
+        justification: reimp.motivo || 'Aprovação de reimpressão',
+      });
+
       showToast(`Reimpressão da OP ${reimp.op} aprovada`, 'success');
       setPendingReimps((prev) => prev.filter((r) => r.id !== reimp.id));
     } catch {
@@ -249,6 +274,10 @@ export default function SupervisorView() {
   };
 
   const handleRecusarReimpressao = async (reimp: ReimpressaoPendente) => {
+    if (!canApproveCriticalActions) {
+      showToast('Seu perfil pode visualizar aprovações, mas não reprovar decisões críticas.', 'warning');
+      return;
+    }
     setLoadingAction(reimp.id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -257,6 +286,17 @@ export default function SupervisorView() {
         .update({ status: 'recusada', aprovada_por: user?.id ?? null })
         .eq('id', reimp.id);
       if (error) throw error;
+
+      await auditService.logChange({
+        screen: 'Aprovações',
+        action: 'reject_reprint',
+        recordTable: 'op_reimpressoes',
+        recordId: reimp.id,
+        fieldName: 'status',
+        oldValue: 'pendente',
+        newValue: 'recusada',
+        justification: reimp.motivo || 'Recusa de reimpressão',
+      });
 
       showToast(`Reimpressão da OP ${reimp.op} recusada`, 'success');
       setPendingReimps((prev) => prev.filter((r) => r.id !== reimp.id));
@@ -423,7 +463,8 @@ export default function SupervisorView() {
                   <div className="flex gap-2 sm:flex-col">
                     <button
                       onClick={() => handleAprovarReimpressao(reimp)}
-                      disabled={loadingAction === reimp.id}
+                      disabled={loadingAction === reimp.id || !canApproveCriticalActions}
+                      title={!canApproveCriticalActions ? 'Aprovação crítica não liberada para este usuário' : undefined}
                       className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
                     >
                       {loadingAction === reimp.id ? (
@@ -435,7 +476,8 @@ export default function SupervisorView() {
                     </button>
                     <button
                       onClick={() => handleRecusarReimpressao(reimp)}
-                      disabled={loadingAction === reimp.id}
+                      disabled={loadingAction === reimp.id || !canApproveCriticalActions}
+                      title={!canApproveCriticalActions ? 'Aprovação crítica não liberada para este usuário' : undefined}
                       className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-700 dark:bg-slate-900 dark:hover:bg-rose-950/20 sm:flex-none"
                     >
                       <span className="material-symbols-outlined text-sm">cancel</span>

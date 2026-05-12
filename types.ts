@@ -1,5 +1,15 @@
 
-export type UserRole = 'analista' | 'supervisor' | 'auxiliar';
+export type UserRole =
+  | 'administrador'
+  | 'direcao'
+  | 'supervisao'
+  | 'analista_qualidade'
+  | 'revisao_escolha'
+  | 'expedicao'
+  | 'consulta_auditoria'
+  | 'analista'
+  | 'supervisor'
+  | 'auxiliar';
 
 export interface UserProfile {
   id: string;
@@ -7,6 +17,7 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   active: boolean;
+  can_approve_critical_actions?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -39,7 +50,8 @@ export enum ProcessType {
 export enum InspectionStatus {
   APPROVED = 'APPROVED',
   RESTRICTED = 'RESTRICTED',
-  REJECTED = 'REJECTED'
+  REJECTED = 'REJECTED',
+  PENDING_CLOSURE = 'PENDING_CLOSURE'
 }
 
 export interface Defect {
@@ -120,6 +132,110 @@ export interface OpReimpressao {
   operators?: Operator;
 }
 
+export type EscolhaRevisaoStatus =
+  | 'aberta'
+  | 'em_revisao'
+  | 'parcialmente_revisada'
+  | 'finalizada'
+  | 'bloqueada'
+  | 'liberada';
+
+export type DestinoMaterialBom =
+  | 'volta_corte_vinco'
+  | 'volta_destaque'
+  | 'volta_colagem'
+  | 'liberado_expedicao'
+  | 'fica_bloqueado'
+  | 'outro';
+
+export type OrigemProblemaEscolha =
+  | 'impressao'
+  | 'verniz_uv'
+  | 'hot_stamping'
+  | 'corte_vinco'
+  | 'outro';
+
+export interface EscolhaRevisaoRegistro {
+  id: string;
+  op: string;
+  cliente: string | null;
+  produto: string | null;
+  origem_escolha: string;
+  setor_detectado: string;
+  motivo_escolha: string;
+  tipo_defeito: string;
+  classificacao_defeito: string;
+  quantidade_enviada: number;
+  responsavel_envio_id: string | null;
+  responsavel_envio_nome: string | null;
+  entrada_at: string;
+  status: EscolhaRevisaoStatus;
+  responsavel_revisao_id: string | null;
+  responsavel_revisao_nome: string | null;
+  quantidade_revisada: number;
+  quantidade_boa_recuperada: number;
+  quantidade_refugada: number;
+  quantidade_pendente: number;
+  revisao_at: string | null;
+  observacao: string | null;
+  destino_material_bom: DestinoMaterialBom | null;
+  outro_destino: string | null;
+  origem_registro_tabela: string | null;
+  origem_registro_id: string | null;
+  origem_tela: string | null;
+  origem_problema: OrigemProblemaEscolha | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EscolhaRevisaoInsert = Omit<EscolhaRevisaoRegistro, 'id' | 'created_at' | 'updated_at'>;
+export type EscolhaRevisaoUpdate = Partial<EscolhaRevisaoInsert>;
+
+export type OcorrenciaOpTipo =
+  | 'qualidade'
+  | 'material_bloqueado'
+  | 'envio_escolha'
+  | 'divergencia_quantidade'
+  | 'solicitacao_aprovacao'
+  | 'reimpressao'
+  | 'expedicao'
+  | 'observacao_geral';
+
+export type OcorrenciaOpPrioridade = 'baixa' | 'media' | 'alta' | 'critica';
+export type OcorrenciaOpStatus = 'aberta' | 'em_analise' | 'aguardando_decisao' | 'resolvida' | 'cancelada';
+
+export interface OcorrenciaOp {
+  id: string;
+  op: string;
+  titulo: string;
+  tipo: OcorrenciaOpTipo;
+  setor_origem: string;
+  prioridade: OcorrenciaOpPrioridade;
+  status: OcorrenciaOpStatus;
+  responsavel_user_id: string | null;
+  descricao: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  creator_name?: string | null;
+  responsavel_name?: string | null;
+}
+
+export type OcorrenciaOpInsert = Omit<OcorrenciaOp, 'id' | 'created_at' | 'updated_at' | 'resolved_at' | 'creator_name' | 'responsavel_name'>;
+export type OcorrenciaOpUpdate = Partial<Pick<OcorrenciaOp, 'titulo' | 'tipo' | 'setor_origem' | 'prioridade' | 'status' | 'responsavel_user_id' | 'descricao'>>;
+
+export interface OcorrenciaOpComentario {
+  id: string;
+  ocorrencia_id: string;
+  comentario: string;
+  created_by: string | null;
+  created_at: string;
+  creator_name?: string | null;
+}
+
 // ─── Payload do processo inicial (inspections.observations) ─────────────────
 
 export interface ProducaoTracking {
@@ -136,6 +252,9 @@ export interface ProducaoTracking {
   folhas_aprovadas: number;
   folhas_escolha: number;
   folhas_reprovadas: number;
+  unidades_aprovadas?: number;
+  unidades_escolha?: number;
+  unidades_reprovadas?: number;
 }
 
 export interface DefeitosTracking {
@@ -181,8 +300,17 @@ export interface InspectionObservationsV2 {
     restrictedLimit: number;
     rejectLimit: number;
   };
-  status_final: 'APPROVED' | 'RESTRICTED' | 'REJECTED';
+  status_final: 'APPROVED' | 'RESTRICTED' | 'REJECTED' | 'PENDING_CLOSURE';
   observacoes_analista: string;
+  envio_escolha?: Array<{
+    origem_problema: OrigemProblemaEscolha;
+    motivo_escolha: string;
+    tipo_defeito: string;
+    classificacao_defeito: string;
+    quantidade_enviada: number;
+    observacao?: string | null;
+    escolha_revisao_id?: string | null;
+  }>;
 }
 
 // ─── Payload do produto acabado ──────────────────────────────────────────────
@@ -211,7 +339,7 @@ export interface InspectionObservationsFinishing {
     reprovadas: number;
     divergencia: number;
   };
-  status_final: 'APPROVED' | 'RESTRICTED' | 'REJECTED';
+  status_final: 'APPROVED' | 'RESTRICTED' | 'REJECTED' | 'PENDING_CLOSURE';
 }
 
 export interface DefectType {

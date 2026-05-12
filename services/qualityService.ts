@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type QualityStatus = 'APPROVED' | 'RESTRICTED' | 'REJECTED' | 'IN_PROGRESS';
+export type QualityStatus = 'APPROVED' | 'RESTRICTED' | 'REJECTED' | 'PENDING_CLOSURE' | 'IN_PROGRESS';
 export type ProcessKey = 'OFFSET' | 'ESCOLHAS' | 'UV' | 'HOT_STAMPING' | 'FINISHED_REPORT' | 'NBR_6425';
 export type AlertLevel = 'alert' | 'critical';
 

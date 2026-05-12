@@ -5,6 +5,7 @@ import { Machine, Operator, Analyst, DefectType, UserProfile, UserRole, Producti
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import { AQL_OPTIONS, INSPECTION_LEVELS } from '../utils/nbr5426';
+import { ROLE_OPTIONS, getRoleLabel, normalizeRole } from '../utils/permissions';
 
 type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users' | 'nqa';
 
@@ -801,21 +802,34 @@ function UsersManager() {
     const [isSaving, setIsSaving] = useState(false);
     const { showToast } = useToast();
     const { refreshProfile } = useUser();
-    const roleMeta: Record<UserRole, { label: string; avatarClass: string; badgeClass: string }> = {
-        supervisor: {
-            label: 'Supervisão',
+    const roleMeta: Record<string, { avatarClass: string; badgeClass: string }> = {
+        administrador: {
             avatarClass: 'bg-amber-500',
             badgeClass: 'bg-amber-50 text-amber-600 border border-amber-100',
         },
-        analista: {
-            label: 'Analista',
+        direcao: {
+            avatarClass: 'bg-indigo-500',
+            badgeClass: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
+        },
+        supervisao: {
+            avatarClass: 'bg-emerald-500',
+            badgeClass: 'bg-emerald-50 text-emerald-600 border border-emerald-100',
+        },
+        analista_qualidade: {
             avatarClass: 'bg-primary',
             badgeClass: 'bg-blue-50 text-blue-600 border border-blue-100',
         },
-        auxiliar: {
-            label: 'Auxiliar',
+        revisao_escolha: {
             avatarClass: 'bg-violet-500',
             badgeClass: 'bg-violet-50 text-violet-600 border border-violet-100',
+        },
+        expedicao: {
+            avatarClass: 'bg-cyan-500',
+            badgeClass: 'bg-cyan-50 text-cyan-600 border border-cyan-100',
+        },
+        consulta_auditoria: {
+            avatarClass: 'bg-slate-500',
+            badgeClass: 'bg-slate-100 text-slate-600 border border-slate-200',
         },
     };
 
@@ -840,7 +854,12 @@ function UsersManager() {
             if (editing.id) {
                 const { error } = await supabase
                     .from('user_profiles')
-                    .update({ name: editing.name, role: editing.role, active: editing.active })
+                    .update({
+                        name: editing.name,
+                        role: editing.role,
+                        active: editing.active,
+                        can_approve_critical_actions: editing.can_approve_critical_actions === true,
+                    })
                     .eq('id', editing.id);
                 if (error) throw error;
                 showToast('Usuário atualizado', 'success');
@@ -859,7 +878,13 @@ function UsersManager() {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${session?.access_token}`,
                         },
-                        body: JSON.stringify({ email: editing.email, name: editing.name, role: editing.role, password: editing.password }),
+                        body: JSON.stringify({
+                            email: editing.email,
+                            name: editing.name,
+                            role: editing.role,
+                            password: editing.password,
+                            can_approve_critical_actions: editing.can_approve_critical_actions === true,
+                        }),
                     }
                 );
                 const result = await res.json();
@@ -895,7 +920,7 @@ function UsersManager() {
                     Controle de Acesso
                 </h2>
                 <button
-                    onClick={() => setEditing({ name: '', email: '', role: 'analista' as UserRole, active: true })}
+                    onClick={() => setEditing({ name: '', email: '', role: 'analista_qualidade' as UserRole, active: true, can_approve_critical_actions: false })}
                     className="bg-primary text-white px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                 >
                     <span className="material-symbols-outlined text-sm">add</span> Novo Usuário
@@ -945,14 +970,37 @@ function UsersManager() {
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nível de Acesso</label>
                         <select
                             className="h-14 px-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none"
-                            value={editing.role ?? 'analista'}
-                            onChange={e => setEditing({ ...editing, role: e.target.value as UserRole })}
+                            value={normalizeRole(editing.role)}
+                            onChange={e => {
+                                const nextRole = e.target.value as UserRole;
+                                setEditing({
+                                    ...editing,
+                                    role: nextRole,
+                                    can_approve_critical_actions: normalizeRole(nextRole) === 'supervisao'
+                                        ? editing.can_approve_critical_actions === true
+                                        : false,
+                                });
+                            }}
                         >
-                            <option value="analista">Analista</option>
-                            <option value="auxiliar">Auxiliar</option>
-                            <option value="supervisor">Supervisão</option>
+                            {ROLE_OPTIONS.map(role => (
+                                <option key={role.value} value={role.value}>
+                                    {role.label}
+                                </option>
+                            ))}
                         </select>
                     </div>
+                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                        <input
+                            type="checkbox"
+                            className="size-4 accent-primary"
+                            checked={editing.can_approve_critical_actions === true}
+                            onChange={e => setEditing({ ...editing, can_approve_critical_actions: e.target.checked })}
+                            disabled={normalizeRole(editing.role) !== 'supervisao'}
+                        />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                            Pode aprovar decisões críticas
+                        </span>
+                    </label>
                     <div className="flex items-end gap-3">
                         <button type="submit" disabled={isSaving}
                             className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600">
@@ -986,7 +1034,8 @@ function UsersManager() {
                                 Nenhum usuário cadastrado. Usuários aparecem aqui após o primeiro login.
                             </td></tr>
                         ) : users.map(u => {
-                            const meta = roleMeta[u.role] ?? roleMeta.analista;
+                            const normalized = normalizeRole(u.role);
+                            const meta = roleMeta[normalized] ?? roleMeta.consulta_auditoria;
                             return (
                             <tr key={u.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
                                 <td className="px-6 py-3">
@@ -998,9 +1047,16 @@ function UsersManager() {
                                     </div>
                                 </td>
                                 <td className="px-6 py-3">
-                                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${meta.badgeClass}`}>
-                                        {meta.label}
-                                    </span>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${meta.badgeClass}`}>
+                                            {getRoleLabel(u.role)}
+                                        </span>
+                                        {u.can_approve_critical_actions && (
+                                            <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                Aprovador crítico
+                                            </span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-6 py-3">
                                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${u.active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'}`}>
@@ -1009,7 +1065,7 @@ function UsersManager() {
                                 </td>
                                 <td className="px-6 py-3 text-right">
                                     <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => setEditing(u)} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all" aria-label="Editar nível" data-tooltip="Editar nível">
+                                        <button onClick={() => setEditing({ ...u, role: normalizeRole(u.role) as UserRole })} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all" aria-label="Editar nível" data-tooltip="Editar nível">
                                             <span className="material-symbols-outlined text-lg">edit</span>
                                         </button>
                                         <button onClick={() => toggleActive(u.id, u.active)}
