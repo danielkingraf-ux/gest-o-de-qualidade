@@ -925,25 +925,25 @@ export default function InspectionView() {
   if (isLoading) return <div className="p-8 text-center italic">Carregando...</div>;
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4 pb-56 md:pb-48">
+    <div className="responsive-page mx-auto max-w-6xl space-y-4 p-4 pb-56 md:p-6 md:pb-48">
 
       {/* Cabeçalho */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="space-y-1">
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Processo Inicial</h1>
+          <h1 className="responsive-mobile-title text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Processo Inicial</h1>
           <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
             Inspeção de produção
           </p>
         </div>
-        <div className="flex items-center gap-2 px-4 h-9 rounded-xl bg-primary/10 border border-primary/20">
+        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-2 md:h-9 md:w-auto md:justify-start md:py-0">
           <span className="material-symbols-outlined text-primary text-base">print</span>
           <span className="text-[10px] font-black tracking-widest text-primary">OFF-SET · UV · HOT STAMPING</span>
         </div>
       </div>
 
       {/* Dados da OP */}
-      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+      <section className="bg-white dark:bg-slate-900 rounded-2xl md:rounded-3xl p-4 md:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* OP picker */}
           <div className="space-y-2 md:col-span-2">

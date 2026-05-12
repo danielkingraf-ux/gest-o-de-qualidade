@@ -39,8 +39,8 @@ export default function AdminView() {
     ];
 
     return (
-        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 animate-fade-in pb-20">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="responsive-page mx-auto max-w-7xl space-y-4 p-4 pb-20 md:p-6 animate-fade-in">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white dark:bg-slate-900 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="space-y-1">
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5">
                         <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>
@@ -50,7 +50,7 @@ export default function AdminView() {
                     <p className="text-xs text-slate-500 font-medium">Gestão centralizada de ativos e equipes.</p>
                 </div>
 
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800/50">
+                <div className="flex w-full overflow-x-auto bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800/50 md:w-auto">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
@@ -98,8 +98,8 @@ function ManagerTable({
     emptyMessage: string;
 }) {
     return (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <table className="w-full text-left">
+        <div className="responsive-table-wrap rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:rounded-3xl">
+            <table className="responsive-table text-left">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <tr>
                         {columns.map(col => (
@@ -255,7 +255,7 @@ function MachinesManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome do Equipamento</label>
                         <input
@@ -416,7 +416,7 @@ function OperatorsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome Completo</label>
                         <input
@@ -564,7 +564,7 @@ function AnalystsManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome do Analista</label>
                         <input
@@ -724,7 +724,7 @@ function DefectTypesManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-in">
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Classificação do Defeito</label>
                         <input
@@ -928,7 +928,7 @@ function UsersManager() {
             </div>
 
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-6 animate-slide-in">
                     {!editing.id && (
                         <>
                             <div className="flex flex-col gap-2">
@@ -1014,8 +1014,8 @@ function UsersManager() {
                 </form>
             )}
 
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-                <table className="w-full text-left">
+            <div className="responsive-table-wrap rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:rounded-3xl">
+                <table className="responsive-table text-left">
                     <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
                         <tr>
                             <th className="px-6 py-4">Usuário</th>
@@ -1209,7 +1209,7 @@ function NqaProfilesManager() {
 
             {/* Formulário de edição/criação */}
             {editing && (
-                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 space-y-6 animate-slide-in">
+                <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 space-y-6 animate-slide-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="flex flex-col gap-2">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome do Perfil *</label>

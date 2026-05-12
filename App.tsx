@@ -603,7 +603,7 @@ const AppShell = ({ session }: { session: Session }) => {
 
   return (
     <HashRouter>
-      <div className={`flex h-full w-full bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300 ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <div className={`flex h-screen w-full min-w-0 bg-background-light dark:bg-background-dark overflow-hidden transition-colors duration-300 ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <Sidebar
           user={session.user}
           onLogout={() => authService.signOut()}
@@ -621,14 +621,14 @@ const AppShell = ({ session }: { session: Session }) => {
             onClick={() => setIsMobileSidebarOpen(false)}
           />
         )}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Header
             onOpenSidebar={() => setIsMobileSidebarOpen(true)}
             unreadCount={unreadCount}
             onOpenChat={() => setIsChatOpen(true)}
             onOpenSecurity={() => setIsSecurityOpen(true)}
           />
-          <main className="flex-1 overflow-y-auto">
+          <main className="min-w-0 flex-1 overflow-y-auto">
             <Routes>
               <Route path="/" element={protectedElement(['administrador', 'direcao', 'supervisao'], <DashboardView />)} />
               <Route path="/inspections" element={protectedElement(['administrador', 'analista_qualidade'], <InspectionView />)} />
