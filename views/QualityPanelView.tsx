@@ -223,7 +223,7 @@ export default function QualityPanelView() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
                         <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none flex items-center gap-2">
-                            <span className="material-symbols-outlined text-violet-500">query_stats</span>
+                            <span className="material-symbols-outlined text-indigo-500">query_stats</span>
                             Painel de Qualidade
                         </h1>
                         <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
@@ -235,7 +235,7 @@ export default function QualityPanelView() {
                         <div className="flex rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 h-9">
                             {PERIOD_OPTS.map(o => (
                                 <button key={o.v} type="button" onClick={() => setPeriod(o.v)}
-                                    className={`px-4 text-[10px] font-black uppercase tracking-widest transition-colors ${period === o.v ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                    className={`px-4 text-[10px] font-black uppercase tracking-widest transition-colors ${period === o.v ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                     {o.l}
                                 </button>
                             ))}
@@ -244,7 +244,7 @@ export default function QualityPanelView() {
                         <div className="flex rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 h-9">
                             {([['all', 'Todos'], ['inicial', 'Processo Inicial'], ['acabado', 'Produto Acabado']] as const).map(([v, l]) => (
                                 <button key={v} type="button" onClick={() => setAreaTab(v)}
-                                    className={`px-4 text-[10px] font-black uppercase tracking-widest transition-colors ${areaTab === v ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                    className={`px-4 text-[10px] font-black uppercase tracking-widest transition-colors ${areaTab === v ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                     {l}
                                 </button>
                             ))}
@@ -256,12 +256,12 @@ export default function QualityPanelView() {
             {/* Cards de totais */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {/* Laudos */}
-                <div className="bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900 rounded-2xl p-4 space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-500 flex items-center gap-1">
+                <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 flex items-center gap-1">
                         <span className="material-symbols-outlined text-sm">assignment_turned_in</span>
                         Laudos no período
                     </p>
-                    <p className="text-3xl font-black text-violet-700 dark:text-violet-300">{fmt.format(totals.laudos)}</p>
+                    <p className="text-3xl font-black text-indigo-700 dark:text-indigo-300">{fmt.format(totals.laudos)}</p>
                 </div>
                 {/* Total produzido */}
                 <div className="bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-1">
@@ -412,3 +412,4 @@ export default function QualityPanelView() {
         </div>
     );
 }
+

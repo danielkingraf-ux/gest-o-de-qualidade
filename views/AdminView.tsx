@@ -17,7 +17,7 @@ const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
 
 const AREA_BADGES: Record<ProductionArea, { label: string; className: string }> = {
     producao_inicial: { label: 'Produção inicial', className: 'bg-blue-50 text-blue-600 border border-blue-100' },
-    produto_acabado: { label: 'Produto acabado', className: 'bg-violet-50 text-violet-600 border border-violet-100' },
+    produto_acabado: { label: 'Produto acabado', className: 'bg-indigo-50 text-indigo-600 border border-indigo-100' },
     ambos: { label: 'Ambos', className: 'bg-amber-50 text-amber-600 border border-amber-100' },
 };
 
@@ -820,8 +820,8 @@ function UsersManager() {
             badgeClass: 'bg-blue-50 text-blue-600 border border-blue-100',
         },
         revisao_escolha: {
-            avatarClass: 'bg-violet-500',
-            badgeClass: 'bg-violet-50 text-violet-600 border border-violet-100',
+            avatarClass: 'bg-indigo-500',
+            badgeClass: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
         },
         expedicao: {
             avatarClass: 'bg-cyan-500',
@@ -1384,3 +1384,4 @@ function NqaProfilesManager() {
         </div>
     );
 }
+

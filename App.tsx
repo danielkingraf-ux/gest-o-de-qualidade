@@ -242,7 +242,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
               <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{profile?.name || user?.email?.split('@')[0] || 'Usuário'}</p>
               <p className={`text-[10px] uppercase font-black tracking-widest leading-none ${
                 normalizedRole === 'administrador' ? 'text-amber-500' :
-                normalizedRole === 'revisao_escolha' ? 'text-violet-500' :
+                normalizedRole === 'revisao_escolha' ? 'text-indigo-500' :
                 normalizedRole === 'consulta_auditoria' ? 'text-slate-500' :
                 'text-emerald-500'
               }`}>
@@ -292,11 +292,11 @@ const SecurityModal = ({ onClose }: { onClose: () => void }) => createPortal(
         </div>
 
         {/* RLS */}
-        <div className="rounded-2xl border border-violet-100 dark:border-violet-900/40 bg-violet-50 dark:bg-violet-950/20 p-5">
+        <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/20 p-5">
           <div className="flex items-center gap-2 mb-3">
-            <span className="material-symbols-outlined text-violet-600 text-xl">shield</span>
-            <h3 className="text-sm font-black text-violet-900 dark:text-violet-300 uppercase tracking-wide">RLS — Row Level Security</h3>
-            <span className="ml-auto px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-[9px] font-black uppercase text-violet-600 dark:text-violet-400 tracking-widest">PostgreSQL</span>
+            <span className="material-symbols-outlined text-indigo-600 text-xl">shield</span>
+            <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-wide">RLS — Row Level Security</h3>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest">PostgreSQL</span>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
             O banco de dados aplica <strong className="text-slate-800 dark:text-slate-200">políticas de segurança linha a linha</strong>. Mesmo que alguém tente acessar diretamente o banco com credenciais válidas, o PostgreSQL filtra automaticamente o que cada papel pode ver ou modificar:
@@ -310,8 +310,8 @@ const SecurityModal = ({ onClose }: { onClose: () => void }) => createPortal(
               { label: 'nqa_profiles', desc: 'Leitura para todos; gerência só por supervisor' },
               { label: 'blocklist / LGPD', desc: 'Acesso restrito a funções internas do sistema' },
             ].map(item => (
-              <div key={item.label} className="flex gap-2 bg-white dark:bg-slate-800/60 rounded-xl p-3 border border-violet-100 dark:border-violet-900/30">
-                <span className="material-symbols-outlined text-violet-400 text-base shrink-0 mt-0.5">table_rows</span>
+              <div key={item.label} className="flex gap-2 bg-white dark:bg-slate-800/60 rounded-xl p-3 border border-indigo-100 dark:border-indigo-900/30">
+                <span className="material-symbols-outlined text-indigo-400 text-base shrink-0 mt-0.5">table_rows</span>
                 <div>
                   <p className="font-black text-slate-700 dark:text-slate-200 font-mono">{item.label}</p>
                   <p className="text-slate-500 dark:text-slate-400 leading-snug">{item.desc}</p>
@@ -663,3 +663,4 @@ const AppShell = ({ session }: { session: Session }) => {
 };
 
 export default App;
+

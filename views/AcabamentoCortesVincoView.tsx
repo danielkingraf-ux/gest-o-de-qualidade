@@ -75,7 +75,7 @@ const FacaDefectCounter: React.FC<{
         <button
           type="button"
           onClick={() => setAllModal({ value: '' })}
-          className="text-[8px] font-black uppercase tracking-widest px-2 h-5 rounded-full border border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
+          className="text-[8px] font-black uppercase tracking-widest px-2 h-5 rounded-full border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
         >
           Todas
         </button>
@@ -99,7 +99,7 @@ const FacaDefectCounter: React.FC<{
               className={`relative flex flex-col items-center justify-center w-11 h-11 rounded-xl border-2 transition-all ${
                 active
                   ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/40 text-rose-700'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-400 hover:border-violet-400/50 hover:bg-violet-50 dark:hover:bg-violet-950/20'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-400 hover:border-indigo-400/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'
               }`}
             >
               <span className="material-symbols-outlined text-[13px] leading-none">content_cut</span>
@@ -125,7 +125,7 @@ const FacaDefectCounter: React.FC<{
             onChange={e => onDescricaoChange(e.target.value)}
             placeholder="Ex: rebarbas, faca torta, entulho..."
             rows={2}
-            className="mt-1 w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-violet-500/20 resize-none"
+            className="mt-1 w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500/20 resize-none"
           />
         </div>
       )}
@@ -141,8 +141,8 @@ const FacaDefectCounter: React.FC<{
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="size-9 rounded-xl bg-violet-100 dark:bg-violet-950/30 flex items-center justify-center">
-                <span className="material-symbols-outlined text-violet-600 text-base">content_cut</span>
+              <div className="size-9 rounded-xl bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center">
+                <span className="material-symbols-outlined text-indigo-600 text-base">content_cut</span>
               </div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Faca {modal.faca}</p>
@@ -159,7 +159,7 @@ const FacaDefectCounter: React.FC<{
               onChange={e => setModal(prev => prev ? { ...prev, value: e.target.value } : prev)}
               onKeyDown={e => e.key === 'Enter' && confirmModal()}
               autoFocus
-              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-violet-500/20 text-center"
+              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
             />
             <div className="mt-3 flex gap-2">
               <button
@@ -172,7 +172,7 @@ const FacaDefectCounter: React.FC<{
               <button
                 type="button"
                 onClick={confirmModal}
-                className="flex-1 h-10 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 transition-colors"
+                className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors"
               >
                 Confirmar
               </button>
@@ -192,8 +192,8 @@ const FacaDefectCounter: React.FC<{
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="size-9 rounded-xl bg-violet-100 dark:bg-violet-950/30 flex items-center justify-center">
-                <span className="material-symbols-outlined text-violet-600 text-base">content_cut</span>
+              <div className="size-9 rounded-xl bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center">
+                <span className="material-symbols-outlined text-indigo-600 text-base">content_cut</span>
               </div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
@@ -212,7 +212,7 @@ const FacaDefectCounter: React.FC<{
               onChange={e => setAllModal(prev => prev ? { ...prev, value: e.target.value } : prev)}
               onKeyDown={e => e.key === 'Enter' && confirmAllModal()}
               autoFocus
-              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-violet-500/20 text-center"
+              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
             />
             <p className="text-[9px] text-slate-400 mt-1.5 text-center">
               Será aplicado às {numFacas} posições
@@ -228,7 +228,7 @@ const FacaDefectCounter: React.FC<{
               <button
                 type="button"
                 onClick={confirmAllModal}
-                className="flex-1 h-10 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 transition-colors"
+                className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors"
               >
                 Confirmar
               </button>
@@ -438,8 +438,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-2">
-            <div className="size-10 rounded-xl bg-violet-100 dark:bg-violet-950/30 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-violet-600">content_cut</span>
+            <div className="size-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-indigo-600">content_cut</span>
             </div>
             <div>
               <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
@@ -449,9 +449,9 @@ const AcabamentoCortesVincoView: React.FC = () => {
             </div>
           </div>
           {profile?.name && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900/40">
-              <span className="material-symbols-outlined text-violet-500 text-sm">person</span>
-              <span className="text-xs font-bold text-violet-700 dark:text-violet-300">{profile.name}</span>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+              <span className="material-symbols-outlined text-indigo-500 text-sm">person</span>
+              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{profile.name}</span>
               <span className="text-[10px] text-slate-400 ml-auto">
                 {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
               </span>
@@ -470,7 +470,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
             value={op}
             onChange={e => setOp(e.target.value)}
             placeholder="Ex: 12345"
-            className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500/20"
+            className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
           <datalist id="cv-op-list">
             {opList.map(o => <option key={o} value={o} />)}
@@ -478,8 +478,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
           {opFound === true && numFacas > 0 && (
             <div className="flex items-center gap-2 mt-2">
-              <span className="material-symbols-outlined text-violet-500 text-sm">check_circle</span>
-              <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">
+              <span className="material-symbols-outlined text-indigo-500 text-sm">check_circle</span>
+              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
                 {numFacas} posições de faca carregadas da OP
               </span>
             </div>
@@ -580,7 +580,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
             onChange={e => setNotes(e.target.value)}
             placeholder="Anotações adicionais sobre o lote..."
             rows={3}
-            className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-violet-500/20 resize-none"
+            className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
           />
         </section>
 
@@ -591,7 +591,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
           </h2>
           {loadingRecent ? (
             <div className="flex justify-center py-4">
-              <div className="size-5 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+              <div className="size-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
             </div>
           ) : recentRecords.length === 0 ? (
             <p className="text-xs text-slate-400 text-center py-3">Nenhum registro ainda</p>
@@ -602,8 +602,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
                   .reduce<number>((s, v) => s + (typeof v === 'number' ? v : 0), 0);
                 return (
                   <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="size-8 rounded-lg bg-violet-100 dark:bg-violet-950/30 flex items-center justify-center shrink-0">
-                      <span className="material-symbols-outlined text-violet-600 text-sm">content_cut</span>
+                    <div className="size-8 rounded-lg bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-indigo-600 text-sm">content_cut</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -642,7 +642,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
           type="button"
           onClick={handleSave}
           disabled={saving || !op.trim()}
-          className="flex-[2] h-11 rounded-xl bg-violet-600 text-white text-sm font-black hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-[2] h-11 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
             <span className="size-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -657,3 +657,4 @@ const AcabamentoCortesVincoView: React.FC = () => {
 };
 
 export default AcabamentoCortesVincoView;
+

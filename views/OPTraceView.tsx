@@ -249,7 +249,7 @@ export default function OPTraceView() {
             <header className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
                 <div className="space-y-1">
                     <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none flex items-center gap-2">
-                        <span className="material-symbols-outlined text-violet-500">manage_search</span>
+                        <span className="material-symbols-outlined text-indigo-500">manage_search</span>
                         Rastreabilidade de OP
                     </h1>
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
@@ -265,7 +265,7 @@ export default function OPTraceView() {
                             onChange={e => setSearch(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && load(search)}
                             placeholder="Digite ou selecione a OP..."
-                            className="w-full h-11 pl-10 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20"
+                            className="w-full h-11 pl-10 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-indigo-500/20"
                         />
                         <datalist id="op-options">
                             {opOptions.map(op => <option key={op} value={op} />)}
@@ -275,7 +275,7 @@ export default function OPTraceView() {
                         type="button"
                         onClick={() => load(search)}
                         disabled={loading || !search.trim()}
-                        className="h-11 px-6 rounded-xl bg-violet-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center gap-2 disabled:opacity-50"
+                        className="h-11 px-6 rounded-xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2 disabled:opacity-50"
                     >
                         {loading
                             ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
@@ -347,11 +347,11 @@ export default function OPTraceView() {
                                     {totals.produzida > 0 && <p className="text-[10px] font-bold text-rose-500">{((totals.refugo/totals.produzida)*100).toFixed(1)}%</p>}
                                 </div>
                                 {/* Pallets */}
-                                <div className="p-3 rounded-2xl bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-500 flex items-center gap-1">
+                                <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 flex items-center gap-1">
                                         <span className="material-symbols-outlined text-xs">stacks</span>Pallets
                                     </p>
-                                    <p className="text-2xl font-black text-violet-700 dark:text-violet-300">{trace.pallets.length}</p>
+                                    <p className="text-2xl font-black text-indigo-700 dark:text-indigo-300">{trace.pallets.length}</p>
                                 </div>
                         </div>
 
@@ -404,7 +404,7 @@ export default function OPTraceView() {
                     {/* ── PRODUTO ACABADO ───────────────────────────────────────────── */}
                     {trace.acabado.length > 0 && (
                         <Section
-                            icon="table_chart" color="violet"
+                            icon="table_chart" color="indigo"
                             title="Produto Acabado"
                             subtitle={`${trace.acabado.length} laudo${trace.acabado.length !== 1 ? 's' : ''}`}
                         >
@@ -417,7 +417,7 @@ export default function OPTraceView() {
                     {/* ── PALLETS ──────────────────────────────────────────────────── */}
                     {trace.pallets.length > 0 && (
                         <Section
-                            icon="stacks" color="violet"
+                            icon="stacks" color="indigo"
                             title="Inspeção de Pallets"
                             subtitle={`${trace.pallets.length} pallet${trace.pallets.length !== 1 ? 's' : ''}`}
                         >
@@ -442,7 +442,7 @@ export default function OPTraceView() {
                                             </p>
                                             <Link
                                                 to={`/pallet/${p.id}`}
-                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/30 text-violet-600 text-[9px] font-black uppercase tracking-widest hover:bg-violet-100 transition-colors"
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 text-[9px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-xs">qr_code_2</span>QR
                                             </Link>
@@ -473,7 +473,7 @@ function Section({ icon, color, title, subtitle, children }: {
     const [open, setOpen] = useState(true);
     const colorMap: Record<string, string> = {
         blue: 'text-blue-500 bg-blue-600',
-        violet: 'text-violet-500 bg-violet-600',
+        indigo: 'text-indigo-500 bg-indigo-600',
     };
     return (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -511,7 +511,7 @@ function InspCard({ record, index }: { key?: React.Key; record: InspRecord; inde
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                         {record.numero && (
-                            <span className="text-xs font-black text-violet-600">#{record.numero}</span>
+                            <span className="text-xs font-black text-indigo-600">#{record.numero}</span>
                         )}
                         <Badge status={record.status} />
                         <span className="text-[10px] font-bold text-slate-400">{fmtDate(record.created_at)}</span>
@@ -586,3 +586,4 @@ function InspCard({ record, index }: { key?: React.Key; record: InspRecord; inde
         </div>
     );
 }
+

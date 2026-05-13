@@ -71,7 +71,7 @@ export default function PalletListView() {
             {/* Header */}
             <header className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
                 <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none flex items-center gap-2">
-                    <span className="material-symbols-outlined text-violet-500">stacks</span>
+                    <span className="material-symbols-outlined text-indigo-500">stacks</span>
                     Inspeções de Pallets
                 </h1>
                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
@@ -82,7 +82,7 @@ export default function PalletListView() {
             {/* Cards de resumo */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                    { label: 'Total Registrados', value: counts.total, color: 'violet', icon: 'stacks' },
+                    { label: 'Total Registrados', value: counts.total, color: 'indigo', icon: 'stacks' },
                     { label: 'Aprovados', value: counts.approved, color: 'emerald', icon: 'verified' },
                     { label: 'Com Restrição', value: counts.restricted, color: 'amber', icon: 'warning' },
                     { label: 'Reprovados', value: counts.rejected, color: 'rose', icon: 'cancel' },
@@ -103,7 +103,7 @@ export default function PalletListView() {
                     value={opFilter}
                     onChange={e => setOpFilter(e.target.value)}
                     placeholder="Filtrar por OP..."
-                    className="h-9 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-violet-500/20 flex-1 max-w-xs"
+                    className="h-9 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm focus:ring-2 focus:ring-indigo-500/20 flex-1 max-w-xs"
                 />
                 <select
                     value={resultFilter}
@@ -177,7 +177,7 @@ export default function PalletListView() {
                                             <td className="px-5 py-3 text-right">
                                                 <Link
                                                     to={`/pallet/${p.id}`}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
                                                 >
                                                     <span className="material-symbols-outlined text-sm">qr_code_2</span>
                                                     Ver QR
@@ -194,3 +194,4 @@ export default function PalletListView() {
         </div>
     );
 }
+

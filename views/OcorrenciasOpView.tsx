@@ -34,7 +34,7 @@ const EMPTY_DRAFT: Draft = {
 
 const statusClass: Record<OcorrenciaOpStatus, string> = {
   aberta: 'bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300',
-  em_analise: 'bg-violet-100 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300',
+  em_analise: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300',
   aguardando_decisao: 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300',
   resolvida: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300',
   cancelada: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -183,7 +183,7 @@ export default function OcorrenciasOpView() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-5 animate-slide-in pb-20">
       <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Comunicação rastreável</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Comunicação rastreável</p>
           <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 dark:text-white">Ocorrências da OP</h1>
           <p className="mt-1 text-xs font-bold text-slate-400">Registro estruturado por OP, prioridade, status e histórico.</p>
         </div>
@@ -212,7 +212,7 @@ export default function OcorrenciasOpView() {
                   </select>
                 </div>
                 <textarea value={draft.descricao} onChange={e => setDraft(p => ({ ...p, descricao: e.target.value }))} placeholder="Descreva a ocorrência..." className="input min-h-28 py-3" />
-                <button type="button" onClick={handleCreate} disabled={isSaving} className="h-11 w-full rounded-xl bg-violet-600 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:opacity-50">
+                <button type="button" onClick={handleCreate} disabled={isSaving} className="h-11 w-full rounded-xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700 disabled:opacity-50">
                   Criar ocorrência
                 </button>
               </div>
@@ -242,10 +242,10 @@ export default function OcorrenciasOpView() {
               ) : filtered.length === 0 ? (
                 <div className="p-8 text-center text-sm font-bold text-slate-400">Nenhuma ocorrência encontrada.</div>
               ) : filtered.map(record => (
-                <button key={record.id} type="button" onClick={() => setSelected(record)} className={`w-full border-b border-slate-100 p-4 text-left transition-all hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50 ${selected?.id === record.id ? 'bg-violet-50 dark:bg-violet-950/20' : ''}`}>
+                <button key={record.id} type="button" onClick={() => setSelected(record)} className={`w-full border-b border-slate-100 p-4 text-left transition-all hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50 ${selected?.id === record.id ? 'bg-indigo-50 dark:bg-indigo-950/20' : ''}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">OP {record.op}</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">OP {record.op}</p>
                       <p className="truncate text-sm font-black text-slate-800 dark:text-white">{record.titulo}</p>
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase ${statusClass[record.status]}`}>{optionLabel(OCORRENCIA_STATUS_OPTIONS, record.status)}</span>
@@ -272,7 +272,7 @@ export default function OcorrenciasOpView() {
                 <div className="border-b border-slate-100 p-5 dark:border-slate-800">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">OP {selected.op}</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">OP {selected.op}</p>
                       <h2 className="text-xl font-black text-slate-900 dark:text-white">{selected.titulo}</h2>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -314,7 +314,7 @@ export default function OcorrenciasOpView() {
                 <div className="border-t border-slate-100 p-5 dark:border-slate-800">
                   <textarea value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="Adicionar comentário ao histórico..." className="input min-h-24 py-3" />
                   <div className="mt-3 flex justify-end">
-                    <button type="button" onClick={addComment} disabled={isSaving || !commentText.trim()} className="h-10 rounded-xl bg-violet-600 px-5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:opacity-50">
+                    <button type="button" onClick={addComment} disabled={isSaving || !commentText.trim()} className="h-10 rounded-xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700 disabled:opacity-50">
                       Comentar
                     </button>
                   </div>
@@ -327,3 +327,4 @@ export default function OcorrenciasOpView() {
     </div>
   );
 }
+

@@ -89,7 +89,7 @@ export default function PalletAuditView() {
                 <span className="material-symbols-outlined text-6xl text-slate-300">search_off</span>
                 <h2 className="text-xl font-black text-slate-700 dark:text-slate-300 uppercase tracking-tight">Pallet não encontrado</h2>
                 <p className="text-sm text-slate-400">O registro deste pallet não existe ou foi removido.</p>
-                <Link to="/finishing-analysis" className="mt-2 px-6 py-2 rounded-xl bg-violet-600 text-white font-black text-xs uppercase tracking-widest hover:bg-violet-700 transition-all">
+                <Link to="/finishing-analysis" className="mt-2 px-6 py-2 rounded-xl bg-indigo-600 text-white font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all">
                     Voltar
                 </Link>
             </div>
@@ -114,7 +114,7 @@ export default function PalletAuditView() {
             <div className="flex items-center justify-between gap-3 print:hidden">
                 <Link
                     to="/finishing-analysis"
-                    className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-violet-600 transition-colors"
+                    className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors"
                 >
                     <span className="material-symbols-outlined text-base">arrow_back</span>
                     Produto Acabado
@@ -215,7 +215,7 @@ export default function PalletAuditView() {
             {/* Amostragem */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4">
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-base text-violet-500">rule</span>
+                    <span className="material-symbols-outlined text-base text-indigo-500">rule</span>
                     Plano de Amostragem — Sub-lote 50.000 un.
                 </h3>
 
@@ -226,9 +226,9 @@ export default function PalletAuditView() {
                         { label: 'Cx. inspecionadas', value: fmt.format(pallet.boxes_to_inspect) },
                         { label: 'Amostra NBR', value: `${fmt.format(pallet.sample_size)} un.` },
                     ].map(item => (
-                        <div key={item.label} className="bg-violet-50 dark:bg-violet-950/20 rounded-xl p-3 border border-violet-100 dark:border-violet-900">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">{item.label}</p>
-                            <p className="text-lg font-black text-violet-800 dark:text-violet-200">{item.value}</p>
+                        <div key={item.label} className="bg-indigo-50 dark:bg-indigo-950/20 rounded-xl p-3 border border-indigo-100 dark:border-indigo-900">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{item.label}</p>
+                            <p className="text-lg font-black text-indigo-800 dark:text-indigo-200">{item.value}</p>
                         </div>
                     ))}
                 </div>
@@ -272,7 +272,7 @@ export default function PalletAuditView() {
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                             {pallet.boxes_list.map(n => (
-                                <span key={n} className="px-2.5 py-1 bg-violet-600 text-white text-[10px] font-black rounded-lg">
+                                <span key={n} className="px-2.5 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg">
                                     Cx {n}
                                 </span>
                             ))}
@@ -350,3 +350,4 @@ export default function PalletAuditView() {
         </div>
     );
 }
+

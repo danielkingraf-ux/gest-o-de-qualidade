@@ -93,10 +93,10 @@ const CATEGORY_CONFIG: Record<ProcessType, {
     label: 'Acabamento',
     description: 'Inspeção Final',
     icon: 'verified',
-    dotClass: 'bg-violet-500',
-    badgeClass: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200',
-    tabClass: 'bg-gradient-to-br from-violet-50 via-white to-violet-100 dark:from-violet-950/30 dark:via-slate-900 dark:to-violet-900/20 border-violet-200 dark:border-violet-900/60',
-    ringClass: 'ring-2 ring-violet-200 dark:ring-violet-900/60'
+    dotClass: 'bg-indigo-500',
+    badgeClass: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200',
+    tabClass: 'bg-gradient-to-br from-indigo-50 via-white to-indigo-100 dark:from-indigo-950/30 dark:via-slate-900 dark:to-indigo-900/20 border-indigo-200 dark:border-indigo-900/60',
+    ringClass: 'ring-2 ring-indigo-200 dark:ring-indigo-900/60'
   },
 };
 
@@ -578,7 +578,7 @@ export default function RecordsView() {
                       )}
                       <td className="px-6 py-4 text-sm whitespace-nowrap">{formatDate(record.created_at)}</td>
                       <td className="px-6 py-4 text-sm font-bold uppercase tracking-tighter">{record.op}</td>
-                      <td className="px-6 py-4 text-sm font-bold text-violet-600">{record.laudo_numero || '-'}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-indigo-600">{record.laudo_numero || '-'}</td>
                       <td className="px-6 py-4 text-sm font-medium">{record.machines?.name || '-'}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${meta.badgeClass}`}>
@@ -779,7 +779,7 @@ export default function RecordsView() {
               {parseObservations(viewingRecord.observations).desenho_tecnico && (
                 <div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">Desenho Técnico</p>
-                  <p className="font-bold text-sm text-violet-600 italic">{parseObservations(viewingRecord.observations).desenho_tecnico}</p>
+                  <p className="font-bold text-sm text-indigo-600 italic">{parseObservations(viewingRecord.observations).desenho_tecnico}</p>
                 </div>
               )}
             </div>
@@ -794,7 +794,7 @@ export default function RecordsView() {
                         <th className="p-2 font-black uppercase text-slate-400">Teste</th>
                         <th className="p-2 font-black uppercase text-slate-400 text-center">A1</th>
                         <th className="p-2 font-black uppercase text-slate-400 text-center">A2</th>
-                        <th className="p-2 font-black uppercase text-violet-500 text-center">Média</th>
+                        <th className="p-2 font-black uppercase text-indigo-500 text-center">Média</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -803,7 +803,7 @@ export default function RecordsView() {
                           <td className="p-2 font-bold capitalize text-slate-600">{key}</td>
                           <td className="p-2 text-center">{data.a1 || '-'}</td>
                           <td className="p-2 text-center">{data.a2 || '-'}</td>
-                          <td className="p-2 text-center font-black text-violet-600 bg-violet-50/30">{data.avg || '-'}</td>
+                          <td className="p-2 text-center font-black text-indigo-600 bg-indigo-50/30">{data.avg || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -961,6 +961,7 @@ export default function RecordsView() {
     </div >
   );
 }
+
 
 
 

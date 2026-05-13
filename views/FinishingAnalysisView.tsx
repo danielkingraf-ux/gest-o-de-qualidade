@@ -60,18 +60,16 @@ const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','A
 const FINISHING_STEPS = [
     { id: 1, label: 'Identificação', short: 'Identificação' },
     { id: 2, label: 'Dados da Análise', short: 'Dados' },
-    { id: 3, label: 'Resultado', short: 'Resultado' },
-    { id: 4, label: 'Não Conformidades', short: 'Não Conform.' },
-    { id: 5, label: 'Controle NQA', short: 'NQA' },
-    { id: 6, label: 'Inspeção por Pallet', short: 'Pallet' },
-    { id: 7, label: 'Conclusão', short: 'Conclusão' },
+    { id: 3, label: 'Controle NQA', short: 'NQA' },
+    { id: 4, label: 'Inspeção por Pallet', short: 'Pallet' },
+    { id: 5, label: 'Conclusão', short: 'Conclusão' },
 ];
 
 const PersonChip = ({ name, onRemove }: { key?: React.Key; name: string; onRemove: () => void }) => (
-    <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200 text-xs font-bold border border-violet-200 dark:border-violet-800">
+    <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200 text-xs font-bold border border-indigo-200 dark:border-indigo-800">
         {name}
         <button type="button" onClick={onRemove}
-            className="size-4 flex items-center justify-center rounded hover:bg-violet-200 dark:hover:bg-violet-800 text-violet-500 hover:text-violet-700 transition-colors">
+            className="size-4 flex items-center justify-center rounded hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-500 hover:text-indigo-700 transition-colors">
             <span className="material-symbols-outlined text-xs">close</span>
         </button>
     </span>
@@ -424,8 +422,8 @@ export default function FinishingAnalysisView() {
     const analystNames = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
 
     useEffect(() => {
-        if (activeStep === 5) setShowNqa(true);
-        if (activeStep === 6) setShowPallet(true);
+        if (activeStep === 3) setShowNqa(true);
+        if (activeStep === 4) setShowPallet(true);
     }, [activeStep]);
 
     const validateStep = (step: number) => {
@@ -436,11 +434,10 @@ export default function FinishingAnalysisView() {
         if (step === 2 && !selectedMachineId) return 'Selecione a máquina.';
         if (step === 2 && !laudoNumero.trim()) return 'Informe o número do laudo.';
         if (step === 2 && amostragem <= 0) return 'Informe a amostragem.';
-        if (step === 3 && !status) return 'Informe o resultado.';
-        if (step === 5 && !nqaProfileId) return 'Selecione um perfil NQA.';
-        if (step === 5 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
-        if (step === 5 && nqaConfig.caixas_por_pallet <= 0) return 'Informe caixas por pallet.';
-        if (step === 6 && showPallet && !palletResult) return 'Informe o resultado do pallet.';
+        if (step === 3 && !nqaProfileId) return 'Selecione um perfil NQA.';
+        if (step === 3 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
+        if (step === 3 && nqaConfig.caixas_por_pallet <= 0) return 'Informe caixas por pallet.';
+        if (step === 4 && showPallet && !palletResult) return 'Informe o resultado do pallet.';
         return null;
     };
 
@@ -460,7 +457,7 @@ export default function FinishingAnalysisView() {
     const clearForm = () => {
         setSelectedOrderId(''); setOrderFilter(''); setNewOrder({ op: '', qtd_total: '' });
         setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero('');
-        setAmostragem(500); setStatus(InspectionStatus.APPROVED); setObservacoes('');
+        setAmostragem(500); setObservacoes('');
         setDefects({ ...EMPTY_DEFECTS }); setNqaDefects({ critical: 0, major: 0, minor: 0 });
         setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0); setActiveStep(1);
     };
@@ -478,11 +475,11 @@ export default function FinishingAnalysisView() {
                 <div className="max-w-6xl mx-auto space-y-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Produto Acabado</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Produto Acabado</p>
                             <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">{FINISHING_STEPS[activeStep - 1]?.label}</h1>
                         </div>
                         <div className="hidden sm:flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                            {selectedOrderId && <span className="text-violet-600">OP: {selectedOrderId}</span>}
+                            {selectedOrderId && <span className="text-indigo-600">OP: {selectedOrderId}</span>}
                             {totalDefects > 0 && <span className="text-rose-500">{totalDefects} defeito{totalDefects > 1 ? 's' : ''}</span>}
                         </div>
                     </div>
@@ -497,7 +494,7 @@ export default function FinishingAnalysisView() {
                                     onClick={() => goToStep(step.id)}
                                     className={`shrink-0 h-10 px-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
                                         active
-                                            ? 'bg-violet-600 border-violet-600 text-white shadow-lg shadow-violet-500/20'
+                                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20'
                                             : done
                                                 ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-800 dark:text-emerald-300'
                                                 : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
@@ -522,7 +519,7 @@ export default function FinishingAnalysisView() {
             {activeStep === 1 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 {/* Título da seção */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                    <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">1</span>
+                    <span className="flex items-center justify-center size-7 rounded-full bg-indigo-600 text-white text-xs font-black">1</span>
                     <div>
                         <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Identificação</h2>
                         <p className="text-[10px] text-slate-400 font-bold">OP · Operadores · Analistas · Rastreabilidade</p>
@@ -556,7 +553,7 @@ export default function FinishingAnalysisView() {
                             {/* Histórico de rodadas */}
                             {rodadas.length > 0 && (
                                 <button type="button" onClick={() => setShowRodadas(v => !v)}
-                                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-violet-500 hover:text-violet-700 transition-colors">
+                                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-500 hover:text-indigo-700 transition-colors">
                                     <span className="material-symbols-outlined text-sm">history</span>
                                     {rodadas.length} rodada{rodadas.length > 1 ? 's' : ''} nesta OP
                                     <span className="material-symbols-outlined text-xs">{showRodadas ? 'expand_less' : 'expand_more'}</span>
@@ -599,7 +596,7 @@ export default function FinishingAnalysisView() {
                         {/* Operadores */}
                         <div className="space-y-2">
                             <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-xs text-violet-500">engineering</span>
+                                <span className="material-symbols-outlined text-xs text-indigo-500">engineering</span>
                                 Operadores <span className="text-rose-400">*</span>
                                 <span className="text-slate-300 font-medium normal-case">— múltiplos turnos</span>
                             </label>
@@ -621,7 +618,7 @@ export default function FinishingAnalysisView() {
                         {/* Analistas */}
                         <div className="space-y-2">
                             <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-xs text-violet-500">person_search</span>
+                                <span className="material-symbols-outlined text-xs text-indigo-500">person_search</span>
                                 Analistas Responsáveis <span className="text-rose-400">*</span>
                                 <span className="text-slate-300 font-medium normal-case">— múltiplos</span>
                             </label>
@@ -648,7 +645,7 @@ export default function FinishingAnalysisView() {
             ══════════════════════════════════════════════════════════ */}
             {activeStep === 2 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                    <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">2</span>
+                    <span className="flex items-center justify-center size-7 rounded-full bg-indigo-600 text-white text-xs font-black">2</span>
                     <div>
                         <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Dados da Análise</h2>
                         <p className="text-[10px] text-slate-400 font-bold">Máquina · Laudo · Amostragem · Período</p>
@@ -667,7 +664,7 @@ export default function FinishingAnalysisView() {
                     <div className="space-y-1">
                         <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Nº do Laudo <span className="text-rose-400">*</span></label>
                         <input value={laudoNumero} onChange={e => setLaudoNumero(e.target.value)}
-                            className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-black text-violet-600 text-sm"
+                            className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-black text-indigo-600 text-sm"
                             placeholder="00000/25" />
                     </div>
                     <div className="space-y-1">
@@ -714,81 +711,18 @@ export default function FinishingAnalysisView() {
                 </div>
             </div>}
 
+
+
+
+
             {/* ══════════════════════════════════════════════════════════
-                SEÇÃO 3 — Resultado e Observações
+                SEÇÃO 3 — NQA (colapsável)
             ══════════════════════════════════════════════════════════ */}
             {activeStep === 3 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                    <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">3</span>
-                    <div>
-                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Resultado</h2>
-                        <p className="text-[10px] text-slate-400 font-bold">Veredicto da análise · Observações</p>
-                    </div>
-                </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-[240px_1fr] gap-5">
-                    <div className="space-y-2">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Veredicto</p>
-                        <div className="grid grid-cols-2 gap-2">
-                            {[
-                                { id: InspectionStatus.APPROVED, label: 'Aprovado',  icon: 'check_circle', active: 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10', idle: 'border-slate-200 text-slate-400 dark:border-slate-700 hover:text-emerald-600' },
-                                { id: InspectionStatus.REJECTED, label: 'Reprovado', icon: 'cancel',       active: 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-500/10',         idle: 'border-slate-200 text-slate-400 dark:border-slate-700 hover:text-rose-600' },
-                            ].map(opt => (
-                                <button key={opt.id} type="button" onClick={() => setStatus(opt.id)}
-                                    className={`h-14 rounded-2xl border-2 flex flex-col items-center justify-center gap-0.5 transition-all font-black text-[10px] uppercase tracking-widest ${status === opt.id ? opt.active : opt.idle}`}>
-                                    <span className="material-symbols-outlined text-xl">{opt.icon}</span>
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações</label>
-                        <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={4}
-                            className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-violet-500/20"
-                            placeholder="Restrições, motivo de reprovação, observações gerais sobre o laudo..." />
-                    </div>
-                </div>
-            </div>}
-
-            {/* ══════════════════════════════════════════════════════════
-                SEÇÃO 4 — Não Conformidades (defeitos → relatórios)
-            ══════════════════════════════════════════════════════════ */}
-            {activeStep === 4 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">4</span>
-                        <div>
-                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Contagem de defeitos</h2>
-                            <p className="text-[10px] text-slate-400 font-bold">Contagem por tipo de defeito — aparece nos relatórios</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {totalDefects > 0 && (
-                            <span className="px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-[10px] font-black uppercase tracking-widest">
-                                {totalDefects} defeito{totalDefects !== 1 ? 's' : ''}
-                            </span>
-                        )}
-                        <span className="text-[9px] font-bold text-slate-400">Amostra: {amostragem} un.</span>
-                    </div>
-                </div>
-                <div className="p-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                    {DEFECT_COLUMNS.map(col => (
-                        <DefectCounter key={col.key} label={col.label} icon={col.icon}
-                            count={defects[col.key] || 0}
-                            onUpdate={d => setDefects(p => ({ ...p, [col.key]: Math.max(0, (p[col.key] || 0) + d) }))}
-                            onSet={v => setDefects(p => ({ ...p, [col.key]: v }))} />
-                    ))}
-                </div>
-            </div>}
-
-            {/* ══════════════════════════════════════════════════════════
-                SEÇÃO 5 — NQA (colapsável)
-            ══════════════════════════════════════════════════════════ */}
-            {activeStep === 5 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <button type="button" onClick={() => setShowNqa(v => !v)}
                     className="w-full flex items-center justify-between px-6 py-4">
                     <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">5</span>
+                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">3</span>
                         <div className="text-left">
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Controle NQA — NBR 5426</h2>
                             <p className="text-[10px] text-slate-400 font-bold">Plano de amostragem para o lote inteiro (opcional)</p>
@@ -858,9 +792,9 @@ export default function FinishingAnalysisView() {
                                         { label: 'Letra / Amostra',  value: `${samplingPlan.critical.codeLetter} → ${samplingPlan.requiredSampleSize} un.`, icon: 'rule' },
                                         { label: 'Caixas a abrir',  value: `${samplingBoxes.boxesToOpen} cx.`, icon: 'open_in_new' },
                                     ].map(item => (
-                                        <div key={item.label} className="flex items-center gap-2 p-3 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-800">
-                                            <span className="material-symbols-outlined text-violet-500">{item.icon}</span>
-                                            <div><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">{item.label}</p><p className="text-sm font-black text-violet-800 dark:text-violet-200">{item.value}</p></div>
+                                        <div key={item.label} className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                                            <span className="material-symbols-outlined text-indigo-500">{item.icon}</span>
+                                            <div><p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{item.label}</p><p className="text-sm font-black text-indigo-800 dark:text-indigo-200">{item.value}</p></div>
                                         </div>
                                     ))}
                                 </div>
@@ -899,16 +833,16 @@ export default function FinishingAnalysisView() {
             </div>}
 
             {/* ══════════════════════════════════════════════════════════
-                SEÇÃO 6 — Pallet (colapsável)
+                SEÇÃO 4 — Pallet (colapsável)
             ══════════════════════════════════════════════════════════ */}
-            {activeStep === 6 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 4 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <button type="button" onClick={() => setShowPallet(v => !v)}
                     className="w-full flex items-center justify-between px-6 py-4">
                     <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">6</span>
+                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">4</span>
                         <div className="text-left">
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white flex items-center gap-2">
-                                <span className="material-symbols-outlined text-base text-violet-500">stacks</span>
+                                <span className="material-symbols-outlined text-base text-indigo-500">stacks</span>
                                 Inspeção por Pallet — Sub-lote 50.000 un.
                             </h2>
                             <p className="text-[10px] text-slate-400 font-bold">√n+1 caixas · Gera QR para auditoria da supervisão</p>
@@ -951,9 +885,9 @@ export default function FinishingAnalysisView() {
                                         { label: 'Caixas a abrir √n+1',value: `${palletBoxData.boxesToInspect} cx.`,   icon: 'open_in_new' },
                                         { label: 'Amostra NBR 5426',   value: `${palletBoxData.sampleSize} un.`,       icon: 'rule' },
                                     ].map(item => (
-                                        <div key={item.label} className="flex items-center gap-2 p-3 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-800">
-                                            <span className="material-symbols-outlined text-violet-500">{item.icon}</span>
-                                            <div><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">{item.label}</p><p className="text-sm font-black text-violet-800 dark:text-violet-200">{item.value}</p></div>
+                                        <div key={item.label} className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                                            <span className="material-symbols-outlined text-indigo-500">{item.icon}</span>
+                                            <div><p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{item.label}</p><p className="text-sm font-black text-indigo-800 dark:text-indigo-200">{item.value}</p></div>
                                         </div>
                                     ))}
                                 </div>
@@ -963,7 +897,7 @@ export default function FinishingAnalysisView() {
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl">
                                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Distribuição sugerida</p>
                                         <div className="flex flex-wrap gap-1.5">
-                                            {palletBoxData.boxesList.map(n => <span key={n} className="px-2.5 py-1 bg-violet-600 text-white text-[10px] font-black rounded-lg">Cx {n}</span>)}
+                                            {palletBoxData.boxesList.map(n => <span key={n} className="px-2.5 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg">Cx {n}</span>)}
                                         </div>
                                     </div>
                                 )}
@@ -1028,14 +962,14 @@ export default function FinishingAnalysisView() {
                                     <div className="space-y-2">
                                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações do pallet</p>
                                         <textarea value={palletObs} onChange={e => setPalletObs(e.target.value)} rows={3}
-                                            className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-violet-500/20"
+                                            className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-indigo-500/20"
                                             placeholder="Deformações, problemas de embalagem, etc." />
                                     </div>
                                 </div>
 
                                 {/* Botão concluir pallet */}
                                 <button type="button" onClick={handleSavePallet} disabled={isSavingPallet || !selectedOrderId}
-                                    className="w-full h-12 rounded-2xl bg-violet-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center justify-center gap-2 disabled:opacity-50">
+                                    className="w-full h-12 rounded-2xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50">
                                     {isSavingPallet ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">qr_code_2</span>}
                                     Concluir e Gerar QR do Pallet
                                 </button>
@@ -1045,10 +979,10 @@ export default function FinishingAnalysisView() {
                 )}
             </div>}
 
-            {activeStep === 7 && (
+            {activeStep === 5 && (
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                     <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                        <span className="flex items-center justify-center size-7 rounded-full bg-violet-600 text-white text-xs font-black">7</span>
+                        <span className="flex items-center justify-center size-7 rounded-full bg-indigo-600 text-white text-xs font-black">5</span>
                         <div>
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Conclusão</h2>
                             <p className="text-[10px] text-slate-400 font-bold">Resumo geral antes de salvar</p>
@@ -1065,7 +999,7 @@ export default function FinishingAnalysisView() {
                                 ['Quantidade produzida', qtyProduzida ? qtyProduzida.toLocaleString('pt-BR') : '0'],
                                 ['Em escolha', qtyEscolha ? qtyEscolha.toLocaleString('pt-BR') : '0'],
                                 ['Refugo', qtyRefugo ? qtyRefugo.toLocaleString('pt-BR') : '0'],
-                                ['Resultado geral', status === InspectionStatus.APPROVED ? 'Aprovado' : status === InspectionStatus.REJECTED ? 'Reprovado' : 'Com restrição'],
+
                                 ['Resultado NQA', nqaResult ? (nqaResult.overall ? 'Aprovado' : 'Reprovado') : 'Sem plano'],
                                 ['Resultado pallet', palletNqaResult ? (palletNqaResult.overall ? 'Aprovado' : 'Reprovado') : palletResult],
                                 ['Defeitos', totalDefects.toLocaleString('pt-BR')],
@@ -1105,7 +1039,7 @@ export default function FinishingAnalysisView() {
                                 <span className="material-symbols-outlined text-sm">print</span>Imprimir
                             </button>
                             <Link to={`/pallet/${completedPalletId}`} onClick={() => setCompletedPalletId(null)}
-                                className="h-10 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-violet-700 transition-all">
+                                className="h-10 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all">
                                 <span className="material-symbols-outlined text-sm">open_in_new</span>Ver Auditoria
                             </Link>
                         </div>
@@ -1119,7 +1053,7 @@ export default function FinishingAnalysisView() {
             {/* ── Footer sticky — cola no fundo da viewport ao rolar ── */}
             <footer className="shrink-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 px-4 md:px-8 py-3 z-40">
                 <div className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-widest flex-wrap">
-                    {selectedOrderId && <span className="text-violet-600">OP: {selectedOrderId}</span>}
+                    {selectedOrderId && <span className="text-indigo-600">OP: {selectedOrderId}</span>}
                     {selectedOperatorIds.length > 0 && <span>{selectedOperatorIds.length} operador{selectedOperatorIds.length > 1 ? 'es' : ''}</span>}
                     {selectedAnalystIds.length > 0 && <span>{selectedAnalystIds.length} analista{selectedAnalystIds.length > 1 ? 's' : ''}</span>}
                     {totalDefects > 0 && <span className="text-rose-500">{totalDefects} defeito{totalDefects > 1 ? 's' : ''}</span>}
@@ -1135,15 +1069,15 @@ export default function FinishingAnalysisView() {
                             Voltar
                         </button>
                     )}
-                    {activeStep < 7 ? (
+                    {activeStep < 5 ? (
                         <button type="button" onClick={() => goToStep(activeStep + 1)}
-                            className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center gap-2">
+                            className="h-10 px-8 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2">
                             Próximo
                             <span className="material-symbols-outlined text-sm">arrow_forward</span>
                         </button>
                     ) : (
                         <button type="submit" form="finishing-form" disabled={isSaving}
-                        className="h-10 px-8 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 flex items-center gap-2 disabled:opacity-50">
+                        className="h-10 px-8 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2 disabled:opacity-50">
                         {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">add_task</span>}
                         Salvar Análise
                         </button>
@@ -1153,3 +1087,4 @@ export default function FinishingAnalysisView() {
         </div>
     );
 }
+
