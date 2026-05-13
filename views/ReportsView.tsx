@@ -22,6 +22,7 @@ type PeriodPreset = '30' | '90' | '365' | 'ALL';
 type InspectionRecord = {
   id: string;
   op: string;
+  order_id?: string | null;
   status?: string;
   process_type?: string;
   created_at: string;
@@ -32,6 +33,7 @@ type InspectionRecord = {
   operator_id?: string;
   machines?: { name?: string };
   operators?: { name?: string };
+  orders?: { id: string; op: string } | Array<{ id: string; op: string }>;
 };
 
 type NormalizedRecord = InspectionRecord & {
@@ -68,6 +70,7 @@ const asNumber = (value: any) => {
 
 const parseObservations = (observations?: string) => {
   if (!observations) return {};
+  if (!observations.trim().startsWith('{')) return {};
   try {
     return JSON.parse(observations);
   } catch {
@@ -167,6 +170,7 @@ const formatWeekKey = (date: Date) => {
 };
 
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
+const getJoinedOrder = (orders: InspectionRecord['orders']) => Array.isArray(orders) ? orders[0] : orders;
 
 const createAreaSummary = (records: NormalizedRecord[]): AreaSummary => ({
   records,
@@ -196,7 +200,7 @@ const ReportsView = () => {
     try {
       const { data: inspections, error } = await supabase
         .from('inspections')
-        .select('*, machines(name), operators(name), analysts(name)')
+        .select('*, orders!inner(id, op), machines(name), operators(name), analysts(name)')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -207,7 +211,17 @@ const ReportsView = () => {
 
       if (operatorsError) throw operatorsError;
 
-      setRecords((inspections || []).filter((record: any) => !!record.status));
+      setRecords((inspections || [])
+        .filter((record: any) => {
+          const order = getJoinedOrder(record.orders);
+          return (
+            !!record.status &&
+            !!record.order_id &&
+            order?.id === record.order_id &&
+            String(order?.op || '').trim().toUpperCase() === String(record.op || '').trim().toUpperCase()
+          );
+        })
+        .map((record: any) => ({ ...record, op: getJoinedOrder(record.orders)?.op || record.op })));
       setOperators(operatorsData || []);
     } catch (err) {
       showToast('Erro ao carregar relatórios', 'error');

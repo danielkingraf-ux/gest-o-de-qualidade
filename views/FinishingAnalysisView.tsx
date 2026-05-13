@@ -174,48 +174,18 @@ export default function FinishingAnalysisView() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [mRes, oRes, aRes, ordRes, initialRes, nqaRes] = await Promise.all([
+            const [mRes, oRes, aRes, ordRes, nqaRes] = await Promise.all([
                 supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado','ambos']).order('name'),
                 supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado','ambos']).order('name'),
                 supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento','ambos']).order('name'),
-                supabase.from('orders').select('*').order('created_at', { ascending: false }),
-                supabase.from('inspections').select('op, order_id, created_at, observations').order('created_at', { ascending: false }).limit(500),
+                supabase.from('orders').select('*').gt('qtd_total', 0).order('created_at', { ascending: false }),
                 supabase.from('nqa_profiles').select('*').eq('active', true).order('name'),
             ]);
             if (mRes.data) { setMachines(mRes.data); if (!selectedMachineId && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id); }
             if (oRes.data) setOperators(oRes.data);
             if (aRes.data) setAnalysts(aRes.data);
             if (nqaRes.data) setNqaProfiles(nqaRes.data);
-            if (ordRes.data) {
-                const merged = new Map<string, OrderOption>();
-                ordRes.data.forEach((o: Order) => merged.set(o.op.toUpperCase(), { ...o }));
-                (initialRes.data || []).forEach((insp: any) => {
-                    const op = String(insp.op || '').trim().toUpperCase();
-                    if (!op) return;
-                    let obs: any = {};
-                    try { obs = JSON.parse(insp.observations || '{}'); } catch { /* */ }
-                    const isInitial = obs.process_area === 'producao_inicial' || ['OFFSET','UV','HOT_STAMPING'].includes(obs.process_type);
-                    if (!isInitial) return;
-                    const existing = merged.get(op);
-                    if (existing) { merged.set(op, { ...existing, fromInitialInspection: true }); return; }
-                    merged.set(op, {
-                        id: `inspection:${op}`,
-                        op,
-                        cliente: '',
-                        produto: '',
-                        descricao: '',
-                        qtd_total: 0,
-                        status: 'em_producao',
-                        unidades_por_folha: 0,
-                        folhas_por_pilha: 0,
-                        rodadas_realizadas: 0,
-                        created_at: insp.created_at,
-                        updated_at: insp.created_at,
-                        fromInitialInspection: true
-                    });
-                });
-                setOrders(Array.from(merged.values()));
-            }
+            if (ordRes.data) setOrders((ordRes.data as Order[]).map(o => ({ ...o, op: String(o.op || '').trim().toUpperCase() })));
         } catch { showToast('Erro ao carregar dados', 'error'); }
         finally { setIsLoading(false); }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -226,7 +196,7 @@ export default function FinishingAnalysisView() {
     useEffect(() => {
         if (!selectedOrderId) { setRodadas([]); return; }
         const order = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
-        if (!order || order.id.startsWith('inspection:')) { setRodadas([]); return; }
+        if (!order) { setRodadas([]); return; }
         const load = async () => {
             setLoadingRodadas(true);
             const { data } = await supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true });
@@ -302,32 +272,18 @@ export default function FinishingAnalysisView() {
     // ─── Salvar análise ───────────────────────────────────────────────────
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        const typedOp = newOrder.op.trim().toUpperCase();
-        if (!selectedOrderId && !typedOp) { showToast('Informe a OP', 'warning'); return; }
+        if (!selectedOrderId) { showToast('Selecione uma OP cadastrada', 'warning'); return; }
         if (!selectedMachineId)           { showToast('Selecione a máquina', 'warning'); return; }
         if (selectedOperatorIds.length === 0) { showToast('Adicione ao menos um operador', 'warning'); return; }
         if (selectedAnalystIds.length === 0)  { showToast('Adicione ao menos um analista', 'warning'); return; }
         if (!laudoNumero)                 { showToast('Informe o Nº do Laudo', 'warning'); return; }
 
-        let selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
-        let orderId = selectedOrder && !selectedOrder.id.startsWith('inspection:') ? selectedOrder.id : '';
-        const selectedOp = selectedOrder?.op.trim().toUpperCase() || typedOp;
+        const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
+        const orderId = selectedOrder?.id || '';
 
         setIsSaving(true);
         try {
-            if (!orderId && selectedOp) {
-                selectedOrder = orders.find(o => !o.id.startsWith('inspection:') && o.op.toUpperCase() === selectedOp) || null;
-                if (!selectedOrder) {
-                    const { data: created, error: createError } = await supabase.from('orders').insert([{ op: selectedOp, qtd_total: Math.max(0, Number(newOrder.qtd_total) || 0), status: 'em_producao', created_by_user_id: profile?.user_id ?? null }]).select().single();
-                    if (createError) {
-                        const { data: existing } = await supabase.from('orders').select('*').eq('op', selectedOp).single();
-                        if (!existing) throw createError;
-                        selectedOrder = existing;
-                    } else { selectedOrder = created; }
-                }
-                orderId = selectedOrder && !selectedOrder.id.startsWith('inspection:') ? selectedOrder.id : '';
-            }
-            if (!selectedOrder || !orderId) { showToast('Não foi possível identificar a OP', 'error'); return; }
+            if (!selectedOrder || !orderId || Number(selectedOrder.qtd_total) <= 0) { showToast('OP invalida ou sem quantidade total cadastrada', 'error'); return; }
 
             const operatorNames = selectedOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id).join(', ');
             const analystNames  = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
@@ -385,7 +341,7 @@ export default function FinishingAnalysisView() {
             const nextPalletNumber = (count ?? 0) + 1;
             const analystObj  = analysts.find(a => a.id === selectedAnalystIds[0]);
             const machineObj  = machines.find(m => m.id === selectedMachineId);
-            const orderId = selectedOrder && !selectedOrder.id.startsWith('inspection:') ? selectedOrder.id : null;
+            const orderId = selectedOrder.id;
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
             const { data: saved, error } = await supabase.from('pallet_inspections').insert([{
                 op: selectedOrder.op.toUpperCase(), order_id: orderId, pallet_number: nextPalletNumber,
@@ -427,8 +383,7 @@ export default function FinishingAnalysisView() {
     }, [activeStep]);
 
     const validateStep = (step: number) => {
-        const typedOp = newOrder.op.trim();
-        if (step === 1 && (!selectedOrderId && !typedOp)) return 'Informe a OP.';
+        if (step === 1 && !selectedOrderId) return 'Selecione uma OP cadastrada.';
         if (step === 1 && selectedOperatorIds.length === 0) return 'Adicione ao menos um operador.';
         if (step === 1 && selectedAnalystIds.length === 0) return 'Adicione ao menos um analista.';
         if (step === 2 && !selectedMachineId) return 'Selecione a máquina.';
@@ -541,14 +496,10 @@ export default function FinishingAnalysisView() {
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ou cadastrar nova OP</label>
-                            <div className="flex gap-2">
-                                <input value={newOrder.op} onChange={e => { setSelectedOrderId(''); setNewOrder(p => ({ ...p, op: e.target.value.toUpperCase() })); }}
-                                    className="flex-1 h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-black text-sm"
-                                    placeholder="Ex: 12345" />
-                                <input type="number" min={0} value={newOrder.qtd_total} onChange={e => setNewOrder(p => ({ ...p, qtd_total: e.target.value }))}
-                                    className="w-32 h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm"
-                                    placeholder="Qtd. total" />
+                            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Integridade da OP</label>
+                            <div className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                                <span className="material-symbols-outlined text-sm text-indigo-500">lock</span>
+                                Use apenas OPs cadastradas em orders com quantidade total preenchida.
                             </div>
                             {/* Histórico de rodadas */}
                             {rodadas.length > 0 && (

@@ -10,6 +10,7 @@ import { supabase } from '../services/supabase';
 interface PalletSummary {
     id: string;
     op: string;
+    order_id: string | null;
     pallet_number: number;
     analyst_name: string | null;
     machine_name: string | null;
@@ -19,6 +20,7 @@ interface PalletSummary {
     defects_minor: number;
     nqa_profile_name: string | null;
     completed_at: string;
+    orders?: { id: string; op: string } | Array<{ id: string; op: string }>;
 }
 
 const RESULT_META = {
@@ -26,6 +28,8 @@ const RESULT_META = {
     REJECTED: { label: 'Reprovado', dot: 'bg-rose-500', badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
     RESTRICTED: { label: 'Restrição', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
 } as const;
+
+const getJoinedOrder = (orders: PalletSummary['orders']) => Array.isArray(orders) ? orders[0] : orders;
 
 export default function PalletListView() {
     const [pallets, setPallets] = useState<PalletSummary[]>([]);
@@ -37,10 +41,19 @@ export default function PalletListView() {
         const load = async () => {
             const { data } = await supabase
                 .from('pallet_inspections')
-                .select('id, op, pallet_number, analyst_name, machine_name, result, defects_critical, defects_major, defects_minor, nqa_profile_name, completed_at')
+                .select('id, op, order_id, orders!inner(id, op), pallet_number, analyst_name, machine_name, result, defects_critical, defects_major, defects_minor, nqa_profile_name, completed_at')
                 .order('completed_at', { ascending: false })
                 .limit(200);
-            setPallets((data ?? []) as PalletSummary[]);
+            setPallets(((data ?? []) as unknown as PalletSummary[])
+                .filter(p => {
+                    const order = getJoinedOrder(p.orders);
+                    return (
+                        !!p.order_id &&
+                        order?.id === p.order_id &&
+                        String(order?.op || '').trim().toUpperCase() === String(p.op || '').trim().toUpperCase()
+                    );
+                })
+                .map(p => ({ ...p, op: getJoinedOrder(p.orders)?.op || p.op })));
             setLoading(false);
         };
         load();

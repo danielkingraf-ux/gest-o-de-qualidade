@@ -107,6 +107,7 @@ const normalizeProcessType = (type?: string) => {
 
 const parseObservations = (observations?: string) => {
   if (!observations) return {};
+  if (!observations.trim().startsWith('{')) return {};
   try {
     return JSON.parse(observations);
   } catch {
@@ -149,6 +150,7 @@ const getCategoryMeta = (type?: string) => {
 };
 
 const CATEGORY_ORDER: Array<ProcessType | 'ALL'> = ['ALL', ProcessType.OFFSET, ProcessType.UV, ProcessType.HOT_STAMPING, ProcessType.ACABAMENTO];
+const getJoinedOrder = (orders: any) => Array.isArray(orders) ? orders[0] : orders;
 
 export default function RecordsView() {
   const { showToast } = useToast();
@@ -182,13 +184,23 @@ export default function RecordsView() {
       // Fetch inspections with machine info
       const { data: inspData, error: inspError } = await supabase
         .from('inspections')
-        .select(`*, machines(name, code), operators(name), analysts(name)`)
+        .select(`*, orders!inner(id, op), machines(name, code), operators(name), analysts(name)`)
         .order('created_at', { ascending: false });
 
       if (inspError) throw inspError;
 
       // Map data — defeitos ficam dentro do JSON de observations
-      const formatted = (inspData || []).map(insp => {
+      const formatted = (inspData || [])
+        .filter((insp: any) => {
+          const order = getJoinedOrder(insp.orders);
+          return (
+            !!insp.order_id &&
+            order?.id === insp.order_id &&
+            String(order?.op || '').trim().toUpperCase() === String(insp.op || '').trim().toUpperCase()
+          );
+        })
+        .map(insp => {
+        const order = getJoinedOrder(insp.orders);
         const parsedObservations = parseObservations(insp.observations);
         const displayProcessType = normalizeProcessType(insp.process_type || parsedObservations.process_type);
         const defects = normalizeDefects(parsedObservations.defects);
@@ -196,6 +208,7 @@ export default function RecordsView() {
           ?? defects.reduce((acc: number, d: any) => acc + (d.count || 0), 0);
         return {
           ...insp,
+          op: order?.op || insp.op,
           defects,
           total_defects,
           totalDefects: total_defects,
@@ -243,7 +256,7 @@ export default function RecordsView() {
     let list = type === 'operator' ? operatorsList : analystsList;
 
     try {
-      const obs = record.observations ? JSON.parse(record.observations) : {};
+      const obs = parseObservations(record.observations);
       if (type === 'operator' && obs.all_operator_ids) ids = obs.all_operator_ids;
       else if (type === 'analyst' && obs.all_analyst_ids) ids = obs.all_analyst_ids;
       else {
@@ -262,7 +275,7 @@ export default function RecordsView() {
 
   const getDefectsList = (record: any) => {
     try {
-      const obs = record.observations ? JSON.parse(record.observations) : {};
+      const obs = parseObservations(record.observations);
 
       // Finishing records have categorized defects
       if (obs.is_finishing_laudo && obs.defects) {
@@ -350,7 +363,6 @@ export default function RecordsView() {
       const { error } = await supabase
         .from('inspections')
         .update({
-          op: editingRecord.op,
           status: editingRecord.status,
           edited_at: new Date().toISOString(),
           edited_by_user_id: profile?.user_id ?? null,
@@ -699,9 +711,10 @@ export default function RecordsView() {
               <input
                 type="text"
                 value={editingRecord.op}
-                onChange={e => setEditingRecord({ ...editingRecord, op: e.target.value.toUpperCase() })}
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                readOnly
+                className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-sm font-bold outline-none text-slate-500"
               />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">A OP vem de orders e nao e editada neste registro.</p>
             </div>
 
             <div className="space-y-2">
