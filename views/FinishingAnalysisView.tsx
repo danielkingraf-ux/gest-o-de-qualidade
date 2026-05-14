@@ -61,8 +61,8 @@ const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','A
 const FINISHING_STEPS = [
     { id: 1, label: 'Identificação', short: 'Identificação' },
     { id: 2, label: 'Dados da Análise', short: 'Dados' },
-    { id: 3, label: 'Controle NQA', short: 'NQA' },
-    { id: 4, label: 'Inspeção por Pallet', short: 'Pallet' },
+    { id: 3, label: 'Defeitos', short: 'Defeitos' },
+    { id: 4, label: 'Controle NQA', short: 'NQA' },
     { id: 5, label: 'Conclusão', short: 'Conclusão' },
 ];
 
@@ -413,8 +413,7 @@ export default function FinishingAnalysisView() {
     const analystNames = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
 
     useEffect(() => {
-        if (activeStep === 3) setShowNqa(true);
-        if (activeStep === 4) setShowPallet(true);
+        if (activeStep === 4) setShowNqa(true);
     }, [activeStep]);
 
     const validateStep = (step: number) => {
@@ -424,10 +423,7 @@ export default function FinishingAnalysisView() {
         if (step === 2 && !selectedMachineId) return 'Selecione a máquina.';
         if (step === 2 && !laudoNumero.trim()) return 'Informe o número do laudo.';
         if (step === 2 && amostragem <= 0) return 'Informe a amostragem.';
-        if (step === 3 && !nqaProfileId) return 'Selecione um perfil NQA.';
-        if (step === 3 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
-        if (step === 3 && nqaConfig.caixas_por_pallet <= 0) return 'Informe caixas por pallet.';
-        if (step === 4 && showPallet && !palletResult) return 'Informe o resultado do pallet.';
+        // passo 3 (Defeitos) e passo 4 (NQA) são opcionais
         return null;
     };
 
@@ -759,13 +755,53 @@ export default function FinishingAnalysisView() {
 
 
             {/* ══════════════════════════════════════════════════════════
-                SEÇÃO 3 — NQA (colapsável)
+                SEÇÃO 3 — Defeitos encontrados
             ══════════════════════════════════════════════════════════ */}
-            {activeStep === 3 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {activeStep === 3 && (
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                        <span className="flex items-center justify-center size-7 rounded-full bg-indigo-600 text-white text-xs font-black">3</span>
+                        <div>
+                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Defeitos Encontrados</h2>
+                            <p className="text-[10px] text-slate-400 font-bold">Registre os defeitos encontrados na amostra inspecionada</p>
+                        </div>
+                        {totalDefects > 0 && (
+                            <span className="ml-auto px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-[10px] font-black">
+                                {totalDefects} defeito{totalDefects !== 1 ? 's' : ''}
+                            </span>
+                        )}
+                    </div>
+                    <div className="p-6">
+                        {totalDefects === 0 && (
+                            <div className="mb-4 flex items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                                <span className="material-symbols-outlined text-slate-400 text-sm">info</span>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Se não houver defeitos, avance para o próximo passo.</p>
+                            </div>
+                        )}
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                            {DEFECT_COLUMNS.map(col => (
+                                <DefectCounter
+                                    key={col.key}
+                                    label={col.label}
+                                    icon={col.icon}
+                                    count={defects[col.key] || 0}
+                                    onUpdate={d => setDefects(prev => ({ ...prev, [col.key]: Math.max(0, (prev[col.key] || 0) + d) }))}
+                                    onSet={v => setDefects(prev => ({ ...prev, [col.key]: v }))}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════
+                SEÇÃO 4 — NQA (colapsável, opcional)
+            ══════════════════════════════════════════════════════════ */}
+            {activeStep === 4 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 <button type="button" onClick={() => setShowNqa(v => !v)}
                     className="w-full flex items-center justify-between px-6 py-4">
                     <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">3</span>
+                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">4</span>
                         <div className="text-left">
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Controle NQA — NBR 5426</h2>
                             <p className="text-[10px] text-slate-400 font-bold">Plano de amostragem para o lote inteiro (opcional)</p>
@@ -861,160 +897,15 @@ export default function FinishingAnalysisView() {
                 )}
             </div>}
 
-            {/* ══════════════════════════════════════════════════════════
-                SEÇÃO 4 — Pallet (colapsável)
-            ══════════════════════════════════════════════════════════ */}
-            {activeStep === 4 && <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <button type="button" onClick={() => setShowPallet(v => !v)}
-                    className="w-full flex items-center justify-between px-6 py-4">
-                    <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center size-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black">4</span>
-                        <div className="text-left">
-                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white flex items-center gap-2">
-                                <span className="material-symbols-outlined text-base text-indigo-500">stacks</span>
-                                Inspeção por Pallet — Sub-lote 50.000 un.
-                            </h2>
-                            <p className="text-[10px] text-slate-400 font-bold">√n+1 caixas · Gera QR para auditoria da supervisão</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        {palletNqaResult && <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${palletNqaResult.overall ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{palletNqaResult.overall ? 'APROVADO' : 'REPROVADO'}</span>}
-                        <span className="material-symbols-outlined text-slate-400">{showPallet ? 'expand_less' : 'expand_more'}</span>
-                    </div>
-                </button>
-
-                {showPallet && (
-                    <div className="px-6 pb-6 space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
-                        {nqaConfig.unidades_por_caixa <= 0 ? (
-                            <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                                <span className="material-symbols-outlined text-amber-500">info</span>
-                                <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Configure as <strong>unidades por caixa</strong> na seção NQA (seção 5) para ativar.</p>
-                            </div>
-                        ) : palletSamplingPlan && (
-                            <>
-                                {/* Card de instrução destacado */}
-                                <div className="flex items-center gap-5 p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-300 dark:border-amber-700">
-                                    <span className="material-symbols-outlined text-5xl text-amber-500 shrink-0">search</span>
-                                    <div>
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-amber-500">Olhe em cada caixa aberta</p>
-                                        <p className="text-4xl font-black text-amber-800 dark:text-amber-200 leading-none">
-                                            {palletBoxData.unitsPerBoxToInspect} <span className="text-xl font-bold text-amber-600">unid./caixa</span>
-                                        </p>
-                                        <p className="text-xs font-bold text-amber-600 mt-0.5">
-                                            {palletSamplingPlan.requiredSampleSize} amostras ÷ {palletBoxData.boxesToInspect} caixas = {palletBoxData.unitsPerBoxToInspect} unid. (arredondado)
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* Resumo */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    {[
-                                        { label: 'Sub-lote fixo',      value: '50.000 un.',                          icon: 'inventory_2' },
-                                        { label: 'Caixas sub-lote',    value: `${palletBoxData.totalBoxesSublote} cx.`, icon: 'deployed_code' },
-                                        { label: 'Caixas a abrir √n+1',value: `${palletBoxData.boxesToInspect} cx.`,   icon: 'open_in_new' },
-                                        { label: 'Amostra NBR 5426',   value: `${palletBoxData.sampleSize} un.`,       icon: 'rule' },
-                                    ].map(item => (
-                                        <div key={item.label} className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
-                                            <span className="material-symbols-outlined text-indigo-500">{item.icon}</span>
-                                            <div><p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{item.label}</p><p className="text-sm font-black text-indigo-800 dark:text-indigo-200">{item.value}</p></div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Caixas */}
-                                {palletBoxData.boxesList.length > 0 && (
-                                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Distribuição sugerida</p>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {palletBoxData.boxesList.map(n => <span key={n} className="px-2.5 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg">Cx {n}</span>)}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* NQA pallet */}
-                                <div className="grid grid-cols-3 gap-3">
-                                    {([['Crítico','critical','rose'],['Maior','major','amber'],['Menor','minor','slate']] as const).map(([label, key, color]) => {
-                                        const plan = palletSamplingPlan[key]; const found = palletDefects[key]; const ok = found <= plan.ac;
-                                        return (
-                                            <div key={key} className={`p-4 rounded-2xl border-2 space-y-2 ${ok ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20' : 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30'}`}>
-                                                <div className="flex items-center justify-between">
-                                                    <span className={`text-[9px] font-black uppercase tracking-widest text-${color}-600`}>{label}</span>
-                                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{ok ? 'OK' : 'NOK'}</span>
-                                                </div>
-                                                <p className="text-center text-[9px] text-slate-400">Ac≤{plan.ac} Re≥{plan.re}</p>
-                                                <div className="flex items-center gap-1.5">
-                                                    <button type="button" onClick={() => setPalletDefects(p => ({ ...p, [key]: Math.max(0, p[key]-1) }))} className="size-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-500"><span className="material-symbols-outlined text-sm">remove</span></button>
-                                                    <input type="number" min={0} value={found} onChange={e => setPalletDefects(p => ({ ...p, [key]: Math.max(0, Number(e.target.value)||0) }))} className={`flex-1 h-8 text-center font-black text-sm rounded-lg border outline-none ${ok ? 'border-emerald-200 bg-white dark:bg-slate-900' : 'border-rose-300 bg-rose-50'}`} />
-                                                    <button type="button" onClick={() => setPalletDefects(p => ({ ...p, [key]: p[key]+1 }))} className="size-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-emerald-500"><span className="material-symbols-outlined text-sm">add</span></button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Defeitos detalhados por tipo */}
-                                <div>
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1"><span className="material-symbols-outlined text-sm">emergency_home</span>Defeitos por tipo</p>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                                        {DEFECT_COLUMNS.map(col => {
-                                            const count = palletDefectsDetail[col.key] || 0;
-                                            return (
-                                                <div key={col.key} className={`flex items-center justify-between p-2 rounded-xl border transition-all ${count > 0 ? 'border-rose-300 bg-rose-50 dark:bg-rose-950/20' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50'}`}>
-                                                    <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
-                                                        <span className="material-symbols-outlined text-sm text-primary shrink-0">{col.icon}</span>
-                                                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">{col.label}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-0.5 shrink-0">
-                                                        <button type="button" onClick={() => setPalletDefectsDetail(p => ({ ...p, [col.key]: Math.max(0, (p[col.key]||0)-1) }))} className="size-5 flex items-center justify-center rounded hover:bg-slate-100 text-slate-400 hover:text-rose-500"><span className="material-symbols-outlined text-xs">remove</span></button>
-                                                        <input type="number" value={count||''} onChange={e => setPalletDefectsDetail(p => ({ ...p, [col.key]: Math.max(0, parseInt(e.target.value)||0) }))} className="w-9 h-5 text-center font-black text-[11px] bg-slate-50 dark:bg-slate-800 rounded border-none outline-none" placeholder="0" />
-                                                        <button type="button" onClick={() => setPalletDefectsDetail(p => ({ ...p, [col.key]: (p[col.key]||0)+1 }))} className="size-5 flex items-center justify-center rounded hover:bg-slate-100 text-slate-400 hover:text-emerald-500"><span className="material-symbols-outlined text-xs">add</span></button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* Resultado pallet + observações */}
-                                <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
-                                    <div className="space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Resultado do Pallet</p>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {([['APPROVED','Aprovado','check_circle','emerald'],['RESTRICTED','Restrição','warning','amber'],['REJECTED','Reprovado','cancel','rose']] as const).map(([id,label,icon,color]) => (
-                                                <button key={id} type="button" onClick={() => setPalletResult(id)}
-                                                    className={`h-12 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 text-[9px] font-black uppercase tracking-widest transition-all ${palletResult === id ? `border-${color}-500 bg-${color}-50 text-${color}-700 dark:bg-${color}-500/10` : 'border-slate-200 text-slate-400 dark:border-slate-700'}`}>
-                                                    <span className="material-symbols-outlined text-sm">{icon}</span>{label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações do pallet</p>
-                                        <textarea value={palletObs} onChange={e => setPalletObs(e.target.value)} rows={3}
-                                            className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-indigo-500/20"
-                                            placeholder="Deformações, problemas de embalagem, etc." />
-                                    </div>
-                                </div>
-
-                                {/* Botão concluir pallet */}
-                                <button type="button" onClick={handleSavePallet} disabled={isSavingPallet || !selectedOrderId}
-                                    className="w-full h-12 rounded-2xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50">
-                                    {isSavingPallet ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">qr_code_2</span>}
-                                    Concluir e Gerar QR do Pallet
-                                </button>
-                            </>
-                        )}
-                    </div>
-                )}
-            </div>}
-
             {activeStep === 5 && (
+                <div className="space-y-4">
+                {/* ── Conclusão principal ── */}
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                     <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                         <span className="flex items-center justify-center size-7 rounded-full bg-indigo-600 text-white text-xs font-black">5</span>
                         <div>
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Conclusão</h2>
-                            <p className="text-[10px] text-slate-400 font-bold">Resumo geral antes de salvar</p>
+                            <p className="text-[10px] text-slate-400 font-bold">Resultado final e observações</p>
                         </div>
                         {lastSavedId && (
                             <button type="button" onClick={handleGeneratePDF}
@@ -1024,24 +915,23 @@ export default function FinishingAnalysisView() {
                         )}
                     </div>
                     <div className="p-6 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Resumo rápido */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {[
-                                ['OP', selectedOrderId || newOrder.op || '-'],
+                                ['OP', selectedOrderId || '-'],
                                 ['Laudo', laudoNumero || '-'],
                                 ['Máquina', selectedMachine?.name || '-'],
                                 ['Operador', operatorNames || '-'],
                                 ['Analista', analystNames || '-'],
-                                ['Quantidade produzida', qtyProduzida ? qtyProduzida.toLocaleString('pt-BR') : '0'],
-                                ['Em escolha', qtyEscolha ? qtyEscolha.toLocaleString('pt-BR') : '0'],
+                                ['Qtd. Produzida', qtyProduzida ? qtyProduzida.toLocaleString('pt-BR') : '0'],
+                                ['Em Escolha', qtyEscolha ? qtyEscolha.toLocaleString('pt-BR') : '0'],
                                 ['Refugo', qtyRefugo ? qtyRefugo.toLocaleString('pt-BR') : '0'],
-
-                                ['Resultado NQA', nqaResult ? (nqaResult.overall ? 'Aprovado' : 'Reprovado') : 'Sem plano'],
-                                ['Resultado pallet', palletNqaResult ? (palletNqaResult.overall ? 'Aprovado' : 'Reprovado') : palletResult],
                                 ['Defeitos', totalDefects.toLocaleString('pt-BR')],
+                                ['Resultado NQA', nqaResult ? (nqaResult.overall ? 'Aprovado' : 'Reprovado') : '—'],
                             ].map(([label, value]) => (
-                                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
                                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                                    <p className="mt-1 text-sm font-black text-slate-800 dark:text-slate-100">{value}</p>
+                                    <p className="mt-1 text-sm font-black text-slate-800 dark:text-slate-100 truncate">{value}</p>
                                 </div>
                             ))}
                         </div>
@@ -1066,6 +956,104 @@ export default function FinishingAnalysisView() {
                                 placeholder="Observações gerais sobre a análise..." />
                         </div>
                     </div>
+                </div>
+
+                {/* ── Registrar Pallet (opcional, colapsível) ── */}
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <button type="button" onClick={() => setShowPallet(v => !v)}
+                        className="w-full flex items-center justify-between px-6 py-4">
+                        <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined text-indigo-500">stacks</span>
+                            <div className="text-left">
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">
+                                    Registrar Pallet
+                                    <span className="ml-2 text-[9px] font-bold text-slate-400 normal-case tracking-normal">opcional</span>
+                                </h2>
+                                <p className="text-[10px] text-slate-400 font-bold">√n+1 caixas · Gera QR para auditoria</p>
+                            </div>
+                        </div>
+                        <span className="material-symbols-outlined text-slate-400">{showPallet ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+
+                    {showPallet && (
+                        <div className="px-6 pb-6 space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+                            {nqaConfig.unidades_por_caixa <= 0 ? (
+                                <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                                    <span className="material-symbols-outlined text-amber-500">info</span>
+                                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Configure <strong>unidades por caixa</strong> no passo 2 para ativar o cálculo de pallet.</p>
+                                </div>
+                            ) : palletSamplingPlan ? (
+                                <>
+                                    <div className="flex items-center gap-5 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-700">
+                                        <span className="material-symbols-outlined text-3xl text-amber-500 shrink-0">search</span>
+                                        <div>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-500">Inspecionar por caixa aberta</p>
+                                            <p className="text-2xl font-black text-amber-800 dark:text-amber-200">
+                                                {palletBoxData.unitsPerBoxToInspect} <span className="text-base font-bold text-amber-600">unid./caixa</span>
+                                            </p>
+                                            <p className="text-xs text-amber-600">{palletBoxData.boxesToInspect} caixas · {palletSamplingPlan.requiredSampleSize} amostras total</p>
+                                        </div>
+                                    </div>
+
+                                    {palletBoxData.boxesList.length > 0 && (
+                                        <div className="p-3 bg-slate-50 dark:bg-slate-800/30 rounded-xl">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Distribuição sugerida</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {palletBoxData.boxesList.map(n => <span key={n} className="px-2 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg">Cx {n}</span>)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {([['Crítico','critical','rose'],['Maior','major','amber'],['Menor','minor','slate']] as const).map(([label, key, color]) => {
+                                            const plan = palletSamplingPlan[key]; const found = palletDefects[key]; const ok = found <= plan.ac;
+                                            return (
+                                                <div key={key} className={`p-3 rounded-2xl border-2 space-y-2 ${ok ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20' : 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-[9px] font-black uppercase tracking-widest text-${color}-600`}>{label}</span>
+                                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{ok ? 'OK' : 'NOK'}</span>
+                                                    </div>
+                                                    <p className="text-center text-[9px] text-slate-400">Ac≤{plan.ac}</p>
+                                                    <div className="flex items-center gap-1">
+                                                        <button type="button" onClick={() => setPalletDefects(p => ({ ...p, [key]: Math.max(0, p[key]-1) }))} className="size-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-500"><span className="material-symbols-outlined text-sm">remove</span></button>
+                                                        <input type="number" min={0} value={found} onChange={e => setPalletDefects(p => ({ ...p, [key]: Math.max(0, Number(e.target.value)||0) }))} className={`flex-1 h-8 text-center font-black text-sm rounded-lg border outline-none ${ok ? 'border-emerald-200 bg-white dark:bg-slate-900' : 'border-rose-300 bg-rose-50'}`} />
+                                                        <button type="button" onClick={() => setPalletDefects(p => ({ ...p, [key]: p[key]+1 }))} className="size-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-emerald-500"><span className="material-symbols-outlined text-sm">add</span></button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
+                                        <div className="space-y-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Resultado do Pallet</p>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {([['APPROVED','Aprovado','check_circle','emerald'],['RESTRICTED','Restrição','warning','amber'],['REJECTED','Reprovado','cancel','rose']] as const).map(([id,label,icon,color]) => (
+                                                    <button key={id} type="button" onClick={() => setPalletResult(id)}
+                                                        className={`h-11 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 text-[9px] font-black uppercase tracking-widest transition-all ${palletResult === id ? `border-${color}-500 bg-${color}-50 text-${color}-700 dark:bg-${color}-500/10` : 'border-slate-200 text-slate-400 dark:border-slate-700'}`}>
+                                                        <span className="material-symbols-outlined text-sm">{icon}</span>{label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Observações</p>
+                                            <textarea value={palletObs} onChange={e => setPalletObs(e.target.value)} rows={2}
+                                                className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none"
+                                                placeholder="Deformações, problemas de embalagem, etc." />
+                                        </div>
+                                    </div>
+
+                                    <button type="button" onClick={handleSavePallet} disabled={isSavingPallet || !selectedOrderId}
+                                        className="w-full h-11 rounded-2xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                                        {isSavingPallet ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">qr_code_2</span>}
+                                        Concluir e Gerar QR do Pallet
+                                    </button>
+                                </>
+                            ) : null}
+                        </div>
+                    )}
+                </div>
                 </div>
             )}
 
