@@ -321,9 +321,14 @@ export default function FinishingAnalysisView() {
             // Reset
             setSelectedOrderId(''); setOrderFilter(''); setNewOrder({ op: '', qtd_total: '' });
             setSelectedOperatorIds([]); setSelectedAnalystIds([]);
+            setSelectedMachineId('');
             setLaudoNumero(''); setAmostragem(500); setStatus(InspectionStatus.APPROVED); setObservacoes('');
             setDefects({ ...EMPTY_DEFECTS }); setNqaDefects({ critical: 0, major: 0, minor: 0 });
             setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
+            setNqaProfileId('');
+            setNqaConfig({ aql_critical: '0.065', aql_major: '1.0', aql_minor: '4.0', inspection_level: 'II', unidades_por_caixa: 0, caixas_por_pallet: 0 });
+            setShowNqa(false); setShowPallet(false);
+            setActiveStep(1);
             fetchData();
         } catch (err: any) { showToast(`Erro ao salvar: ${err.message}`, 'error'); }
         finally { setIsSaving(false); }
@@ -776,20 +781,6 @@ export default function FinishingAnalysisView() {
                             </div>
                         </div>
 
-                        {/* Embalagem */}
-                        <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Unid. por Caixa</label>
-                                <input type="number" min={1} value={nqaConfig.unidades_por_caixa || ''} onChange={e => setNqaConfig(p => ({ ...p, unidades_por_caixa: Math.max(1, Number(e.target.value) || 0) }))}
-                                    className="w-full h-9 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-black text-sm" placeholder="ex: 100" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Caixas por Pallet</label>
-                                <input type="number" min={0} value={nqaConfig.caixas_por_pallet || ''} onChange={e => setNqaConfig(p => ({ ...p, caixas_por_pallet: Math.max(0, Number(e.target.value) || 0) }))}
-                                    className="w-full h-9 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-black text-sm" placeholder="ex: 40" />
-                            </div>
-                        </div>
-
                         {/* Resultado calculado */}
                         {samplingPlan && samplingBoxes.totalBoxes > 0 && (
                             <div className="space-y-3">
@@ -1018,9 +1009,25 @@ export default function FinishingAnalysisView() {
                                 </div>
                             ))}
                         </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Observações</p>
-                            <p className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{observacoes || '-'}</p>
+                        {/* Resultado final */}
+                        <div className="space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Resultado Final da Análise</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                {([['APPROVED','Aprovado','check_circle','emerald'],['RESTRICTED','Restrição','warning','amber'],['REJECTED','Reprovado','cancel','rose']] as const).map(([id, label, icon, color]) => (
+                                    <button key={id} type="button" onClick={() => setStatus(id as any)}
+                                        className={`h-12 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 text-[9px] font-black uppercase tracking-widest transition-all ${status === id ? `border-${color}-500 bg-${color}-50 text-${color}-700 dark:bg-${color}-500/10` : 'border-slate-200 text-slate-400 dark:border-slate-700'}`}>
+                                        <span className="material-symbols-outlined text-sm">{icon}</span>{label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Observações */}
+                        <div className="space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observações</p>
+                            <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3}
+                                className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-indigo-500/20"
+                                placeholder="Observações gerais sobre a análise..." />
                         </div>
                     </div>
                 </div>
