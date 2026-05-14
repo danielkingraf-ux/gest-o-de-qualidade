@@ -298,6 +298,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const [openSessions, setOpenSessions] = useState<DbRecord[]>([]);
   const [recentRecords, setRecentRecords] = useState<DbRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [escolhasImpressao, setEscolhasImpressao] = useState<{ em_escolha: number; aprovadas: number; reprovadas: number; rodadas: number } | null>(null);
 
   // ── Fetch initial data ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -308,6 +309,29 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       if (data) setOperadores(data as Operador[]);
     });
   }, []);
+
+  // Escolhas da impressão para a OP selecionada
+  useEffect(() => {
+    if (!op.trim()) { setEscolhasImpressao(null); return; }
+    const opUp = op.trim().toUpperCase();
+    supabase.from('inspections').select('observations').eq('op', opUp).then(({ data }) => {
+      if (!data || data.length === 0) { setEscolhasImpressao(null); return; }
+      let em_escolha = 0, aprovadas = 0, reprovadas = 0, rodadas = 0;
+      for (const row of data) {
+        try {
+          const obs = JSON.parse(row.observations || '{}');
+          if (obs.process_area !== 'producao_inicial') continue;
+          const saldo = obs.saldo_unidades ?? {};
+          em_escolha  += Number(saldo.em_escolha  ?? 0);
+          aprovadas   += Number(saldo.aprovadas   ?? 0);
+          reprovadas  += Number(saldo.reprovadas  ?? 0);
+          rodadas++;
+        } catch { /* */ }
+      }
+      if (rodadas > 0) setEscolhasImpressao({ em_escolha, aprovadas, reprovadas, rodadas });
+      else setEscolhasImpressao(null);
+    });
+  }, [op]);
 
   const loadRecent = useCallback(async () => {
     setLoadingRecent(true);
@@ -546,6 +570,33 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
             <datalist id="rf-op-list">{opList.map(o => <option key={o} value={o} />)}</datalist>
           </Field>
         </section>
+
+        {/* Escolhas da Impressão */}
+        {escolhasImpressao && (
+          <section className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-amber-500 text-sm">rule</span>
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                Escolhas da Impressão — OP {op.trim().toUpperCase()}
+              </h2>
+              <span className="ml-auto text-[9px] font-bold text-amber-400">{escolhasImpressao.rodadas} rodada{escolhasImpressao.rodadas > 1 ? 's' : ''}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col items-center p-3 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800">
+                <span className="text-[9px] font-black uppercase tracking-widest text-amber-500 mb-1">Em Escolha</span>
+                <span className="text-2xl font-black text-amber-700 dark:text-amber-300">{escolhasImpressao.em_escolha.toLocaleString('pt-BR')}</span>
+              </div>
+              <div className="flex flex-col items-center p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800">
+                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500 mb-1">Aprovadas</span>
+                <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{escolhasImpressao.aprovadas.toLocaleString('pt-BR')}</span>
+              </div>
+              <div className="flex flex-col items-center p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800">
+                <span className="text-[9px] font-black uppercase tracking-widest text-rose-500 mb-1">Reprovadas</span>
+                <span className="text-2xl font-black text-rose-700 dark:text-rose-300">{escolhasImpressao.reprovadas.toLocaleString('pt-BR')}</span>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Rastreio da OP */}
         <OpTraceBanner op={op} moduloAtual="revisao_final" />
