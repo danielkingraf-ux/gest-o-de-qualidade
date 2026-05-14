@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext';
 import { ProcessType, InspectionStatus, Order, Machine, Operator, Analyst } from '../types';
 import { useUser } from '../contexts/UserContext';
 import { getSamplingPlan, getBoxesToOpen, distributeSample, AQL_OPTIONS } from '../utils/nbr5426';
+import { reportService } from '../services/reportService';
 
 // ─── Defeitos de produto acabado ────────────────────────────────────────────
 const DEFECT_COLUMNS = [
@@ -168,6 +169,7 @@ export default function FinishingAnalysisView() {
     const [palletObs, setPalletObs]               = useState('');
     const [isSavingPallet, setIsSavingPallet]     = useState(false);
     const [completedPalletId, setCompletedPalletId] = useState<string | null>(null);
+    const [lastSavedId, setLastSavedId]           = useState<string | null>(null);
     const [activeStep, setActiveStep] = useState(1);
 
     // ─── Carga inicial ────────────────────────────────────────────────────
@@ -288,7 +290,7 @@ export default function FinishingAnalysisView() {
             const operatorNames = selectedOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id).join(', ');
             const analystNames  = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
 
-            await supabase.from('inspections').insert([{
+            const { data: inserted, error: insertError } = await supabase.from('inspections').insert([{
                 op: selectedOrder.op,
                 order_id: orderId,
                 machine_id: selectedMachineId,
@@ -315,9 +317,23 @@ export default function FinishingAnalysisView() {
                     year: selectedYear,
                     nqa: samplingPlan ? { config: nqaConfig, profile_id: nqaProfileId || null, plan: samplingPlan, boxes: samplingBoxes, defects_found: nqaDefects, result: nqaResult } : null,
                 }),
-            }]);
+            }]).select('id').single();
+            if (insertError) throw insertError;
+            if (inserted?.id) setLastSavedId(inserted.id);
 
             showToast('Análise salva com sucesso!', 'success');
+
+            // Alerta automático se refugo > 5%
+            if (qtyProduzida > 0 && (qtyRefugo / qtyProduzida) > 0.05) {
+                const pct = ((qtyRefugo / qtyProduzida) * 100).toFixed(1);
+                const machineName = machines.find(m => m.id === selectedMachineId)?.name ?? '—';
+                await supabase.from('shift_logs').insert([{
+                    type: 'alert',
+                    content: `⚠️ Alto refugo detectado — OP ${selectedOrder.op.toUpperCase()} · ${pct}% de refugo (${qtyRefugo.toLocaleString('pt-BR')} un.) · Máquina: ${machineName} · Laudo: ${laudoNumero}`,
+                    created_by_user_id: profile?.user_id ?? null,
+                }]);
+            }
+
             // Reset
             setSelectedOrderId(''); setOrderFilter(''); setNewOrder({ op: '', qtd_total: '' });
             setSelectedOperatorIds([]); setSelectedAnalystIds([]);
@@ -332,6 +348,20 @@ export default function FinishingAnalysisView() {
             fetchData();
         } catch (err: any) { showToast(`Erro ao salvar: ${err.message}`, 'error'); }
         finally { setIsSaving(false); }
+    };
+
+    // ─── Gerar PDF do último laudo salvo ─────────────────────────────────
+    const handleGeneratePDF = async () => {
+        if (!lastSavedId) return;
+        const { data } = await supabase.from('inspections')
+            .select('id, op, created_at, status, observations, operator_id, analyst_id, machine_id, machines(name)')
+            .eq('id', lastSavedId).single();
+        if (!data) { showToast('Laudo não encontrado', 'error'); return; }
+        const [opRes, anRes] = await Promise.all([
+            supabase.from('operators').select('id, name'),
+            supabase.from('analysts').select('id, name'),
+        ]);
+        reportService.generateFinishingPDF(data as any, opRes.data ?? [], anRes.data ?? []);
     };
 
     // ─── Salvar pallet ────────────────────────────────────────────────────
@@ -986,6 +1016,12 @@ export default function FinishingAnalysisView() {
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Conclusão</h2>
                             <p className="text-[10px] text-slate-400 font-bold">Resumo geral antes de salvar</p>
                         </div>
+                        {lastSavedId && (
+                            <button type="button" onClick={handleGeneratePDF}
+                                className="ml-auto h-9 px-4 rounded-xl bg-emerald-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-sm">download</span>Gerar PDF do Laudo
+                            </button>
+                        )}
                     </div>
                     <div className="p-6 space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

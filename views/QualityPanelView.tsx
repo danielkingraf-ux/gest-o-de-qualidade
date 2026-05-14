@@ -1,8 +1,12 @@
 /**
  * QualityPanelView — Painel de Qualidade para Supervisão
- * Refugo · Escolha · Por Operador · Por Máquina · Ranking de Defeitos
+ * Refugo · Escolha · Por Operador · Por Máquina · Ranking de Defeitos · Pareto · Turno
  */
 import React, { useState, useEffect, useMemo } from 'react';
+import {
+    Bar, ComposedChart, CartesianGrid, Line, ResponsiveContainer,
+    Tooltip, XAxis, YAxis, Cell,
+} from 'recharts';
 import { supabase } from '../services/supabase';
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
@@ -102,11 +106,16 @@ function getPeriodStart(p: Period): Date | null {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 export default function QualityPanelView() {
-    const [loading, setLoading]   = useState(true);
-    const [records, setRecords]   = useState<NormalizedRecord[]>([]);
-    const [opNames, setOpNames]   = useState<Record<string, string>>({});
-    const [period, setPeriod]     = useState<Period>('month');
-    const [areaTab, setAreaTab]   = useState<'all' | 'inicial' | 'acabado'>('all');
+    const [loading, setLoading]       = useState(true);
+    const [records, setRecords]       = useState<NormalizedRecord[]>([]);
+    const [opNames, setOpNames]       = useState<Record<string, string>>({});
+    const [period, setPeriod]         = useState<Period>('month');
+    const [areaTab, setAreaTab]       = useState<'all' | 'inicial' | 'acabado'>('all');
+    const [qualityTarget, setQualityTarget] = useState<number>(() => {
+        const saved = localStorage.getItem('kg_quality_target');
+        return saved ? Number(saved) : 95;
+    });
+    const [showTargetConfig, setShowTargetConfig] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -149,6 +158,13 @@ export default function QualityPanelView() {
         return { laudos: opsSet.size, registros, produzida, escolha, refugo };
     }, [filtered]);
 
+    // ── Taxa de aprovação vs meta ───────────────────────────────────────────
+    const taxaAprovacao = useMemo(() => {
+        if (filtered.length === 0) return 0;
+        const aprovados = filtered.filter(r => r.status === 'APPROVED').length;
+        return (aprovados / filtered.length) * 100;
+    }, [filtered]);
+
     // ── Ranking de defeitos ─────────────────────────────────────────────────
     const defectRanking = useMemo(() => {
         const map = new Map<string, number>();
@@ -163,6 +179,31 @@ export default function QualityPanelView() {
     }, [filtered]);
 
     const maxDefect = defectRanking[0]?.count || 1;
+
+    // ── Pareto (top 10 defeitos + % acumulada) ──────────────────────────────
+    const paretoData = useMemo(() => {
+        const top = defectRanking.slice(0, 10);
+        const total = top.reduce((s, d) => s + d.count, 0) || 1;
+        let acc = 0;
+        return top.map(d => {
+            acc += d.count;
+            return { name: d.name.replace(/_/g, ' '), count: d.count, pct: Math.round((acc / total) * 100) };
+        });
+    }, [defectRanking]);
+
+    // ── Por turno (manhã 06–14 / tarde 14–22 / noite 22–06) ────────────────
+    const byTurno = useMemo(() => {
+        const turns = { 'Manhã (6–14h)': { laudos: 0, produzida: 0, escolha: 0, refugo: 0 }, 'Tarde (14–22h)': { laudos: 0, produzida: 0, escolha: 0, refugo: 0 }, 'Noite (22–6h)': { laudos: 0, produzida: 0, escolha: 0, refugo: 0 } } as Record<string, { laudos: number; produzida: number; escolha: number; refugo: number }>;
+        filtered.forEach(r => {
+            const h = r.date.getHours();
+            const key = h >= 6 && h < 14 ? 'Manhã (6–14h)' : h >= 14 && h < 22 ? 'Tarde (14–22h)' : 'Noite (22–6h)';
+            turns[key].laudos++;
+            turns[key].produzida += r.qtyProduzida;
+            turns[key].escolha   += r.qtyEscolha;
+            turns[key].refugo    += r.qtyRefugo;
+        });
+        return Object.entries(turns).map(([turno, v]) => ({ turno, ...v }));
+    }, [filtered]);
 
     // ── Por operador ────────────────────────────────────────────────────────
     const byOperator = useMemo(() => {
@@ -206,6 +247,31 @@ export default function QualityPanelView() {
             .slice(0, 10);
     }, [filtered]);
 
+    // ── Exportação CSV ──────────────────────────────────────────────────────
+    const exportCSV = () => {
+        const header = ['OP','Data','Área','Máquina','Operadores','Qtd.Produzida','Em Escolha','Refugo','% Refugo','Status','Total Defeitos'];
+        const rows = filtered.map(r => [
+            r.op,
+            r.date.toLocaleDateString('pt-BR'),
+            r.area === 'inicial' ? 'Processo Inicial' : 'Produto Acabado',
+            r.machineName,
+            r.operatorIds.map(id => opNames[id] || id).join(' / '),
+            r.qtyProduzida,
+            r.qtyEscolha,
+            r.qtyRefugo,
+            r.qtyProduzida > 0 ? ((r.qtyRefugo / r.qtyProduzida) * 100).toFixed(2) + '%' : '0%',
+            r.status,
+            Object.values(r.defects).reduce<number>((s, v) => s + Number(v), 0),
+        ]);
+        const csv = [header, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `qualidade_${period}_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
     if (loading) return (
         <div className="flex items-center justify-center h-64">
             <span className="material-symbols-outlined animate-spin text-3xl text-slate-400">progress_activity</span>
@@ -229,7 +295,7 @@ export default function QualityPanelView() {
                             Painel de Qualidade
                         </h1>
                         <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
-                            Refugo · Escolha · Por Operador · Por Máquina · Defeitos
+                            Refugo · Escolha · Pareto · Turno · Por Operador · Por Máquina
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -251,12 +317,32 @@ export default function QualityPanelView() {
                                 </button>
                             ))}
                         </div>
+                        {/* Exportar CSV */}
+                        <button type="button" onClick={exportCSV}
+                            className="h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-colors">
+                            <span className="material-symbols-outlined text-sm">download</span>CSV
+                        </button>
+                        {/* Meta */}
+                        <button type="button" onClick={() => setShowTargetConfig(v => !v)}
+                            className="h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-colors">
+                            <span className="material-symbols-outlined text-sm">target</span>Meta {qualityTarget}%
+                        </button>
                     </div>
                 </div>
+                {/* Configurador de meta */}
+                {showTargetConfig && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-3">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Meta de aprovação</span>
+                        <input type="range" min={50} max={100} step={1} value={qualityTarget}
+                            onChange={e => { const v = Number(e.target.value); setQualityTarget(v); localStorage.setItem('kg_quality_target', String(v)); }}
+                            className="flex-1 accent-indigo-600" />
+                        <span className="text-sm font-black text-indigo-600 w-12 text-right">{qualityTarget}%</span>
+                    </div>
+                )}
             </header>
 
             {/* Cards de totais */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {/* Laudos */}
                 <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 flex items-center gap-1">
@@ -292,38 +378,55 @@ export default function QualityPanelView() {
                     <p className="text-3xl font-black text-rose-700 dark:text-rose-300">{fmt.format(totals.refugo)}</p>
                     <p className="text-[10px] font-bold text-rose-500">{fmtPct(totals.refugo, totals.produzida)} do total</p>
                 </div>
+                {/* Taxa aprovação vs meta */}
+                {(() => {
+                    const ok = taxaAprovacao >= qualityTarget;
+                    return (
+                        <div className={`rounded-2xl p-4 space-y-2 border ${ok ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900' : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900'}`}>
+                            <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${ok ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                <span className="material-symbols-outlined text-sm">target</span>
+                                Aprov. vs Meta
+                            </p>
+                            <p className={`text-3xl font-black ${ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{taxaAprovacao.toFixed(1)}%</p>
+                            <div className="h-1.5 rounded-full bg-white/60 dark:bg-slate-800 overflow-hidden">
+                                <div className={`h-full rounded-full ${ok ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${Math.min(taxaAprovacao, 100)}%` }} />
+                            </div>
+                            <p className={`text-[10px] font-bold ${ok ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {ok ? '✓ Acima' : '✗ Abaixo'} da meta de {qualityTarget}%
+                            </p>
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* Defeitos + Operadores */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-                {/* Ranking de defeitos */}
+                {/* Pareto de defeitos */}
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
                     <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-rose-500">emergency_home</span>
-                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Ranking de Problemas</h2>
-                        <span className="ml-auto text-[9px] font-bold text-slate-400">{totals.laudos} OPs · {totals.registros} registros</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pareto de Defeitos</h2>
+                        <span className="ml-auto text-[9px] font-bold text-slate-400">Top 10 · % acumulada</span>
                     </div>
-                    {defectRanking.length === 0 ? (
+                    {paretoData.length === 0 ? (
                         <p className="text-sm text-slate-400 text-center py-8">Nenhum defeito registrado no período</p>
                     ) : (
-                        <div className="space-y-2">
-                            {defectRanking.map((d, i) => (
-                                <div key={d.name} className="flex items-center gap-3">
-                                    <span className={`text-[10px] font-black w-4 text-right ${i === 0 ? 'text-rose-500' : i === 1 ? 'text-amber-500' : 'text-slate-400'}`}>{i + 1}</span>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-0.5">
-                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate capitalize">{d.name.replace(/_/g, ' ')}</span>
-                                            <span className="text-[10px] font-black text-slate-500 ml-2 shrink-0">{fmt.format(d.count)}</span>
-                                        </div>
-                                        <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                            <div className={`h-full rounded-full transition-all ${i === 0 ? 'bg-rose-500' : i === 1 ? 'bg-amber-500' : i === 2 ? 'bg-orange-400' : 'bg-slate-400'}`}
-                                                style={{ width: `${(d.count / maxDefect) * 100}%` }} />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <ResponsiveContainer width="100%" height={240}>
+                            <ComposedChart data={paretoData} margin={{ top: 4, right: 24, left: 0, bottom: 40 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                                <XAxis dataKey="name" tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} angle={-35} textAnchor="end" interval={0} />
+                                <YAxis yAxisId="left" tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 9, fill: '#6366f1' }} />
+                                <Tooltip formatter={(value: any, name: string) => name === 'pct' ? `${value}%` : value} labelStyle={{ fontSize: 11, fontWeight: 700 }} />
+                                <Bar yAxisId="left" dataKey="count" name="Ocorrências" radius={[4,4,0,0]}>
+                                    {paretoData.map((_, i) => (
+                                        <Cell key={i} fill={i === 0 ? '#f43f5e' : i === 1 ? '#f59e0b' : i === 2 ? '#fb923c' : '#94a3b8'} />
+                                    ))}
+                                </Bar>
+                                <Line yAxisId="right" type="monotone" dataKey="pct" name="% Acum." stroke="#6366f1" strokeWidth={2} dot={{ r: 3, fill: '#6366f1' }} />
+                            </ComposedChart>
+                        </ResponsiveContainer>
                     )}
                 </div>
 
@@ -361,6 +464,46 @@ export default function QualityPanelView() {
                             </table>
                         </div>
                     )}
+                </div>
+            </div>
+
+            {/* Comparativo por turno */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-violet-500">schedule</span>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Comparativo por Turno</h2>
+                    <span className="ml-auto text-[9px] font-bold text-slate-400">Manhã · Tarde · Noite</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {byTurno.map(t => {
+                        const pctRefugo = t.produzida > 0 ? ((t.refugo / t.produzida) * 100) : 0;
+                        const pctEscolha = t.produzida > 0 ? ((t.escolha / t.produzida) * 100) : 0;
+                        return (
+                            <div key={t.turno} className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">{t.turno}</p>
+                                    <span className="text-[9px] font-bold text-slate-400">{t.laudos} reg.</span>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between text-[10px] font-bold">
+                                        <span className="text-slate-500">Produzido</span>
+                                        <span className="text-slate-700 dark:text-slate-200 font-black">{fmt.format(t.produzida)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] font-bold">
+                                        <span className="text-amber-500">Escolha</span>
+                                        <span className="text-amber-700 font-black">{fmt.format(t.escolha)} <span className="text-amber-400 font-bold">({pctEscolha.toFixed(1)}%)</span></span>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] font-bold">
+                                        <span className="text-rose-500">Refugo</span>
+                                        <span className="text-rose-700 font-black">{fmt.format(t.refugo)} <span className="text-rose-400 font-bold">({pctRefugo.toFixed(1)}%)</span></span>
+                                    </div>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                    <div className="h-full rounded-full bg-rose-400" style={{ width: `${Math.min(pctRefugo * 5, 100)}%` }} />
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
