@@ -659,6 +659,63 @@ export default function FinishingAnalysisView() {
                         </div>
                     ))}
                 </div>
+
+                {/* Configuração de Embalagem + Cálculo por Pallet */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="material-symbols-outlined text-indigo-500 text-sm">inventory</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Configuração de Embalagem</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Unid. por Caixa</label>
+                            <input
+                                type="number" min={0}
+                                value={nqaConfig.unidades_por_caixa || ''}
+                                onChange={e => setNqaConfig(prev => ({ ...prev, unidades_por_caixa: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                placeholder="0"
+                                className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm text-center"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Caixas por Pallet</label>
+                            <input
+                                type="number" min={0}
+                                value={nqaConfig.caixas_por_pallet || ''}
+                                onChange={e => setNqaConfig(prev => ({ ...prev, caixas_por_pallet: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                placeholder="0"
+                                className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm text-center"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Auto-calculated pallet summary */}
+                    {nqaConfig.unidades_por_caixa > 0 && nqaConfig.caixas_por_pallet > 0 && (() => {
+                        const unidsPorPallet = nqaConfig.unidades_por_caixa * nqaConfig.caixas_por_pallet;
+                        const totalPallets = qtyProduzida > 0 ? Math.ceil(qtyProduzida / unidsPorPallet) : 0;
+                        const totalCaixas  = qtyProduzida > 0 ? Math.ceil(qtyProduzida / nqaConfig.unidades_por_caixa) : 0;
+                        return (
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                                {[
+                                    { label: 'Unid. / Pallet', value: unidsPorPallet.toLocaleString('pt-BR'), icon: 'view_in_ar', color: 'indigo' },
+                                    { label: 'Total Caixas',   value: totalCaixas.toLocaleString('pt-BR'),   icon: 'archive',   color: 'slate' },
+                                    { label: 'Total Pallets',  value: totalPallets.toLocaleString('pt-BR'),  icon: 'pallet',    color: 'violet' },
+                                ].map(({ label, value, icon, color }) => (
+                                    <div key={label} className={`flex flex-col items-center justify-center gap-0.5 p-3 rounded-2xl border ${
+                                        color === 'indigo' ? 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800' :
+                                        color === 'violet' ? 'bg-violet-50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800' :
+                                        'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                                    }`}>
+                                        <span className={`material-symbols-outlined text-sm ${color === 'indigo' ? 'text-indigo-500' : color === 'violet' ? 'text-violet-500' : 'text-slate-400'}`}>{icon}</span>
+                                        <span className={`text-lg font-black ${color === 'indigo' ? 'text-indigo-700 dark:text-indigo-300' : color === 'violet' ? 'text-violet-700 dark:text-violet-300' : 'text-slate-700 dark:text-slate-200'}`}>{value}</span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })()}
+                </div>
+
                 </div>
             </div>}
 

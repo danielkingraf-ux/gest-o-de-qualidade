@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
+import OpTraceBanner from '../components/OpTraceBanner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FacaCount = Record<number, number>;
@@ -302,10 +303,9 @@ const AcabamentoCortesVincoView: React.FC = () => {
     });
   }, []);
 
-  // Carrega detalhes da OP ao digitar
+  // Carrega detalhes da OP ao digitar — pré-preenche manualFacas mas permite override
   useEffect(() => {
     if (!op.trim()) {
-      setNumFacas(0);
       setOpFound(null);
       return;
     }
@@ -316,20 +316,20 @@ const AcabamentoCortesVincoView: React.FC = () => {
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setNumFacas(data.unidades_por_folha ?? 0);
+          const fromOp = data.unidades_por_folha ?? 0;
+          if (fromOp > 0) setManualFacas(fromOp);
           setOpFound(true);
         } else {
-          setNumFacas(manualFacas);
           setOpFound(false);
         }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op]);
 
-  // Quando mudar o manual, atualizar numFacas se OP não foi encontrada
+  // numFacas sempre reflete o campo manual (editável pelo usuário)
   useEffect(() => {
-    if (opFound === false) setNumFacas(manualFacas);
-  }, [manualFacas, opFound]);
+    setNumFacas(manualFacas);
+  }, [manualFacas]);
 
   const loadRecent = useCallback(async () => {
     setLoadingRecent(true);
@@ -476,32 +476,32 @@ const AcabamentoCortesVincoView: React.FC = () => {
             {opList.map(o => <option key={o} value={o} />)}
           </datalist>
 
-          {opFound === true && numFacas > 0 && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="material-symbols-outlined text-indigo-500 text-sm">check_circle</span>
-              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                {numFacas} posições de faca carregadas da OP
-              </span>
-            </div>
-          )}
-
-          {opFound === false && op.trim() && (
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] text-amber-600 font-bold">
-                OP não cadastrada — informe o número de posições:
-              </span>
+          <div className="mt-3">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Quantidade de Facas
+            </label>
+            <div className="mt-1.5 flex items-center gap-3">
               <input
                 type="number"
                 min={1}
                 max={64}
                 value={manualFacas || ''}
                 onChange={e => setManualFacas(Math.max(0, Number(e.target.value) || 0))}
-                placeholder="Nº facas"
-                className="w-20 h-7 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/20 px-2 text-xs font-bold outline-none"
+                placeholder="Ex: 8"
+                className="w-28 h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
+              {opFound === true && numFacas > 0 && (
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  {numFacas} carregadas da OP
+                </span>
+              )}
             </div>
-          )}
+          </div>
         </section>
+
+        {/* Rastreio da OP */}
+        <OpTraceBanner op={op} moduloAtual="corte_vinco" />
 
         {/* Seção 2: Quantidades */}
         <section className="mb-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
@@ -547,9 +547,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
             <div className="py-6 text-center">
               <span className="material-symbols-outlined text-4xl text-slate-200 dark:text-slate-700">content_cut</span>
               <p className="text-xs text-slate-400 mt-2">
-                {op.trim()
-                  ? 'Informe o número de posições acima'
-                  : 'Informe a OP para carregar as posições de faca'}
+                Informe a quantidade de facas na seção de Identificação
               </p>
             </div>
           ) : (

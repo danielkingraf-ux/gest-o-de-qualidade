@@ -53,10 +53,12 @@ interface NormalizedInspection {
     desviosTotal: number;
     defects: NormalizedDefect[];
     operatorIds: string[];
+    machineId: string | null;
 }
 
 interface Summary {
     laudos: number;
+    ops: number;
     folhasRodadas: number;
     folhasVerificadas: number;
     folhasAprovadas: number;
@@ -71,7 +73,7 @@ interface Summary {
 const PERIOD_OPTIONS: Array<{ value: Period; label: string }> = [
     { value: 'day', label: 'Dia' },
     { value: 'week', label: 'Semana' },
-    { value: 'month', label: 'Mes' },
+    { value: 'month', label: 'Mês' },
     { value: 'year', label: 'Ano' },
 ];
 
@@ -83,6 +85,7 @@ const AREA_OPTIONS: Array<{ value: AreaFilter; label: string }> = [
 
 const emptySummary = (): Summary => ({
     laudos: 0,
+    ops: 0,
     folhasRodadas: 0,
     folhasVerificadas: 0,
     folhasAprovadas: 0,
@@ -228,8 +231,10 @@ const bucketKey = (date: Date, period: Period) => {
 };
 
 const summarize = (items: NormalizedInspection[]): Summary => {
+    const uniqueOps = new Set<string>();
     const s = items.reduce((acc, item) => {
         acc.laudos += 1;
+        uniqueOps.add(item.op);
         acc.folhasRodadas += item.folhasRodadas;
         acc.folhasVerificadas += item.folhasVerificadas;
         acc.folhasAprovadas += item.folhasAprovadas;
@@ -238,6 +243,7 @@ const summarize = (items: NormalizedInspection[]): Summary => {
         acc.desviosTotal += item.desviosTotal;
         return acc;
     }, emptySummary());
+    s.ops = uniqueOps.size;
     s.saldoSemRevisao = Math.max(0, s.folhasRodadas - s.folhasVerificadas);
     s.taxaAprovacao = s.folhasVerificadas > 0 ? (s.folhasAprovadas / s.folhasVerificadas) * 100 : 0;
     s.taxaReprovacao = s.folhasVerificadas > 0 ? (s.folhasReprovadas / s.folhasVerificadas) * 100 : 0;
@@ -252,6 +258,7 @@ export default function DashboardView() {
     const [loading, setLoading] = useState(true);
     const [rawInspections, setRawInspections] = useState<any[]>([]);
     const [operators, setOperators] = useState<Record<string, string>>({});
+    const [machines, setMachines] = useState<Record<string, string>>({});
     const [period, setPeriod] = useState<Period>('month');
     const [selectedDate, setSelectedDate] = useState(formatDateInput(new Date()));
     const [areaFilter, setAreaFilter] = useState<AreaFilter>('all');
@@ -267,19 +274,27 @@ export default function DashboardView() {
 
             if (inspectionsError) throw inspectionsError;
 
-            const { data: operatorsData, error: operatorsError } = await supabase
-                .from('operators')
-                .select('id, name');
+            const [{ data: operatorsData, error: operatorsError }, { data: machinesData, error: machinesError }] = await Promise.all([
+                supabase.from('operators').select('id, name'),
+                supabase.from('machines').select('id, name'),
+            ]);
 
             if (operatorsError) throw operatorsError;
+            if (machinesError) throw machinesError;
 
             const names = (operatorsData || []).reduce((acc: Record<string, string>, operator: any) => {
                 acc[operator.id] = operator.name;
                 return acc;
             }, {});
 
+            const machineNames = (machinesData || []).reduce((acc: Record<string, string>, machine: any) => {
+                acc[machine.id] = machine.name;
+                return acc;
+            }, {});
+
             setRawInspections(inspections || []);
             setOperators(names);
+            setMachines(machineNames);
         } catch (error) {
             showToast('Erro ao carregar painel da diretoria', 'error');
         } finally {
@@ -298,25 +313,64 @@ export default function DashboardView() {
 
             // Produção: InspectionView salva em obs.producao
             const producao = obs.producao || {};
-            const folhasPorPilha = Math.max(1, asNumber(producao.folhas_por_pilha ?? 1));
+            const area = getProcessArea(record, obs);
+
+            let folhasRodadas = 0;
+            let folhasVerificadas = 0;
+            let folhasAprovadas = 0;
+            let folhasEscolha = 0;
+            let folhasReprovadas = 0;
+
+            if (area === 'initial') {
+                // InspectionView: campos em folhas/pilhas
+                const folhasPorPilha = Math.max(1, asNumber(producao.folhas_por_pilha ?? 1));
+                const unidadesPorFolha = Math.max(1, asNumber(producao.unidades_por_folha ?? 1));
+                const unidadesAprovadas = asNumber(producao.unidades_aprovadas);
+                const unidadesEscolha = asNumber(producao.unidades_escolha);
+                const unidadesReprovadas = asNumber(producao.unidades_reprovadas);
+                folhasRodadas = asNumber(producao.quantidade_rodada_folhas);
+                folhasVerificadas = asNumber(producao.pilhas_verificadas) * folhasPorPilha;
+                folhasAprovadas = unidadesAprovadas > 0
+                    ? Math.round(unidadesAprovadas / unidadesPorFolha)
+                    : asNumber(producao.pilhas_aprovadas) * folhasPorPilha;
+                folhasEscolha = unidadesEscolha > 0
+                    ? Math.round(unidadesEscolha / unidadesPorFolha)
+                    : asNumber(producao.folhas_escolha);
+                folhasReprovadas = unidadesReprovadas > 0
+                    ? Math.round(unidadesReprovadas / unidadesPorFolha)
+                    : asNumber(producao.folhas_reprovadas);
+            } else {
+                // FinishingAnalysisView: campos em unidades (qty_produzida, qty_escolha, qty_refugo)
+                const qtyTotal = asNumber(producao.qty_produzida);
+                const qtyEscolha = asNumber(producao.qty_escolha);
+                const qtyRefugo = asNumber(producao.qty_refugo);
+                folhasRodadas = qtyTotal;
+                folhasVerificadas = asNumber(record.samples_count) || qtyTotal;
+                folhasEscolha = qtyEscolha;
+                folhasReprovadas = qtyRefugo;
+                folhasAprovadas = record.status === 'APPROVED'
+                    ? Math.max(0, qtyTotal - qtyEscolha - qtyRefugo)
+                    : 0;
+            }
 
             return {
                 id: record.id,
                 op: String(record.op || 'Sem OP'),
                 date: new Date(record.created_at || record.timestamp),
                 status: record.status,
-                area: getProcessArea(record, obs),
-                folhasRodadas: asNumber(producao.quantidade_rodada_folhas),
-                folhasVerificadas: asNumber(producao.pilhas_verificadas) * folhasPorPilha,
-                folhasAprovadas: asNumber(producao.pilhas_aprovadas) * folhasPorPilha,
-                folhasEscolha: asNumber(producao.folhas_escolha),
-                folhasReprovadas: asNumber(producao.folhas_reprovadas),
+                area,
+                folhasRodadas,
+                folhasVerificadas,
+                folhasAprovadas,
+                folhasEscolha,
+                folhasReprovadas,
                 desviosTotal:
                     asNumber(obs.metricas_falha?.falhas_por_unidade) ||
                     asNumber(obs.totalDefects) ||
                     defects.reduce((sum, d) => sum + d.count, 0),
                 defects,
                 operatorIds: getOperatorIds(record, obs),
+                machineId: record.machine_id || null,
             };
         }).filter((item) => !Number.isNaN(item.date.getTime()));
     }, [rawInspections]);
@@ -350,6 +404,7 @@ export default function DashboardView() {
 
         const defectMap = new Map<string, number>();
         const operatorMap = new Map<string, { name: string; defects: number; inspections: number }>();
+        const machineMap = new Map<string, { name: string; defects: number; inspections: number }>();
         const timelineMap = new Map<string, { periodo: string; inicial: number; final: number; desvios: number }>();
 
         filtered.forEach((item) => {
@@ -365,6 +420,14 @@ export default function DashboardView() {
                 current.inspections += 1;
                 operatorMap.set(id, current);
             });
+
+            if (item.machineId) {
+                const machineName = machines[item.machineId] || 'Desconhecida';
+                const cur = machineMap.get(item.machineId) || { name: machineName, defects: 0, inspections: 0 };
+                cur.defects += item.desviosTotal;
+                cur.inspections += 1;
+                machineMap.set(item.machineId, cur);
+            }
 
             const key = bucketKey(item.date, period);
             const current = timelineMap.get(key) || { periodo: key, inicial: 0, final: 0, desvios: 0 };
@@ -388,6 +451,15 @@ export default function DashboardView() {
             .sort((a, b) => b.defects - a.defects)
             .slice(0, 10);
 
+        const byMachine = Array.from(machineMap.values())
+            .map((item) => ({
+                ...item,
+                sharePercent: total.desviosTotal > 0 ? (item.defects / total.desviosTotal) * 100 : 0,
+                defectsPerRecord: item.inspections > 0 ? item.defects / item.inspections : 0,
+            }))
+            .sort((a, b) => b.defects - a.defects)
+            .slice(0, 10);
+
         const timeline = Array.from(timelineMap.values());
 
         return {
@@ -396,13 +468,14 @@ export default function DashboardView() {
             final,
             defects,
             byOperator,
+            byMachine,
             timeline,
             areaPie: [
                 { name: 'Processo inicial', value: initial.desviosTotal, color: '#2563eb' },
                 { name: 'Produto acabado', value: final.desviosTotal, color: '#f97316' },
             ].filter((item) => item.value > 0),
         };
-    }, [filtered, operators, period]);
+    }, [filtered, operators, machines, period]);
 
     if (loading) {
         return (
@@ -422,7 +495,7 @@ export default function DashboardView() {
                         <div className="flex items-center gap-3">
                             <BarChart3 className="size-7 text-primary" />
                             <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 dark:text-white">
-                                Painel da Diretoria
+                                Painel Direção
                             </h1>
                         </div>
                         <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
@@ -459,7 +532,7 @@ export default function DashboardView() {
                     </label>
 
                     <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Periodo</span>
+                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Período</span>
                         <div className="grid h-11 grid-cols-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
                             {PERIOD_OPTIONS.map((option) => (
                                 <button
@@ -488,7 +561,7 @@ export default function DashboardView() {
                     </label>
 
                     <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Area</span>
+                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Área</span>
                         <select
                             value={areaFilter}
                             onChange={(event) => setAreaFilter(event.target.value as AreaFilter)}
@@ -503,13 +576,13 @@ export default function DashboardView() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-                <MetricCard title="OPs Analisadas" value={String(analytics.total.laudos)} icon={<ClipboardList />} />
+                <MetricCard title="OPs Analisadas" value={String(analytics.total.ops)} icon={<ClipboardList />} />
                 <MetricCard title="Folhas Rodadas" value={formatNumber(analytics.total.folhasRodadas)} icon={<FileText />} />
                 <MetricCard title="Verificadas" value={formatNumber(analytics.total.folhasVerificadas)} icon={<Search />} tone="blue" />
                 <MetricCard title="Aprovadas" value={formatNumber(analytics.total.folhasAprovadas)} icon={<Layers />} tone="blue" />
                 <MetricCard title="Em Escolha" value={formatNumber(analytics.total.folhasEscolha)} icon={<TrendingUp />} tone="amber" />
                 <MetricCard title="Reprovadas" value={formatNumber(analytics.total.folhasReprovadas)} icon={<AlertTriangle />} tone="rose" />
-                <MetricCard title="Sem Revisao" value={formatNumber(analytics.total.saldoSemRevisao)} icon={<BarChart3 />} tone="amber" />
+                <MetricCard title="Sem Revisão" value={formatNumber(analytics.total.saldoSemRevisao)} icon={<BarChart3 />} tone="amber" />
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -524,7 +597,7 @@ export default function DashboardView() {
             ) : (
                 <>
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                        <ChartPanel title="Evolucao por periodo" subtitle="Inspecoes por processo e desvios apontados" className="lg:col-span-2">
+                        <ChartPanel title="Evolução por período" subtitle="Inspeções por processo e desvios apontados" className="lg:col-span-2">
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={analytics.timeline} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -539,7 +612,7 @@ export default function DashboardView() {
                             </ResponsiveContainer>
                         </ChartPanel>
 
-                        <ChartPanel title="Desvios por processo" subtitle="Separacao inicial x final">
+                        <ChartPanel title="Desvios por processo" subtitle="Separação inicial x final">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie data={analytics.areaPie} dataKey="value" nameKey="name" innerRadius={58} outerRadius={84} paddingAngle={4}>
@@ -555,7 +628,7 @@ export default function DashboardView() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                        <ChartPanel title="Principais desvios" subtitle="Maiores recorrencias no filtro atual">
+                        <ChartPanel title="Principais desvios" subtitle="Maiores recorrências no filtro atual" className="lg:col-span-2">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={analytics.defects} layout="vertical" margin={{ top: 5, right: 20, left: 35, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
@@ -571,7 +644,7 @@ export default function DashboardView() {
                             <div className="mb-4 flex items-center justify-between gap-3">
                                 <div>
                                     <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Desvios por operador</h3>
-                                    <p className="text-xs font-bold text-slate-400">Media = desvios por registro. % do total = participação nos desvios do filtro.</p>
+                                    <p className="text-xs font-bold text-slate-400">Média = desvios por registro. % do total = participação nos desvios do filtro.</p>
                                 </div>
                                 <Users className="size-5 text-slate-400" />
                             </div>
@@ -581,7 +654,7 @@ export default function DashboardView() {
                                         <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
                                             <th className="py-3">Operador</th>
                                             <th className="py-3 text-right">Desvios</th>
-                                            <th className="py-3 text-right">MÃ©dia</th>
+                                            <th className="py-3 text-right">Média</th>
                                             <th className="py-3 text-right">% do total</th>
                                             <th className="py-3 text-right">Registros</th>
                                         </tr>
@@ -594,6 +667,44 @@ export default function DashboardView() {
                                                 <td className="py-3 text-right">{operator.defectsPerRecord.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
                                                 <td className="py-3 text-right">{formatPercent(operator.sharePercent)}</td>
                                                 <td className="py-3 text-right">{formatNumber(operator.inspections)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Desvios por máquina</h3>
+                                    <p className="text-xs font-bold text-slate-400">Média = desvios por registro. % do total = participação nos desvios do filtro.</p>
+                                </div>
+                                <BarChart3 className="size-5 text-slate-400" />
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[520px] text-left">
+                                    <thead>
+                                        <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
+                                            <th className="py-3">Máquina</th>
+                                            <th className="py-3 text-right">Desvios</th>
+                                            <th className="py-3 text-right">Média</th>
+                                            <th className="py-3 text-right">% do total</th>
+                                            <th className="py-3 text-right">Registros</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {analytics.byMachine.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="py-6 text-center text-xs font-bold text-slate-400">Nenhum dado disponível</td>
+                                            </tr>
+                                        ) : analytics.byMachine.map((machine) => (
+                                            <tr key={machine.name} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
+                                                <td className="py-3">{machine.name}</td>
+                                                <td className="py-3 text-right">{formatNumber(machine.defects)}</td>
+                                                <td className="py-3 text-right">{machine.defectsPerRecord.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
+                                                <td className="py-3 text-right">{formatPercent(machine.sharePercent)}</td>
+                                                <td className="py-3 text-right">{formatNumber(machine.inspections)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -638,8 +749,8 @@ function AreaSummary({ title, summary, color }: { title: string; summary: Summar
                 </div>
                 <div className="text-right">
                     <p className="text-lg font-black">{formatPercent(summary.taxaAprovacao)}</p>
-                    <p className="text-xs font-bold text-slate-400">Aprovacao</p>
-                    <p className="text-xs font-bold text-rose-500">{formatPercent(summary.taxaReprovacao)} reprovacao</p>
+                    <p className="text-xs font-bold text-slate-400">Aprovação</p>
+                    <p className="text-xs font-bold text-rose-500">{formatPercent(summary.taxaReprovacao)} reprovação</p>
                 </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -648,7 +759,7 @@ function AreaSummary({ title, summary, color }: { title: string; summary: Summar
                 <SmallMetric label="Aprovadas" value={summary.folhasAprovadas} />
                 <SmallMetric label="Em Escolha" value={summary.folhasEscolha} />
                 <SmallMetric label="Reprovadas" value={summary.folhasReprovadas} />
-                <SmallMetric label="Aguardando Revisao" value={summary.saldoSemRevisao} />
+                <SmallMetric label="Aguardando Revisão" value={summary.saldoSemRevisao} />
             </div>
         </div>
     );

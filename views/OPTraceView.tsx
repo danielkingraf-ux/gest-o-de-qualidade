@@ -129,8 +129,8 @@ export default function OPTraceView() {
 
     // Carrega sugestões de OP ao abrir
     React.useEffect(() => {
-        supabase.from('inspections').select('op').order('op').limit(300).then(({ data }) => {
-            const ops = Array.from(new Set((data || []).map((r: any) => String(r.op)))).sort();
+        supabase.from('orders').select('op').order('op').limit(300).then(({ data }) => {
+            const ops = (data || []).map((r: { op: string }) => String(r.op));
             setOpOptions(ops);
         });
     }, []);

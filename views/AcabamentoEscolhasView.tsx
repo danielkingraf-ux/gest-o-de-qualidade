@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import DefectCounter from '../components/DefectCounter';
+import OpTraceBanner from '../components/OpTraceBanner';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFECTS = [
@@ -211,6 +212,9 @@ const AcabamentoEscolhasView: React.FC = () => {
             {opList.map(o => <option key={o} value={o} />)}
           </datalist>
         </section>
+
+        {/* Rastreio da OP */}
+        <OpTraceBanner op={op} moduloAtual="escolhas" />
 
         {/* Seção 2: Quantidades */}
         <section className="mb-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">

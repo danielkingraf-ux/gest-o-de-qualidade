@@ -137,14 +137,16 @@ export default function QualityPanelView() {
 
     // ── Totais ──────────────────────────────────────────────────────────────
     const totals = useMemo(() => {
-        let laudos = 0, produzida = 0, escolha = 0, refugo = 0;
+        let registros = 0, produzida = 0, escolha = 0, refugo = 0;
+        const opsSet = new Set<string>();
         filtered.forEach(r => {
-            laudos++;
+            registros++;
+            opsSet.add(r.op);
             produzida += r.qtyProduzida;
             escolha   += r.qtyEscolha;
             refugo    += r.qtyRefugo;
         });
-        return { laudos, produzida, escolha, refugo };
+        return { laudos: opsSet.size, registros, produzida, escolha, refugo };
     }, [filtered]);
 
     // ── Ranking de defeitos ─────────────────────────────────────────────────
@@ -259,9 +261,10 @@ export default function QualityPanelView() {
                 <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 flex items-center gap-1">
                         <span className="material-symbols-outlined text-sm">assignment_turned_in</span>
-                        Laudos no período
+                        OPs no período
                     </p>
                     <p className="text-3xl font-black text-indigo-700 dark:text-indigo-300">{fmt.format(totals.laudos)}</p>
+                    <p className="text-[9px] text-indigo-400 font-bold">{totals.registros} registros</p>
                 </div>
                 {/* Total produzido */}
                 <div className="bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-1">
@@ -299,7 +302,7 @@ export default function QualityPanelView() {
                     <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-rose-500">emergency_home</span>
                         <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Ranking de Problemas</h2>
-                        <span className="ml-auto text-[9px] font-bold text-slate-400">{filtered.length} laudos</span>
+                        <span className="ml-auto text-[9px] font-bold text-slate-400">{totals.laudos} OPs · {totals.registros} registros</span>
                     </div>
                     {defectRanking.length === 0 ? (
                         <p className="text-sm text-slate-400 text-center py-8">Nenhum defeito registrado no período</p>
@@ -338,7 +341,7 @@ export default function QualityPanelView() {
                                 <thead>
                                     <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-800">
                                         <th className="pb-2">Operador</th>
-                                        <th className="pb-2 text-center">Laudos</th>
+                                        <th className="pb-2 text-center">Registros</th>
                                         <th className="pb-2 text-right text-amber-500">Escolha</th>
                                         <th className="pb-2 text-right text-rose-500">Refugo</th>
                                         <th className="pb-2 text-right">Top Problema</th>
@@ -375,7 +378,7 @@ export default function QualityPanelView() {
                             <thead>
                                 <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-800">
                                     <th className="pb-2">Máquina</th>
-                                    <th className="pb-2 text-center">Laudos</th>
+                                    <th className="pb-2 text-center">Registros</th>
                                     <th className="pb-2 text-right text-amber-500">Total Escolha</th>
                                     <th className="pb-2 text-right text-rose-500">Total Refugo</th>
                                     <th className="pb-2 text-right text-rose-400">% Refugo</th>
