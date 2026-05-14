@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import OpTraceBanner from '../components/OpTraceBanner';
+import { escolhaRevisaoService } from '../services/escolhaRevisaoService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FacaCount = Record<number, number>;
@@ -296,6 +297,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [escolhasImpressao, setEscolhasImpressao] = useState<{ em_escolha: number; rodadas: number; aprovadas: number; reprovadas: number } | null>(null);
+  const [opCliente, setOpCliente] = useState<string | null>(null);
+  const [opProduto, setOpProduto] = useState<string | null>(null);
 
   // Carrega lista de OPs
   useEffect(() => {
@@ -309,12 +312,14 @@ const AcabamentoCortesVincoView: React.FC = () => {
     if (!op.trim()) {
       setOpFound(null);
       setEscolhasImpressao(null);
+      setOpCliente(null);
+      setOpProduto(null);
       return;
     }
     const opUp = op.trim().toUpperCase();
     supabase
       .from('orders')
-      .select('unidades_por_folha')
+      .select('unidades_por_folha, cliente, produto, descricao')
       .eq('op', opUp)
       .maybeSingle()
       .then(({ data }) => {
@@ -322,8 +327,12 @@ const AcabamentoCortesVincoView: React.FC = () => {
           const fromOp = data.unidades_por_folha ?? 0;
           if (fromOp > 0) setManualFacas(fromOp);
           setOpFound(true);
+          setOpCliente(data.cliente ?? null);
+          setOpProduto(data.produto ?? data.descricao ?? null);
         } else {
           setOpFound(false);
+          setOpCliente(null);
+          setOpProduto(null);
         }
       });
     // Busca escolhas do processo inicial (impressão)
@@ -390,6 +399,9 @@ const AcabamentoCortesVincoView: React.FC = () => {
     setNumFacas(0);
     setManualFacas(0);
     setOpFound(null);
+    setOpCliente(null);
+    setOpProduto(null);
+    setEscolhasImpressao(null);
   };
 
   const handleSave = async () => {
@@ -429,7 +441,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
     }
 
     setSaving(true);
-    const { error } = await supabase.from('acabamento_registros').insert({
+    const { data: insertedRecord, error } = await supabase.from('acabamento_registros').insert({
       op: op.trim().toUpperCase(),
       modulo: 'corte_vinco',
       auxiliar_user_id: user.id,
@@ -440,13 +452,61 @@ const AcabamentoCortesVincoView: React.FC = () => {
       faca_defects: Object.keys(facaDefectsPayload).length > 0 ? facaDefectsPayload : null,
       unidades_por_folha: numFacas > 0 ? numFacas : null,
       notes: notes.trim() || null,
-    });
+    }).select('id').single();
     setSaving(false);
 
     if (error) {
       console.error('Erro ao salvar:', error);
       showToast('Erro ao salvar registro', 'error');
       return;
+    }
+
+    // Cria entrada na Revisão de Escolhas se houver reprovadas
+    if (qtyReprovadas > 0 && insertedRecord?.id) {
+      try {
+        const defectKeys = Object.keys(defectsPayload);
+        const tipoDefeito = defectKeys.length > 0
+          ? defectKeys.join(', ')
+          : 'reprovadas_corte_vinco';
+        const motivoChoices = defectKeys.map(k => DEFECTS.find(d => d.key === k)?.label ?? k);
+        const motivo = motivoChoices.length > 0
+          ? motivoChoices.join(', ')
+          : 'Reprovados no Corte e Vinco';
+
+        await escolhaRevisaoService.create({
+          op: op.trim().toUpperCase(),
+          cliente: opCliente,
+          produto: opProduto,
+          origem_escolha: 'corte_vinco',
+          setor_detectado: 'corte_vinco',
+          motivo_escolha: motivo,
+          tipo_defeito: tipoDefeito,
+          classificacao_defeito: 'maior',
+          quantidade_enviada: qtyReprovadas,
+          responsavel_envio_id: user.id,
+          responsavel_envio_nome: profile?.name ?? null,
+          entrada_at: new Date().toISOString(),
+          status: 'aberta',
+          responsavel_revisao_id: null,
+          responsavel_revisao_nome: null,
+          quantidade_revisada: 0,
+          quantidade_boa_recuperada: 0,
+          quantidade_refugada: 0,
+          quantidade_pendente: qtyReprovadas,
+          revisao_at: null,
+          observacao: notes.trim() || null,
+          destino_material_bom: null,
+          outro_destino: null,
+          origem_registro_tabela: 'acabamento_registros',
+          origem_registro_id: insertedRecord.id,
+          origem_tela: 'corte_vinco',
+          origem_problema: 'corte_vinco',
+          created_by: user.id,
+          updated_by: null,
+        });
+      } catch (escolhaError) {
+        console.error('Erro ao registrar escolha:', escolhaError);
+      }
     }
 
     showToast('Registro salvo com sucesso!', 'success');
