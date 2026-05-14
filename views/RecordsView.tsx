@@ -305,14 +305,33 @@ export default function RecordsView() {
   };
 
   const handleDeleteClick = (id: string) => {
-    void id;
-    showToast('Registros produtivos não são excluídos definitivamente. Use correção com justificativa e histórico.', 'warning');
+    setRecordToDelete(id);
+    setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = async () => {
-    showToast('Exclusão definitiva bloqueada para preservar rastreabilidade.', 'warning');
-    setRecordToDelete(null);
-    setIsDeleteModalOpen(false);
+    if (!recordToDelete) return;
+    try {
+      // Remove escolha_revisao_registros vinculados antes de deletar a inspeção
+      await supabase
+        .from('escolha_revisao_registros')
+        .delete()
+        .eq('origem_registro_tabela', 'inspections')
+        .eq('origem_registro_id', recordToDelete);
+
+      const { error } = await supabase
+        .from('inspections')
+        .delete()
+        .eq('id', recordToDelete);
+
+      if (error) throw error;
+      showToast('Registro excluído com sucesso', 'success');
+      setRecords(prev => prev.filter(r => r.id !== recordToDelete));
+    } catch (err: any) {
+      showToast(`Erro ao excluir: ${err.message}`, 'error');
+    } finally {
+      setRecordToDelete(null);
+    }
   };
 
   const handleEdit = (record: any) => {
@@ -634,9 +653,15 @@ export default function RecordsView() {
                                 onClick={() => handleEdit(record)}
                                 className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
                                 aria-label="Editar Registro"
-                                data-tooltip="Editar Registro"
                               >
                                 <span className="material-symbols-outlined text-xl">edit</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteClick(record.id)}
+                                className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+                                aria-label="Excluir Registro"
+                              >
+                                <span className="material-symbols-outlined text-xl">delete</span>
                               </button>
                             </>
                           )}
@@ -913,12 +938,12 @@ export default function RecordsView() {
 
       <ConfirmModal
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setRecordToDelete(null); }}
         onConfirm={confirmDelete}
-        title="Exclusão bloqueada"
-        message="Registros produtivos não devem ser apagados definitivamente. Faça uma correção com justificativa para manter o histórico."
-        confirmText="Entendi"
-        type="warning"
+        title="Excluir registro"
+        message="Tem certeza? Esta ação remove o laudo permanentemente, incluindo escolhas vinculadas. Use somente para registros de teste ou incorretos."
+        confirmText="Excluir"
+        type="danger"
       />
 
       {/* Modal: Solicitar Alteração (analista fora da janela de 30min) */}
