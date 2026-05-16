@@ -301,17 +301,14 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   type SaldoConsolidado = {
     qtdSolicitada: number;
-    // Impressão
     rodadasImpressao: number;
     escolhaImpressao: number;
-    // Corte e Vinco
     rodadasCorteVinco: number;
     escolhaCorteVinco: number;
-    // Produto Acabado
     rodadasProdutoAcabado: number;
     escolhaProdutoAcabado: number;
-    // Total escolha para revisão
     totalEscolha: number;
+    loteProdutoAcabadoReprovado: boolean; // todos os pallets reprovados
     operadoresNomes: string[];
     maquinasNomes: string[];
   };
@@ -389,6 +386,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
 
       const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaProdutoAcabado;
+      const loteProdutoAcabadoReprovado =
+        rodadasProdutoAcabado > 0 && escolhaProdutoAcabado >= rodadasProdutoAcabado;
 
       // Busca nomes de máquinas e operadores
       const [maqRes, opRes] = await Promise.all([
@@ -410,6 +409,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         rodadasCorteVinco, escolhaCorteVinco,
         rodadasProdutoAcabado, escolhaProdutoAcabado,
         totalEscolha,
+        loteProdutoAcabadoReprovado,
         operadoresNomes, maquinasNomes,
       });
 
@@ -712,6 +712,21 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Alerta: lote completo do Produto Acabado reprovado */}
+            {saldoOp.loteProdutoAcabadoReprovado && (
+              <div className="mb-3 flex items-start gap-2 px-3 py-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-700">
+                <span className="material-symbols-outlined text-rose-500 text-sm mt-0.5 shrink-0">error</span>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400">
+                    Lote completo reprovado no Produto Acabado
+                  </p>
+                  <p className="text-xs font-bold text-rose-700 dark:text-rose-300 mt-0.5">
+                    Todo o lote ({fmt(saldoOp.rodadasProdutoAcabado)} un.) foi enviado para esta revisão. Separe os defeituosos e determine o refugo.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Máquinas e operadores */}
             {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0) && (

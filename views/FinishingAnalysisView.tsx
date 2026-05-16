@@ -175,8 +175,7 @@ export default function FinishingAnalysisView() {
                 summaries.push({ id: row.id, numero: obs.numero_rodada ?? summaries.length + 1, date: row.created_at, status: obs.status_final ?? 'APPROVED', qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0, aprovadas: obs.saldo_unidades?.aprovadas ?? 0, em_escolha: obs.saldo_unidades?.em_escolha ?? 0, reprovadas: obs.saldo_unidades?.reprovadas ?? 0 });
             }
             setRodadas(summaries);
-            const totalEmEscolha = summaries.reduce((s, r) => s + r.em_escolha, 0);
-            if (totalEmEscolha > 0) setQtyProduzida(totalEmEscolha);
+            // não pré-preenche qtyProduzida aqui — calculado na etapa 3 com base nos pallets
         };
         load();
     }, [selectedOrderId, orders]);
@@ -213,6 +212,15 @@ export default function FinishingAnalysisView() {
         if (activeStep === 3) {
             setStatus(autoStatus);
             if (!destinoFinal && autoDestino) setDestinoFinal(autoDestino as 'expedicao' | 'revisao_final');
+
+            // Auto-preenche quantidades com base nos pallets
+            if (savedPallets.length > 0 && palletLotSize > 0) {
+                const totalProduzido = savedPallets.length * palletLotSize;
+                const rejeitados = savedPallets.filter(p => p.result === 'REJECTED').length;
+                const emEscolha = rejeitados * palletLotSize;
+                setQtyProduzida(prev => prev === 0 ? totalProduzido : prev);
+                setQtyEscolha(prev => prev === 0 ? emEscolha : prev);
+            }
         }
     }, [activeStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
