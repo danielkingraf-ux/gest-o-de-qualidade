@@ -282,8 +282,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
   const [op, setOp] = useState('');
   const [qtyRevisadas, setQtyRevisadas] = useState(0);
-  const [qtyAprovadas, setQtyAprovadas] = useState(0);
-  const [qtyReprovadas, setQtyReprovadas] = useState(0);
+  const [qtyEscolha, setQtyEscolha] = useState(0);
   const [facaCounts, setFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts());
   const [outrosDescricao, setOutrosDescricao] = useState('');
   const [notes, setNotes] = useState('');
@@ -401,8 +400,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const handleClear = () => {
     setOp('');
     setQtyRevisadas(0);
-    setQtyAprovadas(0);
-    setQtyReprovadas(0);
+    setQtyEscolha(0);
     setFacaCounts(emptyFacaCounts());
     setOutrosDescricao('');
     setNotes('');
@@ -454,8 +452,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
       modulo: 'corte_vinco',
       auxiliar_user_id: user.id,
       qty_revisadas: qtyRevisadas,
-      qty_aprovadas: qtyAprovadas,
-      qty_reprovadas: qtyReprovadas,
+      qty_aprovadas: Math.max(0, qtyRevisadas - qtyEscolha),
+      qty_reprovadas: qtyEscolha,
       defects: defectsPayload,
       faca_defects: Object.keys(facaDefectsPayload).length > 0 ? facaDefectsPayload : null,
       unidades_por_folha: numFacas > 0 ? numFacas : null,
@@ -573,26 +571,25 @@ const AcabamentoCortesVincoView: React.FC = () => {
           <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
             Quantidades
           </h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <QtyCard
-              label="Revisadas"
+              label="Rodadas"
               value={qtyRevisadas}
               onChange={setQtyRevisadas}
               colorClass="border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
             />
             <QtyCard
-              label="Aprovadas"
-              value={qtyAprovadas}
-              onChange={setQtyAprovadas}
-              colorClass="border-emerald-100 dark:border-emerald-900/30 bg-emerald-50 dark:bg-emerald-950/20"
-            />
-            <QtyCard
-              label="Reprovadas"
-              value={qtyReprovadas}
-              onChange={setQtyReprovadas}
-              colorClass="border-rose-100 dark:border-rose-900/30 bg-rose-50 dark:bg-rose-950/20"
+              label="Escolha → Revisão Final"
+              value={qtyEscolha}
+              onChange={setQtyEscolha}
+              colorClass="border-amber-100 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-950/20"
             />
           </div>
+          {qtyRevisadas > 0 && (
+            <p className="mt-2 text-[10px] font-bold text-slate-400">
+              Aprovadas direto: {Math.max(0, qtyRevisadas - qtyEscolha).toLocaleString('pt-BR')} un.
+            </p>
+          )}
         </section>
 
         {/* Seção 3: Defeitos por Posição de Faca */}
@@ -678,7 +675,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
                         )}
                       </div>
                       <p className="text-[10px] text-slate-400">
-                        {fmt(r.qty_revisadas)} rev • {fmt(r.qty_aprovadas)} apr • {fmt(r.qty_reprovadas)} rep
+                        {fmt(r.qty_revisadas)} rodadas • {fmt(r.qty_reprovadas)} escolha
                       </p>
                     </div>
                     <span className="text-[9px] text-slate-400 shrink-0">

@@ -109,7 +109,6 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
       items: [
         { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['administrador', 'analista_qualidade'] },
         { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
-        { path: '/acabamento-escolhas', label: 'Revisão de Escolhas', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
         { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['administrador', 'analista_qualidade'] },
         { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
       ],

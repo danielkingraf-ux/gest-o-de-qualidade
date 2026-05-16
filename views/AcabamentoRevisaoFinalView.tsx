@@ -301,11 +301,17 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   type SaldoConsolidado = {
     qtdSolicitada: number;
-    rodadas: number;
-    aprovadas: number;
-    emEscolha: number;
-    reprovadas: number;
-    refugoAcabamento: number;
+    // Impressão
+    rodadasImpressao: number;
+    escolhaImpressao: number;
+    // Corte e Vinco
+    rodadasCorteVinco: number;
+    escolhaCorteVinco: number;
+    // Produto Acabado
+    rodadasProdutoAcabado: number;
+    escolhaProdutoAcabado: number;
+    // Total escolha para revisão
+    totalEscolha: number;
     operadoresNomes: string[];
     maquinasNomes: string[];
   };
@@ -343,16 +349,17 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     if (trimmed.length < 3) { setSaldoOp(null); return; }
 
     const timer = setTimeout(async () => {
-      const [orderRes, inspRes, acabRes] = await Promise.all([
+      const [orderRes, inspRes, cvRes] = await Promise.all([
         supabase.from('orders').select('qtd_total').eq('op', trimmed).maybeSingle(),
         supabase.from('inspections').select('observations, machine_id').eq('op', trimmed),
         supabase.from('acabamento_registros')
-          .select('modulo, qty_reprovadas')
+          .select('qty_revisadas, qty_reprovadas')
           .eq('op', trimmed)
-          .neq('modulo', 'revisao_final'),
+          .eq('modulo', 'corte_vinco'),
       ]);
 
-      let rodadas = 0, aprovadas = 0, emEscolha = 0, reprovadas = 0;
+      let rodadasImpressao = 0, escolhaImpressao = 0;
+      let rodadasProdutoAcabado = 0, escolhaProdutoAcabado = 0;
       const opIds = new Set<string>();
       const machineIds = new Set<string>();
 
@@ -362,22 +369,28 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
             ? JSON.parse(row.observations)
             : (row.observations ?? {});
           if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
-            rodadas    += Number(obs.saldo_unidades.rodadas)    || 0;
-            aprovadas  += Number(obs.saldo_unidades.aprovadas)  || 0;
-            emEscolha  += Number(obs.saldo_unidades.em_escolha) || 0;
-            reprovadas += Number(obs.saldo_unidades.reprovadas) || 0;
+            rodadasImpressao  += Number(obs.saldo_unidades.rodadas)    || 0;
+            escolhaImpressao  += Number(obs.saldo_unidades.em_escolha) || 0;
+          }
+          if (obs.process_area === 'produto_acabado' && obs.producao) {
+            rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
+            escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
           }
           if (Array.isArray(obs.all_operator_ids)) {
-            (obs.all_operator_ids as string[]).forEach(id => id && opIds.add(id));
+            (obs.all_operator_ids as string[]).forEach((id: string) => id && opIds.add(id));
           }
         } catch { /* ignora */ }
         if (row.machine_id) machineIds.add(row.machine_id);
       }
 
-      const refugoAcabamento = (acabRes.data ?? [])
+      const rodadasCorteVinco = (cvRes.data ?? [])
+        .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
+      const escolhaCorteVinco = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
 
-      // Busca nomes de máquinas e operadores se houver IDs coletados
+      const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaProdutoAcabado;
+
+      // Busca nomes de máquinas e operadores
       const [maqRes, opRes] = await Promise.all([
         machineIds.size > 0
           ? supabase.from('machines').select('id, name').in('id', [...machineIds])
@@ -391,11 +404,21 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       const operadoresNomes = ((opRes.data ?? []) as Array<{ id: string; name: string }>).map(o => o.name);
 
       const qtdSolicitada = orderRes.data?.qtd_total ?? 0;
-      setSaldoOp({ qtdSolicitada, rodadas, aprovadas, emEscolha, reprovadas, refugoAcabamento, operadoresNomes, maquinasNomes });
+      setSaldoOp({
+        qtdSolicitada,
+        rodadasImpressao, escolhaImpressao,
+        rodadasCorteVinco, escolhaCorteVinco,
+        rodadasProdutoAcabado, escolhaProdutoAcabado,
+        totalEscolha,
+        operadoresNomes, maquinasNomes,
+      });
 
-      // Pré-preenche qty_solicitada se ainda não foi preenchida
+      // Pré-preenche qty_solicitada e qty_revisada
       if (qtdSolicitada > 0) {
         setResultado(prev => prev.qty_solicitada === '' ? { ...prev, qty_solicitada: String(qtdSolicitada) } : prev);
+      }
+      if (totalEscolha > 0) {
+        setResultado(prev => prev.qty_revisada === '' ? { ...prev, qty_revisada: String(totalEscolha) } : prev);
       }
     }, 600);
 
@@ -629,12 +652,12 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         <OpTraceBanner op={op} moduloAtual="revisao_final" />
 
         {/* ── Saldo consolidado da OP ───────────────────────────────────────── */}
-        {saldoOp && saldoOp.rodadas > 0 && (
+        {saldoOp && (saldoOp.rodadasImpressao > 0 || saldoOp.rodadasCorteVinco > 0 || saldoOp.rodadasProdutoAcabado > 0) && (
           <section className="mb-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="material-symbols-outlined text-teal-500 text-base">summarize</span>
               <span className="text-[10px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400">
-                Saldo Consolidado da OP
+                Escolhas por Etapa — OP {op.trim().toUpperCase()}
               </span>
               {saldoOp.qtdSolicitada > 0 && (
                 <span className="ml-auto text-[10px] font-black text-teal-600 dark:text-teal-300">
@@ -642,36 +665,65 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[
-                { label: 'Rodadas',     value: saldoOp.rodadas,          color: 'text-slate-700 dark:text-slate-200',  bg: 'bg-white dark:bg-slate-900' },
-                { label: 'Aprovadas',   value: saldoOp.aprovadas,        color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/20' },
-                { label: 'Em Escolha',  value: saldoOp.emEscolha,        color: 'text-amber-700 dark:text-amber-300',  bg: 'bg-amber-50 dark:bg-amber-950/20' },
-                { label: 'Refugo Total',value: saldoOp.reprovadas + saldoOp.refugoAcabamento, color: 'text-rose-700 dark:text-rose-300', bg: 'bg-rose-50 dark:bg-rose-950/20' },
-              ].map(({ label, value, color, bg }) => (
-                <div key={label} className={`rounded-xl p-3 ${bg}`}>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                  <p className={`text-base font-black mt-0.5 ${color}`}>{fmt(value)}</p>
-                </div>
-              ))}
+
+            {/* Tabela por etapa */}
+            <div className="rounded-xl overflow-hidden border border-teal-100 dark:border-teal-900/50 mb-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-teal-100/60 dark:bg-teal-900/30 text-[9px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400">
+                    <th className="px-3 py-2 text-left">Etapa</th>
+                    <th className="px-3 py-2 text-right">Rodadas</th>
+                    <th className="px-3 py-2 text-right text-amber-600">Escolha</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-teal-100 dark:divide-teal-900/30">
+                  {saldoOp.rodadasImpressao > 0 && (
+                    <tr className="bg-white dark:bg-slate-900/50">
+                      <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-indigo-400">print</span>Impressão
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasImpressao)}</td>
+                      <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaImpressao)}</td>
+                    </tr>
+                  )}
+                  {saldoOp.rodadasCorteVinco > 0 && (
+                    <tr className="bg-white dark:bg-slate-900/50">
+                      <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-indigo-400">content_cut</span>Corte e Vinco
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasCorteVinco)}</td>
+                      <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaCorteVinco)}</td>
+                    </tr>
+                  )}
+                  {saldoOp.rodadasProdutoAcabado > 0 && (
+                    <tr className="bg-white dark:bg-slate-900/50">
+                      <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-indigo-400">inventory_2</span>Produto Acabado
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasProdutoAcabado)}</td>
+                      <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaProdutoAcabado)}</td>
+                    </tr>
+                  )}
+                  <tr className="bg-amber-50 dark:bg-amber-950/20 font-black">
+                    <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-amber-700 dark:text-amber-400">Total para revisão</td>
+                    <td className="px-3 py-2"></td>
+                    <td className="px-3 py-2 text-right text-lg text-amber-700 dark:text-amber-300">{fmt(saldoOp.totalEscolha)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            {saldoOp.refugoAcabamento > 0 && (
-              <p className="mt-2 text-[10px] font-bold text-slate-400">
-                Refugo total = {fmt(saldoOp.reprovadas)} (impressão) + {fmt(saldoOp.refugoAcabamento)} (acabamento)
-              </p>
-            )}
+
+            {/* Máquinas e operadores */}
             {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0) && (
-              <div className="mt-3 pt-3 border-t border-teal-100 dark:border-teal-900/40 flex flex-col gap-2">
+              <div className="pt-3 border-t border-teal-100 dark:border-teal-900/40 flex flex-col gap-2">
                 {saldoOp.maquinasNomes.length > 0 && (
                   <div className="flex items-start gap-2">
                     <span className="material-symbols-outlined text-teal-400 text-sm mt-0.5 shrink-0">precision_manufacturing</span>
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Máquinas Utilizadas</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Máquinas</p>
                       <div className="flex flex-wrap gap-1">
                         {saldoOp.maquinasNomes.map(m => (
-                          <span key={m} className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black">
-                            {m}
-                          </span>
+                          <span key={m} className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black">{m}</span>
                         ))}
                       </div>
                     </div>
@@ -681,12 +733,10 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                   <div className="flex items-start gap-2">
                     <span className="material-symbols-outlined text-teal-400 text-sm mt-0.5 shrink-0">group</span>
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Operadores (Impressão)</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Operadores</p>
                       <div className="flex flex-wrap gap-1">
                         {saldoOp.operadoresNomes.map(o => (
-                          <span key={o} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold">
-                            {o}
-                          </span>
+                          <span key={o} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold">{o}</span>
                         ))}
                       </div>
                     </div>
