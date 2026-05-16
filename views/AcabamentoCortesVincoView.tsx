@@ -295,6 +295,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [opList, setOpList] = useState<string[]>([]);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [saldoInspecao, setSaldoInspecao] = useState<{ em_escolha: number; rodadas: number } | null>(null);
 
   // Carrega lista de OPs
   useEffect(() => {
@@ -303,16 +304,19 @@ const AcabamentoCortesVincoView: React.FC = () => {
     });
   }, []);
 
-  // Carrega detalhes da OP ao digitar — pré-preenche manualFacas mas permite override
+  // Carrega detalhes da OP ao digitar — pré-preenche facas e saldo do processo inicial
   useEffect(() => {
     if (!op.trim()) {
       setOpFound(null);
+      setSaldoInspecao(null);
       return;
     }
+    const opUpper = op.trim().toUpperCase();
+
     supabase
       .from('orders')
       .select('unidades_por_folha')
-      .eq('op', op.trim().toUpperCase())
+      .eq('op', opUpper)
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -323,6 +327,46 @@ const AcabamentoCortesVincoView: React.FC = () => {
           setOpFound(false);
         }
       });
+
+    // Saldo líquido = em_escolha das inspeções − o que já foi registrado neste módulo
+    Promise.all([
+      supabase
+        .from('inspections')
+        .select('observations')
+        .eq('op', opUpper)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('acabamento_registros')
+        .select('qty_revisadas')
+        .eq('op', opUpper)
+        .eq('modulo', 'corte_vinco'),
+    ]).then(([inspRes, cvRes]) => {
+      let emEscolha = 0;
+      let rodadas = 0;
+      for (const row of (inspRes.data ?? [])) {
+        try {
+          const obs = typeof row.observations === 'string'
+            ? JSON.parse(row.observations)
+            : (row.observations ?? {});
+          if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+            emEscolha += Number(obs.saldo_unidades.em_escolha) || 0;
+            rodadas   += Number(obs.saldo_unidades.rodadas) || 0;
+          }
+        } catch { /* ignora registro malformado */ }
+      }
+      // Desconta o que já foi processado neste módulo para evitar duplicidade
+      const jaProcessado = (cvRes.data ?? []).reduce(
+        (s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0
+      );
+      const liquido = Math.max(0, emEscolha - jaProcessado);
+      if (emEscolha > 0 || rodadas > 0) {
+        setSaldoInspecao({ em_escolha: liquido, rodadas });
+        setQtyRevisadas(prev => prev === 0 ? liquido : prev);
+      } else {
+        setSaldoInspecao(null);
+      }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op]);
 
@@ -365,6 +409,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
     setNumFacas(0);
     setManualFacas(0);
     setOpFound(null);
+    setSaldoInspecao(null);
   };
 
   const handleSave = async () => {
@@ -502,6 +547,26 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
         {/* Rastreio da OP */}
         <OpTraceBanner op={op} moduloAtual="corte_vinco" />
+
+        {/* Banner: saldo recebido do processo inicial */}
+        {saldoInspecao && (
+          <div className="mb-4 flex items-start gap-2 px-3 py-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800">
+            <span className="material-symbols-outlined text-indigo-500 text-sm mt-0.5">assignment_turned_in</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                Saldo recebido do Processo de Impressão
+              </p>
+              <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                {fmt(saldoInspecao.em_escolha)} unidades em escolha
+                {saldoInspecao.rodadas > 0 && (
+                  <span className="font-normal text-indigo-500">
+                    {' '}de {fmt(saldoInspecao.rodadas)} rodadas
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Seção 2: Quantidades */}
         <section className="mb-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">

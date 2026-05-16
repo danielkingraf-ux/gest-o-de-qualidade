@@ -92,29 +92,50 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   const { profile } = useUser();
   const normalizedRole = normalizeRole(profile?.role);
 
-  const allMenuItems = [
-    { path: '/ocorrencias-op', label: 'Ocorrências da OP', icon: 'forum', roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'direcao', 'consulta_auditoria'] },
-    { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['administrador', 'direcao', 'supervisao'] },
-    { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['administrador', 'analista_qualidade'] },
-    { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['administrador', 'analista_qualidade'] },
-    { path: '/quality-panel', label: 'Painel de Qualidade', icon: 'query_stats', roles: ['administrador', 'supervisao'] },
-    { path: '/rastreabilidade', label: 'Rastreabilidade', icon: 'manage_search', roles: ['administrador', 'direcao', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'consulta_auditoria'] },
-    { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['administrador', 'direcao', 'supervisao', 'consulta_auditoria'] },
-    { path: 'chat', label: 'Ocorrências', icon: 'forum', badge: unreadCount, isAction: true, roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'] },
-    { path: '/records', label: 'Registros', icon: 'analytics', roles: ['administrador', 'supervisao', 'analista_qualidade', 'consulta_auditoria'] },
-    { path: '/escolha-revisao', label: 'Controle Escolha/Revisão', icon: 'playlist_add_check', roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'direcao', 'consulta_auditoria'] },
-    { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['administrador', 'analista_qualidade', 'expedicao'] },
-    { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['administrador', 'supervisao'] },
-    { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['administrador'] },
-    { path: '/docs', label: 'Documentação', icon: 'description', roles: ['administrador', 'consulta_auditoria', 'analista_qualidade', 'supervisao'] },
-    // ── Acabamento (auxiliar) ────────────────────────────────────────────────
-    { path: '/acabamento-escolhas', label: 'Revisão de Escolhas', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
-    { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
-    { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+  type MenuItem = { path: string; label: string; icon: string; roles: string[]; badge?: number; isAction?: boolean };
+  type MenuGroup = { label: string; items: MenuItem[] };
+
+  const allGroups: MenuGroup[] = [
+    {
+      label: 'Visão Geral',
+      items: [
+        { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['administrador', 'direcao', 'supervisao'] },
+        { path: '/quality-panel', label: 'Painel de Qualidade', icon: 'query_stats', roles: ['administrador', 'supervisao'] },
+        { path: '/rastreabilidade', label: 'Rastreabilidade', icon: 'manage_search', roles: ['administrador', 'direcao', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'consulta_auditoria'] },
+      ],
+    },
+    {
+      label: 'Fluxo da OP',
+      items: [
+        { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['administrador', 'analista_qualidade'] },
+        { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/acabamento-escolhas', label: 'Revisão de Escolhas', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['administrador', 'analista_qualidade'] },
+        { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+      ],
+    },
+    {
+      label: 'Operacional',
+      items: [
+        { path: 'chat', label: 'Ocorrências', icon: 'forum', badge: unreadCount, isAction: true, roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'] },
+        { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['administrador', 'analista_qualidade', 'expedicao'] },
+        { path: '/reports', label: 'Relatórios', icon: 'insert_chart', roles: ['administrador', 'direcao', 'supervisao', 'consulta_auditoria'] },
+        { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['administrador', 'supervisao'] },
+      ],
+    },
+    {
+      label: 'Sistema',
+      items: [
+        { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['administrador'] },
+      ],
+    },
   ];
 
   const userRole = profile?.role ?? 'consulta_auditoria';
-  const menuItems = allMenuItems.filter(item => item.roles.includes(normalizeRole(userRole)));
+  const visibleGroups = allGroups
+    .map(g => ({ ...g, items: g.items.filter(item => item.roles.includes(normalizeRole(userRole))) }))
+    .filter(g => g.items.length > 0);
+  const menuItems = visibleGroups.flatMap(g => g.items);
 
   const handleLogout = async () => {
     const { error } = await authService.signOut();
@@ -148,57 +169,63 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
           )}
         </div>
         <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto no-scrollbar">
-          {menuItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            const badgeCount = (item as { badge?: number }).badge;
-
-            return item.isAction ? (
-              <button
-                key={item.path}
-                onClick={() => {
-                  onOpenChat();
-                  onCloseMobile();
-                }}
-                aria-label={item.label}
-                data-tooltip={isCollapsed ? item.label : ''}
-                data-tooltip-side="right"
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center' : ''}`}
-              >
-                <div className="relative flex items-center justify-center">
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  {badgeCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
-                      {badgeCount > 9 ? '9+' : badgeCount}
-                    </span>
-                  )}
-                </div>
-                {!isCollapsed && <p className={`text-sm font-medium`}>{item.label}</p>}
-              </button>
-            ) : (
-              <Link
-                key={item.path}
-                to={item.path}
-                aria-label={item.label}
-                data-tooltip={isCollapsed ? item.label : ''}
-                data-tooltip-side="right"
-                onClick={onCloseMobile}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''} ${isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-              >
-                <div className="relative flex items-center justify-center">
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  {badgeCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white animate-bounce-slow">
-                      {badgeCount > 9 ? '9+' : badgeCount}
-                    </span>
-                  )}
-                </div>
-                {!isCollapsed && <p className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</p>}
-              </Link>
-            );
-          })}
+          {visibleGroups.map((group, gi) => (
+            <div key={group.label} className={gi > 0 ? 'mt-3' : ''}>
+              {/* Cabeçalho do grupo */}
+              {!isCollapsed ? (
+                <p className="px-3 mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-600">
+                  {group.label}
+                </p>
+              ) : (
+                gi > 0 && <div className="mx-3 mb-2 border-t border-slate-100 dark:border-slate-800" />
+              )}
+              {/* Itens do grupo */}
+              {group.items.map((item) => {
+                const isActive = location.pathname === item.path;
+                const badgeCount = item.badge;
+                return item.isAction ? (
+                  <button
+                    key={item.path}
+                    onClick={() => { onOpenChat(); onCloseMobile(); }}
+                    aria-label={item.label}
+                    data-tooltip={isCollapsed ? item.label : ''}
+                    data-tooltip-side="right"
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center' : ''}`}
+                  >
+                    <div className="relative flex items-center justify-center">
+                      <span className="material-symbols-outlined">{item.icon}</span>
+                      {badgeCount != null && badgeCount > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                          {badgeCount > 9 ? '9+' : badgeCount}
+                        </span>
+                      )}
+                    </div>
+                    {!isCollapsed && <p className="text-sm font-medium">{item.label}</p>}
+                  </button>
+                ) : (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    aria-label={item.label}
+                    data-tooltip={isCollapsed ? item.label : ''}
+                    data-tooltip-side="right"
+                    onClick={onCloseMobile}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''} ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  >
+                    <div className="relative flex items-center justify-center">
+                      <span className="material-symbols-outlined">{item.icon}</span>
+                      {badgeCount != null && badgeCount > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white animate-bounce-slow">
+                          {badgeCount > 9 ? '9+' : badgeCount}
+                        </span>
+                      )}
+                    </div>
+                    {!isCollapsed && <p className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</p>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
       <div className="mt-4 flex shrink-0 flex-col gap-4 border-t border-slate-200 dark:border-slate-800 pt-4">

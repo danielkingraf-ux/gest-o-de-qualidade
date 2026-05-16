@@ -194,9 +194,9 @@ export default function FinishingAnalysisView() {
 
     // ─── Histórico de rodadas ─────────────────────────────────────────────
     useEffect(() => {
-        if (!selectedOrderId) { setRodadas([]); return; }
+        if (!selectedOrderId) { setRodadas([]); setQtyProduzida(0); return; }
         const order = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
-        if (!order) { setRodadas([]); return; }
+        if (!order) { setRodadas([]); setQtyProduzida(0); return; }
         const load = async () => {
             setLoadingRodadas(true);
             const { data } = await supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true });
@@ -209,6 +209,9 @@ export default function FinishingAnalysisView() {
             }
             setRodadas(summaries);
             setLoadingRodadas(false);
+            // Pré-preenche a quantidade produzida com o total em_escolha da impressão
+            const totalEmEscolha = summaries.reduce((s, r) => s + r.em_escolha, 0);
+            if (totalEmEscolha > 0) setQtyProduzida(totalEmEscolha);
         };
         load();
     }, [selectedOrderId, orders]);

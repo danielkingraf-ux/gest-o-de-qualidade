@@ -77,6 +77,8 @@ const AcabamentoEscolhasView: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [saldoAnterior, setSaldoAnterior] = useState<{ em_escolha: number; rodadas: number } | null>(null);
+
   const [opList, setOpList] = useState<string[]>([]);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
@@ -86,6 +88,75 @@ const AcabamentoEscolhasView: React.FC = () => {
       if (data) setOpList(data.map((r: { op: string }) => r.op));
     });
   }, []);
+
+  // Busca saldo líquido da etapa anterior:
+  // Prioridade 1 — qty_aprovadas do Corte e Vinco (fluxo normal)
+  // Fallback     — em_escolha da impressão (se não passou por corte e vinco)
+  useEffect(() => {
+    const opUpper = op.trim().toUpperCase();
+    if (!opUpper) { setSaldoAnterior(null); return; }
+    const timer = setTimeout(() => {
+      Promise.all([
+        supabase
+          .from('acabamento_registros')
+          .select('qty_aprovadas, qty_revisadas')
+          .eq('op', opUpper)
+          .eq('modulo', 'corte_vinco'),
+        supabase
+          .from('acabamento_registros')
+          .select('qty_revisadas')
+          .eq('op', opUpper)
+          .eq('modulo', 'escolhas'),
+        supabase
+          .from('inspections')
+          .select('observations')
+          .eq('op', opUpper)
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ]).then(([cvRes, escRes, inspRes]) => {
+        const jaProcessado = (escRes.data ?? []).reduce(
+          (s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0
+        );
+
+        // Prioridade: saldo aprovado do Corte e Vinco
+        const cvAprovadas = (cvRes.data ?? []).reduce(
+          (s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0
+        );
+        const cvRevisadas = (cvRes.data ?? []).reduce(
+          (s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0
+        );
+
+        if (cvRevisadas > 0) {
+          const liquido = Math.max(0, cvAprovadas - jaProcessado);
+          setSaldoAnterior({ em_escolha: liquido, rodadas: cvRevisadas });
+          setQtyRevisadas(prev => prev === 0 ? liquido : prev);
+          return;
+        }
+
+        // Fallback: em_escolha da impressão
+        let emEscolha = 0, rodadas = 0;
+        for (const row of (inspRes.data ?? [])) {
+          try {
+            const obs = typeof row.observations === 'string'
+              ? JSON.parse(row.observations)
+              : (row.observations ?? {});
+            if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+              emEscolha += Number(obs.saldo_unidades.em_escolha) || 0;
+              rodadas   += Number(obs.saldo_unidades.rodadas) || 0;
+            }
+          } catch { /* ignora */ }
+        }
+        const liquido = Math.max(0, emEscolha - jaProcessado);
+        if (emEscolha > 0 || rodadas > 0) {
+          setSaldoAnterior({ em_escolha: liquido, rodadas });
+          setQtyRevisadas(prev => prev === 0 ? liquido : prev);
+        } else {
+          setSaldoAnterior(null);
+        }
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [op]);
 
   const loadRecent = useCallback(async () => {
     setLoadingRecent(true);
@@ -117,6 +188,7 @@ const AcabamentoEscolhasView: React.FC = () => {
     setDefects(emptyDefects());
     setOutrosDescricao('');
     setNotes('');
+    setSaldoAnterior(null);
   };
 
   const handleSave = async () => {
@@ -215,6 +287,24 @@ const AcabamentoEscolhasView: React.FC = () => {
 
         {/* Rastreio da OP */}
         <OpTraceBanner op={op} moduloAtual="escolhas" />
+
+        {/* Banner: saldo recebido do processo anterior */}
+        {saldoAnterior !== null && (
+          <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
+            <span className="material-symbols-outlined text-amber-500 text-base mt-0.5">arrow_downward</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-black text-amber-700 dark:text-amber-300">
+                Saldo recebido do Corte e Vinco
+              </p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                {saldoAnterior.em_escolha.toLocaleString('pt-BR')} unidades aprovadas disponíveis para colagem
+                {saldoAnterior.rodadas > 0 && (
+                  <> · {saldoAnterior.rodadas.toLocaleString('pt-BR')} revisadas no corte</>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Seção 2: Quantidades */}
         <section className="mb-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">

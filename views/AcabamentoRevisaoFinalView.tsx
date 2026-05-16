@@ -299,6 +299,18 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const [recentRecords, setRecentRecords] = useState<DbRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
 
+  type SaldoConsolidado = {
+    qtdSolicitada: number;
+    rodadas: number;
+    aprovadas: number;
+    emEscolha: number;
+    reprovadas: number;
+    refugoAcabamento: number;
+    operadoresNomes: string[];
+    maquinasNomes: string[];
+  };
+  const [saldoOp, setSaldoOp] = useState<SaldoConsolidado | null>(null);
+
   // ── Fetch initial data ──────────────────────────────────────────────────────
   useEffect(() => {
     supabase.from('orders').select('op').order('op').then(({ data }) => {
@@ -325,6 +337,72 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   useEffect(() => { loadRecent(); }, [loadRecent]);
 
+  // ── Consolida saldo da OP ao digitar ────────────────────────────────────────
+  useEffect(() => {
+    const trimmed = op.trim().toUpperCase();
+    if (trimmed.length < 3) { setSaldoOp(null); return; }
+
+    const timer = setTimeout(async () => {
+      const [orderRes, inspRes, acabRes] = await Promise.all([
+        supabase.from('orders').select('qtd_total').eq('op', trimmed).maybeSingle(),
+        supabase.from('inspections').select('observations, machine_id').eq('op', trimmed),
+        supabase.from('acabamento_registros')
+          .select('modulo, qty_reprovadas')
+          .eq('op', trimmed)
+          .neq('modulo', 'revisao_final'),
+      ]);
+
+      let rodadas = 0, aprovadas = 0, emEscolha = 0, reprovadas = 0;
+      const opIds = new Set<string>();
+      const machineIds = new Set<string>();
+
+      for (const row of (inspRes.data ?? []) as Array<{ observations: string; machine_id: string | null }>) {
+        try {
+          const obs = typeof row.observations === 'string'
+            ? JSON.parse(row.observations)
+            : (row.observations ?? {});
+          if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+            rodadas    += Number(obs.saldo_unidades.rodadas)    || 0;
+            aprovadas  += Number(obs.saldo_unidades.aprovadas)  || 0;
+            emEscolha  += Number(obs.saldo_unidades.em_escolha) || 0;
+            reprovadas += Number(obs.saldo_unidades.reprovadas) || 0;
+          }
+          if (Array.isArray(obs.all_operator_ids)) {
+            (obs.all_operator_ids as string[]).forEach(id => id && opIds.add(id));
+          }
+        } catch { /* ignora */ }
+        if (row.machine_id) machineIds.add(row.machine_id);
+      }
+
+      const refugoAcabamento = (acabRes.data ?? [])
+        .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
+
+      // Busca nomes de máquinas e operadores se houver IDs coletados
+      const [maqRes, opRes] = await Promise.all([
+        machineIds.size > 0
+          ? supabase.from('machines').select('id, name').in('id', [...machineIds])
+          : Promise.resolve({ data: [] }),
+        opIds.size > 0
+          ? supabase.from('operators').select('id, name').in('id', [...opIds])
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const maquinasNomes = ((maqRes.data ?? []) as Array<{ id: string; name: string }>).map(m => m.name);
+      const operadoresNomes = ((opRes.data ?? []) as Array<{ id: string; name: string }>).map(o => o.name);
+
+      const qtdSolicitada = orderRes.data?.qtd_total ?? 0;
+      setSaldoOp({ qtdSolicitada, rodadas, aprovadas, emEscolha, reprovadas, refugoAcabamento, operadoresNomes, maquinasNomes });
+
+      // Pré-preenche qty_solicitada se ainda não foi preenchida
+      if (qtdSolicitada > 0) {
+        setResultado(prev => prev.qty_solicitada === '' ? { ...prev, qty_solicitada: String(qtdSolicitada) } : prev);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [op]);
+
   // ── Computed ────────────────────────────────────────────────────────────────
   const qtySolicitada = toInt(resultado.qty_solicitada);
   const qtyBoa = toInt(resultado.qty_boa);
@@ -341,7 +419,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const handleClear = () => {
     setOp(''); setProblemas([]); setResultado(mkResultado());
     setPeriodos([]); setStatusFinal(''); setNotes('');
-    setEditingId(null); setDataInicio(null);
+    setEditingId(null); setDataInicio(null); setSaldoOp(null);
   };
 
   const restoreFromDefects = (def: Record<string, unknown>, record: DbRecord) => {
@@ -550,6 +628,75 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         {/* Rastreio da OP */}
         <OpTraceBanner op={op} moduloAtual="revisao_final" />
 
+        {/* ── Saldo consolidado da OP ───────────────────────────────────────── */}
+        {saldoOp && saldoOp.rodadas > 0 && (
+          <section className="mb-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-teal-500 text-base">summarize</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400">
+                Saldo Consolidado da OP
+              </span>
+              {saldoOp.qtdSolicitada > 0 && (
+                <span className="ml-auto text-[10px] font-black text-teal-600 dark:text-teal-300">
+                  Pedido: {fmt(saldoOp.qtdSolicitada)} un.
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                { label: 'Rodadas',     value: saldoOp.rodadas,          color: 'text-slate-700 dark:text-slate-200',  bg: 'bg-white dark:bg-slate-900' },
+                { label: 'Aprovadas',   value: saldoOp.aprovadas,        color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/20' },
+                { label: 'Em Escolha',  value: saldoOp.emEscolha,        color: 'text-amber-700 dark:text-amber-300',  bg: 'bg-amber-50 dark:bg-amber-950/20' },
+                { label: 'Refugo Total',value: saldoOp.reprovadas + saldoOp.refugoAcabamento, color: 'text-rose-700 dark:text-rose-300', bg: 'bg-rose-50 dark:bg-rose-950/20' },
+              ].map(({ label, value, color, bg }) => (
+                <div key={label} className={`rounded-xl p-3 ${bg}`}>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                  <p className={`text-base font-black mt-0.5 ${color}`}>{fmt(value)}</p>
+                </div>
+              ))}
+            </div>
+            {saldoOp.refugoAcabamento > 0 && (
+              <p className="mt-2 text-[10px] font-bold text-slate-400">
+                Refugo total = {fmt(saldoOp.reprovadas)} (impressão) + {fmt(saldoOp.refugoAcabamento)} (acabamento)
+              </p>
+            )}
+            {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0) && (
+              <div className="mt-3 pt-3 border-t border-teal-100 dark:border-teal-900/40 flex flex-col gap-2">
+                {saldoOp.maquinasNomes.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-teal-400 text-sm mt-0.5 shrink-0">precision_manufacturing</span>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Máquinas Utilizadas</p>
+                      <div className="flex flex-wrap gap-1">
+                        {saldoOp.maquinasNomes.map(m => (
+                          <span key={m} className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {saldoOp.operadoresNomes.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-teal-400 text-sm mt-0.5 shrink-0">group</span>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Operadores (Impressão)</p>
+                      <div className="flex flex-wrap gap-1">
+                        {saldoOp.operadoresNomes.map(o => (
+                          <span key={o} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold">
+                            {o}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* ── 2. Problemas identificados ────────────────────────────────────── */}
         <section className="mb-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
           <SectionTitle icon="report_problem" title="Problemas Identificados na OP"
@@ -619,6 +766,21 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                   </span>
                 </div>
               </div>
+
+              {/* Alerta de reimpressão */}
+              {saldo < 0 && (
+                <div className="mt-3 pt-3 border-t border-rose-200 dark:border-rose-800 flex items-start gap-3">
+                  <span className="material-symbols-outlined text-rose-500 text-base mt-0.5 shrink-0">print</span>
+                  <div>
+                    <p className="text-xs font-black text-rose-700 dark:text-rose-300 uppercase tracking-wide">
+                      Reimprimir {fmt(Math.abs(saldo))} unidades
+                    </p>
+                    <p className="text-[11px] text-rose-500 dark:text-rose-400 mt-0.5">
+                      O pedido exige {fmt(qtySolicitada)} un. · foram entregues {fmt(qtyBoa)} un. · faltam {fmt(Math.abs(saldo))} un. para completar o lote.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

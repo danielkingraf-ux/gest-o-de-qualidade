@@ -470,6 +470,18 @@ export default function InspectionView() {
     });
   }, [totalRodadoUnidades, folhasData.unidades_escolha, folhasData.unidades_reprovadas]);
 
+  // Quando o operador informa as folhas rodadas e ainda não preencheu pilhas_verificadas,
+  // assumir que todas as pilhas foram verificadas no processo de impressão.
+  useEffect(() => {
+    if (productionMetrics.printedSheets > 0 && folhasData.pilhas_verificadas === 0) {
+      setFolhasData(prev => ({
+        ...prev,
+        pilhas_verificadas: Math.ceil(productionMetrics.printedSheets / Math.max(1, folhasPorPilha)),
+      }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productionMetrics.printedSheets]);
+
   const updateProductionMetric = (field: keyof ProductionMetrics, value: number) => {
     setProductionMetrics(prev => ({ ...prev, [field]: Math.max(0, Number(value) || 0) }));
   };

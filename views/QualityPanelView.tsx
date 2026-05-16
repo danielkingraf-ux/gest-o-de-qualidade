@@ -142,12 +142,18 @@ export default function QualityPanelView() {
         filtered.forEach(r => {
             registros++;
             opsSet.add(r.op);
-            produzida += r.qtyProduzida;
-            escolha   += r.qtyEscolha;
-            refugo    += r.qtyRefugo;
+            // Quando exibindo ambas as áreas, não somar produto acabado para produzida e escolha:
+            // - qtyProduzida: a OP tem UMA quantidade (a do processo inicial)
+            // - qtyEscolha: o em_escolha do acabado é subconjunto do em_escolha da impressão
+            // - qtyRefugo: é aditivo — diferentes peças refugadas em etapas distintas
+            if (areaTab !== 'all' || r.area === 'inicial') {
+                produzida += r.qtyProduzida;
+                escolha   += r.qtyEscolha;
+            }
+            refugo += r.qtyRefugo;
         });
         return { laudos: opsSet.size, registros, produzida, escolha, refugo };
-    }, [filtered]);
+    }, [filtered, areaTab]);
 
     // ── Ranking de defeitos ─────────────────────────────────────────────────
     const defectRanking = useMemo(() => {

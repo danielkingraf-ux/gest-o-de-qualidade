@@ -398,9 +398,20 @@ export default function DashboardView() {
     }, [areaFilter, normalized, opFilter, period, selectedDate]);
 
     const analytics = useMemo(() => {
-        const total = summarize(filtered);
         const initial = summarize(filtered.filter((item) => item.area === 'initial'));
         const final = summarize(filtered.filter((item) => item.area === 'final'));
+
+        // Folhas rodadas representa a entrada da OP (quantidade da máquina, processo inicial).
+        // Não somar com produto acabado — é a mesma OP em estágio diferente.
+        const total = summarize(filtered);
+        if (areaFilter === 'all') {
+            total.folhasRodadas = initial.folhasRodadas;
+            total.folhasVerificadas = initial.folhasVerificadas;
+            total.folhasAprovadas = initial.folhasAprovadas;
+            total.saldoSemRevisao = Math.max(0, total.folhasRodadas - initial.folhasVerificadas);
+            total.taxaAprovacao = initial.taxaAprovacao;
+            total.taxaReprovacao = initial.taxaReprovacao;
+        }
 
         const defectMap = new Map<string, number>();
         const operatorMap = new Map<string, { name: string; defects: number; inspections: number }>();
