@@ -12,12 +12,14 @@ type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users' | 'nqa';
 const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
     { value: 'producao_inicial', label: 'Produção inicial' },
     { value: 'produto_acabado', label: 'Produto acabado' },
+    { value: 'corte_vinco', label: 'Corte e Vinco' },
     { value: 'ambos', label: 'Ambos' },
 ];
 
 const AREA_BADGES: Record<ProductionArea, { label: string; className: string }> = {
     producao_inicial: { label: 'Produção inicial', className: 'bg-blue-50 text-blue-600 border border-blue-100' },
     produto_acabado: { label: 'Produto acabado', className: 'bg-indigo-50 text-indigo-600 border border-indigo-100' },
+    corte_vinco: { label: 'Corte e Vinco', className: 'bg-emerald-50 text-emerald-600 border border-emerald-100' },
     ambos: { label: 'Ambos', className: 'bg-amber-50 text-amber-600 border border-amber-100' },
 };
 

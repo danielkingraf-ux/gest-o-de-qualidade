@@ -17,6 +17,9 @@ type RecentRecord = {
   defects: Record<string, number>;
 };
 
+type OperatorOption = { id: string; name: string };
+type MachineOption = { id: string; name: string; code: string };
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFECTS = [
   { key: 'vinco_estourado', label: 'Vinco Estourado', icon: 'broken_image' },
@@ -281,6 +284,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const { profile } = useUser();
 
   const [op, setOp] = useState('');
+  const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
+  const [selectedMachineId, setSelectedMachineId] = useState('');
   const [qtyRevisadas, setQtyRevisadas] = useState(0);
   const [qtyEscolha, setQtyEscolha] = useState(0);
   const [facaCounts, setFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts());
@@ -292,15 +297,31 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const [opList, setOpList] = useState<string[]>([]);
+  const [operators, setOperators] = useState<OperatorOption[]>([]);
+  const [machines, setMachines] = useState<MachineOption[]>([]);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [saldoInspecao, setSaldoInspecao] = useState<{ em_escolha: number; rodadas: number } | null>(null);
 
-  // Carrega lista de OPs
+  // Carrega lista de OPs, operadores e máquinas
   useEffect(() => {
     supabase.from('orders').select('op').order('op').then(({ data }) => {
       if (data) setOpList(data.map((r: { op: string }) => r.op));
     });
+    supabase
+      .from('operators')
+      .select('id, name, area')
+      .eq('active', true)
+      .in('area', ['corte_vinco', 'ambos'])
+      .order('name')
+      .then(({ data }) => { if (data) setOperators(data as OperatorOption[]); });
+    supabase
+      .from('machines')
+      .select('id, name, code, area')
+      .eq('active', true)
+      .in('area', ['corte_vinco', 'ambos'])
+      .order('name')
+      .then(({ data }) => { if (data) setMachines(data as MachineOption[]); });
   }, []);
 
   // Carrega detalhes da OP ao digitar — pré-preenche facas e saldo do processo inicial
@@ -399,6 +420,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
   const handleClear = () => {
     setOp('');
+    setSelectedOperatorIds([]);
+    setSelectedMachineId('');
     setQtyRevisadas(0);
     setQtyEscolha(0);
     setFacaCounts(emptyFacaCounts());
@@ -451,6 +474,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
       op: op.trim().toUpperCase(),
       modulo: 'corte_vinco',
       auxiliar_user_id: user.id,
+      operator_ids: selectedOperatorIds.length > 0 ? selectedOperatorIds : null,
+      machine_id: selectedMachineId || null,
       qty_revisadas: qtyRevisadas,
       qty_aprovadas: Math.max(0, qtyRevisadas - qtyEscolha),
       qty_reprovadas: qtyEscolha,
@@ -518,6 +543,54 @@ const AcabamentoCortesVincoView: React.FC = () => {
           <datalist id="cv-op-list">
             {opList.map(o => <option key={o} value={o} />)}
           </datalist>
+
+          {/* Máquina */}
+          <div className="mt-3">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
+            <select
+              value={selectedMachineId}
+              onChange={e => setSelectedMachineId(e.target.value)}
+              className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+            >
+              <option value="">Selecione a máquina</option>
+              {machines.map(m => (
+                <option key={m.id} value={m.id}>{m.name} {m.code ? `(${m.code})` : ''}</option>
+              ))}
+            </select>
+            {machines.length === 0 && (
+              <p className="text-[10px] text-amber-500 mt-1">Nenhuma máquina cadastrada para Corte e Vinco. Cadastre em Administração.</p>
+            )}
+          </div>
+
+          {/* Operadores */}
+          <div className="mt-3">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operadores</label>
+            {operators.length === 0 ? (
+              <p className="text-[10px] text-amber-500 mt-1">Nenhum operador cadastrado para Corte e Vinco. Cadastre em Administração.</p>
+            ) : (
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {operators.map(o => {
+                  const selected = selectedOperatorIds.includes(o.id);
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setSelectedOperatorIds(prev =>
+                        selected ? prev.filter(id => id !== o.id) : [...prev, o.id]
+                      )}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
+                        selected
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
+                      }`}
+                    >
+                      {o.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div className="mt-3">
             <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">

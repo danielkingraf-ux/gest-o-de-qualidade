@@ -81,7 +81,7 @@ export interface Operator {
 }
 
 export type AnalystTipo = 'impressao' | 'acabamento' | 'ambos';
-export type ProductionArea = 'producao_inicial' | 'produto_acabado' | 'ambos';
+export type ProductionArea = 'producao_inicial' | 'produto_acabado' | 'corte_vinco' | 'ambos';
 
 export interface Analyst {
   id: string;
