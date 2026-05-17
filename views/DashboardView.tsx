@@ -127,13 +127,12 @@ function StatCard({
 }: {
     label: string;
     value: string;
-    tone?: 'slate' | 'indigo' | 'amber' | 'rose';
+    tone?: 'slate' | 'amber' | 'rose';
 }) {
     const valueColors: Record<string, string> = {
         slate: 'text-slate-900 dark:text-white',
-        indigo: 'text-indigo-700 dark:text-indigo-300',
-        amber: 'text-amber-700 dark:text-amber-300',
-        rose: 'text-rose-700 dark:text-rose-300',
+        amber: 'text-amber-600 dark:text-amber-400',
+        rose:  'text-red-600   dark:text-red-400',
     };
 
     return (
@@ -147,104 +146,69 @@ function StatCard({
 function ProcessCard({
     name,
     icon,
-    color,
     metrics,
 }: {
     name: string;
     icon: string;
-    color: 'indigo' | 'emerald' | 'violet' | 'rose';
+    color?: string; // kept for call-site compatibility, ignored
     metrics: ProcessMetrics;
 }) {
-    const colorMap = {
-        indigo: {
-            badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300',
-            icon: 'text-indigo-600 dark:text-indigo-400',
-            bar: { green: 'bg-indigo-500', amber: 'bg-amber-400', rose: 'bg-rose-500' },
-            border: 'border-indigo-200 dark:border-indigo-800',
-        },
-        emerald: {
-            badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
-            icon: 'text-emerald-600 dark:text-emerald-400',
-            bar: { green: 'bg-emerald-500', amber: 'bg-amber-400', rose: 'bg-rose-500' },
-            border: 'border-emerald-200 dark:border-emerald-800',
-        },
-        violet: {
-            badge: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
-            icon: 'text-violet-600 dark:text-violet-400',
-            bar: { green: 'bg-violet-500', amber: 'bg-amber-400', rose: 'bg-rose-500' },
-            border: 'border-violet-200 dark:border-violet-800',
-        },
-        rose: {
-            badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300',
-            icon: 'text-rose-600 dark:text-rose-400',
-            bar: { green: 'bg-rose-400', amber: 'bg-amber-400', rose: 'bg-rose-600' },
-            border: 'border-rose-200 dark:border-rose-800',
-        },
-    };
-
-    const c = colorMap[color];
     const { rodadas, aprovadas, escolha, reprovadas, laudos, ops } = metrics;
 
     const pctAprov = rodadas > 0 ? (aprovadas / rodadas) * 100 : 0;
-    const pctEsc = rodadas > 0 ? (escolha / rodadas) * 100 : 0;
-    const pctRep = rodadas > 0 ? (reprovadas / rodadas) * 100 : 0;
+    const pctEsc   = rodadas > 0 ? (escolha   / rodadas) * 100 : 0;
+    const pctRep   = rodadas > 0 ? (reprovadas / rodadas) * 100 : 0;
+
+    const hasAlert = escolha > 0 || reprovadas > 0;
 
     return (
-        <div className={`rounded-xl border bg-white p-5 shadow-sm dark:bg-slate-900 ${c.border}`}>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
             {/* Header */}
-            <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <span className={`material-symbols-outlined text-2xl ${c.icon}`}>{icon}</span>
-                    <span className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">{name}</span>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-xl text-slate-500 dark:text-slate-400">{icon}</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">{name}</span>
                 </div>
-                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${c.badge}`}>
-                    {laudos} laudo{laudos !== 1 ? 's' : ''}
-                </span>
+                <div className="flex items-center gap-2">
+                    {hasAlert && (
+                        <span className="size-2 rounded-full bg-amber-400" title="Há unidades em escolha ou reprovadas" />
+                    )}
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        {laudos} laudo{laudos !== 1 ? 's' : ''}
+                    </span>
+                </div>
             </div>
 
-            {/* Metric grid */}
-            <div className="grid grid-cols-4 gap-2">
-                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Unid. Rodadas</p>
-                    <p className="mt-1 text-lg font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
+            {/* Metrics */}
+            <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-slate-800">
+                <div className="p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rodadas</p>
+                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
+                    <p className="mt-0.5 text-[10px] font-bold text-slate-400">{ops} OP{ops !== 1 ? 's' : ''}</p>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="p-4">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas</p>
-                    <p className="mt-1 text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(aprovadas)}</p>
-                    <p className="text-[10px] font-bold text-slate-400">{fmtPct(aprovadas, rodadas)}</p>
+                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
+                    <p className="mt-0.5 text-[10px] font-bold text-emerald-600">{fmtPct(aprovadas, rodadas)}</p>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="p-4">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Em Escolha</p>
-                    <p className="mt-1 text-lg font-black tabular-nums text-amber-600 dark:text-amber-400">{fmt(escolha)}</p>
-                    <p className="text-[10px] font-bold text-slate-400">{fmtPct(escolha, rodadas)}</p>
+                    <p className={`mt-1 text-xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
+                    <p className={`mt-0.5 text-[10px] font-bold ${escolha > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(escolha, rodadas)}</p>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="p-4">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas</p>
-                    <p className="mt-1 text-lg font-black tabular-nums text-rose-600 dark:text-rose-400">{fmt(reprovadas)}</p>
-                    <p className="text-[10px] font-bold text-slate-400">{fmtPct(reprovadas, rodadas)}</p>
+                    <p className={`mt-1 text-xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
+                    <p className={`mt-0.5 text-[10px] font-bold ${reprovadas > 0 ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(reprovadas, rodadas)}</p>
                 </div>
             </div>
-
-            {/* OPs */}
-            <p className="mt-3 text-xs font-bold text-slate-400">
-                OPs: <span className="font-black text-slate-700 dark:text-slate-200">{ops}</span>
-            </p>
 
             {/* Proportion bar */}
             {rodadas > 0 && (
-                <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-                    <div
-                        className={`h-full ${c.bar.green} transition-all duration-500`}
-                        style={{ width: `${Math.min(pctAprov, 100)}%` }}
-                    />
-                    <div
-                        className={`h-full ${c.bar.amber} transition-all duration-500`}
-                        style={{ width: `${Math.min(pctEsc, 100 - pctAprov)}%` }}
-                    />
-                    <div
-                        className={`h-full ${c.bar.rose} transition-all duration-500`}
-                        style={{ width: `${Math.min(pctRep, 100 - pctAprov - pctEsc)}%` }}
-                    />
+                <div className="flex h-1.5 w-full overflow-hidden rounded-b-xl bg-slate-100 dark:bg-slate-800">
+                    <div className="h-full bg-slate-300 transition-all duration-500 dark:bg-slate-600" style={{ width: `${Math.min(pctAprov, 100)}%` }} />
+                    <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${Math.min(pctEsc, 100 - pctAprov)}%` }} />
+                    <div className="h-full bg-red-500 transition-all duration-500"  style={{ width: `${Math.min(pctRep, 100 - pctAprov - pctEsc)}%` }} />
                 </div>
             )}
         </div>
@@ -483,7 +447,7 @@ export default function DashboardView() {
                                 onClick={() => setPeriod(tab.value)}
                                 className={`rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                                     period === tab.value
-                                        ? 'bg-white text-indigo-700 shadow dark:bg-slate-900 dark:text-indigo-400'
+                                        ? 'bg-white text-slate-900 shadow dark:bg-slate-900 dark:text-white'
                                         : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                             >
@@ -523,7 +487,6 @@ export default function DashboardView() {
                 <StatCard
                     label="Unidades rodadas"
                     value={fmt(summary.rodadas)}
-                    tone="indigo"
                 />
                 <StatCard
                     label="Unidades em escolha"
