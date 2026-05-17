@@ -761,62 +761,100 @@ export default function FinishingAnalysisView() {
                         const currentNum = savedPallets.length + 1;
                         const total = Math.max(totalEsperado ?? currentNum, currentNum);
                         const nums = Array.from({ length: total }, (_, i) => i + 1);
+                        const allDone = totalEsperado !== null && savedPallets.length >= totalEsperado;
+                        const pct = totalEsperado ? Math.round((savedPallets.length / totalEsperado) * 100) : null;
+
                         return (
-                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-indigo-500 text-base">grid_view</span>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
-                                            Pallet {savedPallets.length} de {totalEsperado ?? '?'} concluído{savedPallets.length !== 1 ? 's' : ''}
-                                        </span>
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+
+                                {/* Cabeçalho — progresso grande */}
+                                <div className={`px-5 py-4 ${allDone ? 'bg-emerald-50 dark:bg-emerald-950/20' : 'bg-indigo-50 dark:bg-indigo-950/20'}`}>
+                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <span className={`material-symbols-outlined text-2xl ${allDone ? 'text-emerald-500' : 'text-indigo-500'}`}>
+                                                {allDone ? 'task_alt' : 'grid_view'}
+                                            </span>
+                                            <div>
+                                                {allDone ? (
+                                                    <p className="text-base font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-tight leading-none">
+                                                        Todos os {totalEsperado} pallets concluídos!
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-base font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-tight leading-none">
+                                                        Pallet <span className="text-2xl">{currentNum}</span>
+                                                        {totalEsperado ? <span className="text-indigo-400 font-bold"> de {totalEsperado}</span> : ''}
+                                                        {' '}— Em andamento
+                                                    </p>
+                                                )}
+                                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                                    {savedPallets.length} concluído{savedPallets.length !== 1 ? 's' : ''}
+                                                    {totalEsperado && palletLotSize > 0 && ` · ${fmt(qtyProduzida)} un. ÷ ${fmt(palletLotSize)} un/pallet`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {pct !== null && (
+                                            <span className={`text-2xl font-black shrink-0 ${allDone ? 'text-emerald-600' : 'text-indigo-600'}`}>{pct}%</span>
+                                        )}
                                     </div>
-                                    {totalEsperado && palletLotSize > 0 && (
-                                        <span className="text-[10px] font-bold text-slate-400">
-                                            {fmt(qtyProduzida)} un. ÷ {fmt(palletLotSize)} un/pallet = {totalEsperado} pallets estimados
-                                        </span>
+
+                                    {/* Barra de progresso */}
+                                    {totalEsperado && (
+                                        <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-emerald-500' : 'bg-indigo-600'}`}
+                                                style={{ width: `${Math.min(100, (savedPallets.length / totalEsperado) * 100)}%` }}
+                                            />
+                                        </div>
                                     )}
                                 </div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {nums.map(num => {
-                                        const saved = savedPallets.find(p => p.pallet_number === num);
-                                        const isCurrent = num === currentNum;
-                                        let cls = '';
-                                        let icon = '';
-                                        let label = '';
-                                        if (saved) {
-                                            if (saved.result === 'APPROVED')   { cls = 'bg-emerald-500 border-emerald-500 text-white'; icon = 'check'; }
-                                            else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white'; icon = 'warning'; }
-                                            else                               { cls = 'bg-rose-500 border-rose-500 text-white'; icon = 'close'; }
-                                        } else if (isCurrent) {
-                                            cls = 'bg-indigo-600 border-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-700 ring-offset-1';
-                                            label = 'atual';
-                                        } else {
-                                            cls = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
-                                        }
-                                        return (
-                                            <div key={num} title={saved ? `Pallet ${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `Pallet ${num}: em andamento` : `Pallet ${num}: pendente`}
-                                                className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl border-2 transition-all select-none ${cls}`}
-                                            >
-                                                <span className="text-[10px] font-black leading-none">#{num}</span>
-                                                {icon  && <span className="material-symbols-outlined text-[13px] leading-none mt-0.5">{icon}</span>}
-                                                {label && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80">{label}</span>}
+
+                                {/* Grid de quadradinhos */}
+                                <div className="p-4">
+                                    <div className="flex flex-wrap gap-2">
+                                        {nums.map(num => {
+                                            const saved = savedPallets.find(p => p.pallet_number === num);
+                                            const isCurrent = !allDone && num === currentNum;
+                                            let cls = '';
+                                            let icon = '';
+
+                                            if (saved) {
+                                                if (saved.result === 'APPROVED')        { cls = 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-200'; icon = 'check'; }
+                                                else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white shadow-sm shadow-amber-200'; icon = 'warning'; }
+                                                else                                    { cls = 'bg-rose-500 border-rose-500 text-white shadow-sm shadow-rose-200'; icon = 'close'; }
+                                            } else if (isCurrent) {
+                                                cls = 'bg-indigo-600 border-indigo-600 text-white ring-4 ring-indigo-200 dark:ring-indigo-800';
+                                            } else {
+                                                cls = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
+                                            }
+
+                                            return (
+                                                <div key={num}
+                                                    title={saved ? `Pallet ${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `Pallet ${num}: em andamento` : `Pallet ${num}: pendente`}
+                                                    className={`relative flex flex-col items-center justify-center w-14 h-14 rounded-2xl border-2 transition-all select-none cursor-default ${cls}`}
+                                                >
+                                                    <span className="text-[11px] font-black leading-none">#{num}</span>
+                                                    {icon && <span className="material-symbols-outlined text-[14px] leading-none mt-0.5">{icon}</span>}
+                                                    {isCurrent && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80 uppercase">atual</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Legenda */}
+                                    <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                                        {[
+                                            { color: 'bg-emerald-500', label: 'Aprovado' },
+                                            { color: 'bg-amber-400',   label: 'Restrição' },
+                                            { color: 'bg-rose-500',    label: 'Reprovado' },
+                                            { color: 'bg-indigo-600',  label: 'Em andamento' },
+                                            { color: 'bg-slate-200 dark:bg-slate-700', label: 'Pendente' },
+                                        ].map(({ color, label }) => (
+                                            <div key={label} className="flex items-center gap-1.5">
+                                                <div className={`size-2.5 rounded-sm ${color}`} />
+                                                <span className="text-[9px] font-bold text-slate-400">{label}</span>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-4 mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
-                                    {[
-                                        { color: 'bg-emerald-500', label: 'Aprovado' },
-                                        { color: 'bg-amber-400',   label: 'Restrição' },
-                                        { color: 'bg-rose-500',    label: 'Reprovado' },
-                                        { color: 'bg-indigo-600',  label: 'Em andamento' },
-                                        { color: 'bg-slate-200 dark:bg-slate-700', label: 'Pendente' },
-                                    ].map(({ color, label }) => (
-                                        <div key={label} className="flex items-center gap-1.5">
-                                            <div className={`size-2.5 rounded-sm ${color}`} />
-                                            <span className="text-[9px] font-bold text-slate-400">{label}</span>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -869,17 +907,48 @@ export default function FinishingAnalysisView() {
                     )}
 
                     {/* Formulário do próximo pallet */}
-                    {nqaConfig.unidades_por_caixa <= 0 || nqaConfig.caixas_por_pallet <= 0 ? (
-                        <div className="flex items-center gap-3 p-5 rounded-3xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                            <span className="material-symbols-outlined text-amber-500 text-2xl">info</span>
-                            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Volte à etapa 1 e configure <strong>unidades por caixa</strong> e <strong>caixas por pallet</strong>.</p>
-                        </div>
-                    ) : (
+                    {(() => {
+                        const totalEsperado = palletLotSize > 0 && qtyProduzida > 0
+                            ? Math.ceil(qtyProduzida / palletLotSize) : null;
+                        const allDone = totalEsperado !== null && savedPallets.length >= totalEsperado;
+                        const currentNum = savedPallets.length + 1;
+
+                        if (nqaConfig.unidades_por_caixa <= 0 || nqaConfig.caixas_por_pallet <= 0) return (
+                            <div className="flex items-center gap-3 p-5 rounded-3xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                                <span className="material-symbols-outlined text-amber-500 text-2xl">info</span>
+                                <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Volte à etapa 1 e configure <strong>unidades por caixa</strong> e <strong>caixas por pallet</strong>.</p>
+                            </div>
+                        );
+
+                        if (allDone) return (
+                            <div className="rounded-3xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 p-8 flex flex-col items-center gap-4 text-center">
+                                <span className="material-symbols-outlined text-6xl text-emerald-500">task_alt</span>
+                                <div>
+                                    <p className="text-xl font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-tight">
+                                        Todos os {totalEsperado} pallets concluídos!
+                                    </p>
+                                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                                        {savedPallets.filter(p => p.result === 'APPROVED').length} aprovados
+                                        {savedPallets.filter(p => p.result === 'RESTRICTED').length > 0 && ` · ${savedPallets.filter(p => p.result === 'RESTRICTED').length} com restrição`}
+                                        {savedPallets.filter(p => p.result === 'REJECTED').length > 0 && ` · ${savedPallets.filter(p => p.result === 'REJECTED').length} reprovados`}
+                                    </p>
+                                </div>
+                                <button type="button" onClick={() => setActiveStep(3)}
+                                    className="h-11 px-8 rounded-2xl bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20">
+                                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                                    Ir para Colagem
+                                </button>
+                            </div>
+                        );
+
+                        return (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                             <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-indigo-50 dark:bg-indigo-950/20">
-                                <span className="flex items-center justify-center size-8 rounded-full bg-indigo-600 text-white text-sm font-black">#{savedPallets.length + 1}</span>
+                                <span className="flex items-center justify-center size-8 rounded-full bg-indigo-600 text-white text-sm font-black">#{currentNum}</span>
                                 <div>
-                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallet {savedPallets.length + 1}</h2>
+                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">
+                                        Pallet {currentNum}{totalEsperado ? ` de ${totalEsperado}` : ''}
+                                    </h2>
                                     <p className="text-[10px] text-slate-400 font-bold">Inspeção NQA — {fmt(palletLotSize)} unidades</p>
                                 </div>
                                 {palletNqaResult && (
@@ -999,11 +1068,12 @@ export default function FinishingAnalysisView() {
                                     {isSavingPallet
                                         ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span>
                                         : <span className="material-symbols-outlined text-sm">add_task</span>}
-                                    Registrar Pallet #{savedPallets.length + 1} e Gerar QR
+                                    Registrar Pallet #{currentNum} e Gerar QR
                                 </button>
                             </div>
                         </div>
-                    )}
+                        );
+                    })()}
                 </>}
 
                 {/* ══════════════════════════════════════════════════════════
