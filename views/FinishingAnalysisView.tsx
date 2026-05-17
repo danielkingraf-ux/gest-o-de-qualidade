@@ -68,10 +68,24 @@ type SavedPallet = {
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 const FINISHING_STEPS = [
-    { id: 1, label: 'Identificação', short: 'Identificação' },
-    { id: 2, label: 'Inspeção de Pallets', short: 'Pallets' },
-    { id: 3, label: 'Conclusão', short: 'Conclusão' },
+    { id: 1, label: 'Identificação',     short: 'Identificação' },
+    { id: 2, label: 'Inspeção de Pallets', short: 'Pallets'      },
+    { id: 3, label: 'Colagem',           short: 'Colagem'       },
+    { id: 4, label: 'Conclusão',         short: 'Conclusão'     },
 ];
+
+const COLAGEM_DEFECTS_COLS = [
+    { key: 'fundo_virado',     label: 'Fundo Virado',      icon: 'rotate_90_degrees_cw' },
+    { key: 'falta_cola',       label: 'Falta de Cola',     icon: 'water_drop'           },
+    { key: 'cola_fraca',       label: 'Cola Fraca',        icon: 'opacity'              },
+    { key: 'queimado_correia', label: 'Queimado Correia',  icon: 'local_fire_department'},
+    { key: 'rasgado',          label: 'Rasgado',           icon: 'block'               },
+    { key: 'modelo_misturado', label: 'Modelo Misturado',  icon: 'shuffle'             },
+    { key: 'outros',           label: 'Outros',            icon: 'more_horiz'          },
+];
+const EMPTY_COLAGEM_DEFECTS = COLAGEM_DEFECTS_COLS.reduce(
+    (acc, col) => ({ ...acc, [col.key]: 0 }), {} as Record<string, number>
+);
 
 // ─── Chip de pessoa ───────────────────────────────────────────────────────────
 const PersonChip = ({ name, onRemove }: { key?: React.Key; name: string; onRemove: () => void }) => (
@@ -102,7 +116,6 @@ export default function FinishingAnalysisView() {
     const [orderFilter, setOrderFilter]         = useState('');
     const [rodadas, setRodadas]                 = useState<RodadaSummary[]>([]);
     const [showRodadas, setShowRodadas]         = useState(false);
-    const [corteVincoSaldo, setCorteVincoSaldo] = useState<{ rodadas: number; escolha: number } | null>(null);
 
     // Pallets salvos
     const [savedPallets, setSavedPallets]               = useState<SavedPallet[]>([]);
@@ -126,11 +139,19 @@ export default function FinishingAnalysisView() {
     const [palletDefectsDetail, setPalletDefectsDetail] = useState<Record<string, number>>({ ...EMPTY_DEFECTS });
     const [palletResult, setPalletResult]               = useState<'APPROVED'|'REJECTED'|'RESTRICTED'>('APPROVED');
     const [palletObs, setPalletObs]                     = useState('');
-    const [palletAnalystId, setPalletAnalystId]         = useState('');
     const [isSavingPallet, setIsSavingPallet]           = useState(false);
     const [completedPalletId, setCompletedPalletId]     = useState<string | null>(null);
 
-    // Step 3 — Conclusão
+    // Step 3 — Colagem
+    const [colagemMachineId, setColagemMachineId]       = useState('');
+    const [colagemOperatorIds, setColagemOperatorIds]   = useState<string[]>([]);
+    const [colagemQtyRodadas, setColagemQtyRodadas]     = useState(0);
+    const [colagemQtyEscolha, setColagemQtyEscolha]     = useState(0);
+    const [colagemQtyReprovadas, setColagemQtyReprovadas] = useState(0);
+    const [colagemDefects, setColagemDefects]           = useState<Record<string, number>>({ ...EMPTY_COLAGEM_DEFECTS });
+    const [colagemObs, setColagemObs]                   = useState('');
+
+    // Step 4 — Conclusão
     const [qtyProduzida, setQtyProduzida] = useState(0);
     const [qtyEscolha, setQtyEscolha]     = useState(0);
     const [qtyRefugo, setQtyRefugo]       = useState(0);
@@ -139,6 +160,50 @@ export default function FinishingAnalysisView() {
     const [status, setStatus]             = useState<InspectionStatus>(InspectionStatus.APPROVED);
 
     const [activeStep, setActiveStep] = useState(1);
+
+    // ─── Persistência de sessão em localStorage ───────────────────────────
+    const SESSION_KEY = 'kg_produto_acabado_session';
+
+    // Restaura sessão ao montar (antes do fetchData completar)
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(SESSION_KEY);
+            if (!raw) return;
+            const s = JSON.parse(raw);
+            if (s.selectedOrderId) { setSelectedOrderId(s.selectedOrderId); setOrderFilter(s.selectedOrderId); }
+            if (s.selectedMachineId) setSelectedMachineId(s.selectedMachineId);
+            if (Array.isArray(s.selectedOperatorIds) && s.selectedOperatorIds.length) setSelectedOperatorIds(s.selectedOperatorIds);
+            if (Array.isArray(s.selectedAnalystIds) && s.selectedAnalystIds.length) setSelectedAnalystIds(s.selectedAnalystIds);
+            if (s.laudoNumero) setLaudoNumero(s.laudoNumero);
+            if (s.selectedMonth !== undefined) setSelectedMonth(s.selectedMonth);
+            if (s.selectedYear !== undefined) setSelectedYear(s.selectedYear);
+            if (s.nqaProfileId) setNqaProfileId(s.nqaProfileId);
+            if (s.nqaConfig) setNqaConfig(s.nqaConfig);
+            if (s.colagemMachineId) setColagemMachineId(s.colagemMachineId);
+            if (Array.isArray(s.colagemOperatorIds)) setColagemOperatorIds(s.colagemOperatorIds);
+            if (s.colagemQtyRodadas) setColagemQtyRodadas(s.colagemQtyRodadas);
+            if (s.colagemQtyEscolha) setColagemQtyEscolha(s.colagemQtyEscolha);
+            if (s.colagemQtyReprovadas) setColagemQtyReprovadas(s.colagemQtyReprovadas);
+            if (s.colagemDefects) setColagemDefects(s.colagemDefects);
+            if (s.colagemObs) setColagemObs(s.colagemObs);
+            if (s.activeStep && s.activeStep > 1) setActiveStep(s.activeStep);
+        } catch { /* ignora sessão corrompida */ }
+    }, []); // executa apenas na montagem
+
+    // Salva sessão sempre que estado relevante muda
+    useEffect(() => {
+        if (!selectedOrderId) { localStorage.removeItem(SESSION_KEY); return; }
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+            selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
+            laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
+            colagemMachineId, colagemOperatorIds, colagemQtyRodadas, colagemQtyEscolha,
+            colagemQtyReprovadas, colagemDefects, colagemObs,
+            activeStep,
+        }));
+    }, [selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
+        laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
+        colagemMachineId, colagemOperatorIds, colagemQtyRodadas, colagemQtyEscolha,
+        colagemQtyReprovadas, colagemDefects, colagemObs, activeStep]);
 
     // ─── Carga inicial ────────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
@@ -162,33 +227,23 @@ export default function FinishingAnalysisView() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // ─── Rodadas de impressão + saldo Corte e Vinco da OP ────────────────
+    // ─── Rodadas de impressão da OP ───────────────────────────────────────
     useEffect(() => {
-        if (!selectedOrderId) { setRodadas([]); setCorteVincoSaldo(null); return; }
+        if (!selectedOrderId) { setRodadas([]); setQtyProduzida(0); return; }
         const order = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
-        if (!order) { setRodadas([]); setCorteVincoSaldo(null); return; }
+        if (!order) { setRodadas([]); setQtyProduzida(0); return; }
         const load = async () => {
-            const [inspRes, cvRes] = await Promise.all([
-                supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true }),
-                supabase.from('acabamento_registros').select('qty_revisadas, qty_reprovadas').eq('op', order.op.toUpperCase()).eq('modulo', 'corte_vinco'),
-            ]);
+            const { data } = await supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true });
             const summaries: RodadaSummary[] = [];
-            for (const row of inspRes.data || []) {
+            for (const row of data || []) {
                 let obs: any = {};
                 try { obs = JSON.parse(row.observations || '{}'); } catch { /* */ }
                 if (obs.process_area !== 'producao_inicial') continue;
                 summaries.push({ id: row.id, numero: obs.numero_rodada ?? summaries.length + 1, date: row.created_at, status: obs.status_final ?? 'APPROVED', qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0, aprovadas: obs.saldo_unidades?.aprovadas ?? 0, em_escolha: obs.saldo_unidades?.em_escolha ?? 0, reprovadas: obs.saldo_unidades?.reprovadas ?? 0 });
             }
             setRodadas(summaries);
-            // Corte e Vinco
-            const cvData = cvRes.data ?? [];
-            if (cvData.length > 0) {
-                const cvRodadas = cvData.reduce((s: number, r: any) => s + (r.qty_revisadas || 0), 0);
-                const cvEscolha = cvData.reduce((s: number, r: any) => s + (r.qty_reprovadas || 0), 0);
-                setCorteVincoSaldo({ rodadas: cvRodadas, escolha: cvEscolha });
-            } else {
-                setCorteVincoSaldo(null);
-            }
+            const totalEmEscolha = summaries.reduce((s, r) => s + r.em_escolha, 0);
+            if (totalEmEscolha > 0) setQtyProduzida(totalEmEscolha);
         };
         load();
     }, [selectedOrderId, orders]);
@@ -222,21 +277,9 @@ export default function FinishingAnalysisView() {
     }, [savedPallets]);
 
     useEffect(() => {
-        if (activeStep === 2) {
-            setPalletAnalystId(prev => prev || selectedAnalystIds[0] || '');
-        }
-        if (activeStep === 3) {
+        if (activeStep === 4) {
             setStatus(autoStatus);
             if (!destinoFinal && autoDestino) setDestinoFinal(autoDestino as 'expedicao' | 'revisao_final');
-
-            // Auto-preenche quantidades com base nos pallets
-            if (savedPallets.length > 0 && palletLotSize > 0) {
-                const totalProduzido = savedPallets.length * palletLotSize;
-                const rejeitados = savedPallets.filter(p => p.result === 'REJECTED').length;
-                const emEscolha = rejeitados * palletLotSize;
-                setQtyProduzida(prev => prev === 0 ? totalProduzido : prev);
-                setQtyEscolha(prev => prev === 0 ? emEscolha : prev);
-            }
         }
     }, [activeStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -281,13 +324,12 @@ export default function FinishingAnalysisView() {
         try {
             const { count } = await supabase.from('pallet_inspections').select('id', { count: 'exact', head: true }).eq('op', selectedOrder.op.toUpperCase());
             const nextNum = (count ?? 0) + 1;
-            const effectivePalletAnalystId = palletAnalystId || selectedAnalystIds[0] || null;
-            const analystObj = analysts.find(a => a.id === effectivePalletAnalystId);
+            const analystObj = analysts.find(a => a.id === selectedAnalystIds[0]);
             const machineObj = machines.find(m => m.id === selectedMachineId);
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
             const { data: saved, error } = await supabase.from('pallet_inspections').insert([{
                 op: selectedOrder.op.toUpperCase(), order_id: selectedOrder.id, pallet_number: nextNum,
-                analyst_id: effectivePalletAnalystId, machine_id: selectedMachineId || null,
+                analyst_id: selectedAnalystIds[0] || null, machine_id: selectedMachineId || null,
                 analyst_name: analystObj?.name ?? null, machine_name: machineObj?.name ?? null,
                 units_per_box: nqaConfig.unidades_por_caixa, boxes_per_pallet: nqaConfig.caixas_por_pallet,
                 total_boxes_sublote: palletBoxData.totalBoxes, boxes_to_inspect: palletBoxData.boxesToInspect,
@@ -344,6 +386,16 @@ export default function FinishingAnalysisView() {
                     observacoes: observacoes.trim(),
                     defects: { ...EMPTY_DEFECTS },
                     producao: { qty_produzida: qtyProduzida, qty_escolha: qtyEscolha, qty_refugo: qtyRefugo },
+                    colagem: {
+                        machine_id: colagemMachineId,
+                        operator_ids: colagemOperatorIds,
+                        qty_rodadas: colagemQtyRodadas,
+                        qty_escolha: colagemQtyEscolha,
+                        qty_reprovadas: colagemQtyReprovadas,
+                        qty_aprovadas: Math.max(0, colagemQtyRodadas - colagemQtyEscolha - colagemQtyReprovadas),
+                        defects: colagemDefects,
+                        observacoes: colagemObs.trim() || null,
+                    },
                     all_operator_ids: selectedOperatorIds,
                     all_analyst_ids:  selectedAnalystIds,
                     operator_names: operatorNames,
@@ -374,6 +426,9 @@ export default function FinishingAnalysisView() {
         if (step === 1 && !laudoNumero.trim())           return 'Informe o número do laudo.';
         if (step === 1 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
         if (step === 1 && nqaConfig.caixas_por_pallet <= 0)  return 'Informe caixas por pallet.';
+        if (step === 3 && !colagemMachineId)             return 'Selecione a máquina de colagem.';
+        if (step === 3 && colagemOperatorIds.length === 0)   return 'Selecione ao menos um operador da colagem.';
+        if (step === 3 && colagemQtyRodadas <= 0)        return 'Informe a quantidade rodada na colagem.';
         return null;
     };
 
@@ -387,14 +442,16 @@ export default function FinishingAnalysisView() {
     };
 
     const clearForm = () => {
-        // Limpa dados da OP/laudo mas preserva equipe, máquina e NQA para o próximo laudo
-        setSelectedOrderId(''); setOrderFilter(''); setLaudoNumero('');
+        localStorage.removeItem(SESSION_KEY);
+        setSelectedOrderId(''); setOrderFilter('');
+        setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero('');
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
         setPalletDefects({ critical: 0, major: 0, minor: 0 }); setPalletDefectsDetail({ ...EMPTY_DEFECTS });
         setPalletObs(''); setPalletResult('APPROVED'); setSavedPallets([]); setDestinoFinal('');
-        setRodadas([]); setCorteVincoSaldo(null);
+        setColagemMachineId(''); setColagemOperatorIds([]); setColagemQtyRodadas(0);
+        setColagemQtyEscolha(0); setColagemQtyReprovadas(0);
+        setColagemDefects({ ...EMPTY_COLAGEM_DEFECTS }); setColagemObs('');
         setActiveStep(1);
-        // selectedOperatorIds, selectedAnalystIds, selectedMachineId, nqaConfig, nqaProfileId são mantidos
     };
 
     // ─── Helpers visuais ─────────────────────────────────────────────────
@@ -433,16 +490,10 @@ export default function FinishingAnalysisView() {
                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Produto Acabado</p>
                             <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">{FINISHING_STEPS[activeStep - 1]?.label}</h1>
                         </div>
-                        <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        <div className="hidden sm:flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
                             {selectedOrderId && <span className="text-indigo-600">OP: {selectedOrderId}</span>}
-                            {activeStep === 2 && (
-                                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[11px]">
-                                    <span className="material-symbols-outlined text-xs">inventory_2</span>
-                                    Pallet #{savedPallets.length + 1}
-                                </span>
-                            )}
-                            {savedPallets.length > 0 && activeStep !== 2 && <span className="text-slate-500">{savedPallets.length} pallet{savedPallets.length > 1 ? 's' : ''} registrados</span>}
-                            {savedPallets.some(p => p.result === 'REJECTED') && <span className="text-rose-500">· Pallets reprovados</span>}
+                            {savedPallets.length > 0 && <span className="text-slate-500">{savedPallets.length} pallet{savedPallets.length > 1 ? 's' : ''}</span>}
+                            {savedPallets.some(p => p.result === 'REJECTED') && <span className="text-rose-500">Pallets reprovados</span>}
                         </div>
                     </div>
                     <nav className="flex gap-2 overflow-x-auto pb-1">
@@ -522,49 +573,6 @@ export default function FinishingAnalysisView() {
                                     </table>
                                 </div>
                             )}
-
-                            {/* Saldo consolidado Impressão + Corte e Vinco */}
-                            {(() => {
-                                const totalRodadas = rodadas.reduce((s, r) => s + r.em_escolha + r.aprovadas, 0);
-                                const escolhaImpressao = rodadas.reduce((s, r) => s + r.em_escolha, 0);
-                                const escolhaCorteVinco = corteVincoSaldo?.escolha ?? 0;
-                                const saldoParaProdutoAcabado = totalRodadas - escolhaImpressao - escolhaCorteVinco;
-                                if (totalRodadas === 0) return null;
-                                return (
-                                    <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50 dark:bg-indigo-950/20 overflow-hidden">
-                                        <p className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-indigo-500 border-b border-indigo-100 dark:border-indigo-900/40">
-                                            Saldo acumulado da OP
-                                        </p>
-                                        <table className="w-full text-xs">
-                                            <tbody>
-                                                <tr className="border-b border-indigo-100 dark:border-indigo-900/30">
-                                                    <td className="px-4 py-2 font-black text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                                                        <span className="material-symbols-outlined text-sm text-indigo-400">print</span>Impressão
-                                                    </td>
-                                                    <td className="px-4 py-2 text-right text-slate-500">{fmt(totalRodadas)} rod.</td>
-                                                    <td className="px-4 py-2 text-right text-amber-600 font-black">−{fmt(escolhaImpressao)} esc.</td>
-                                                </tr>
-                                                {corteVincoSaldo && (
-                                                    <tr className="border-b border-indigo-100 dark:border-indigo-900/30">
-                                                        <td className="px-4 py-2 font-black text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                                                            <span className="material-symbols-outlined text-sm text-indigo-400">content_cut</span>Corte e Vinco
-                                                        </td>
-                                                        <td className="px-4 py-2 text-right text-slate-500">{fmt(corteVincoSaldo.rodadas)} rod.</td>
-                                                        <td className="px-4 py-2 text-right text-amber-600 font-black">−{fmt(escolhaCorteVinco)} esc.</td>
-                                                    </tr>
-                                                )}
-                                                <tr className="bg-indigo-100/60 dark:bg-indigo-900/30 font-black">
-                                                    <td className="px-4 py-2 text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
-                                                        <span className="material-symbols-outlined text-sm">inventory_2</span>Chega ao Produto Acabado
-                                                    </td>
-                                                    <td className="px-4 py-2"></td>
-                                                    <td className="px-4 py-2 text-right text-lg text-indigo-700 dark:text-indigo-300">{fmt(saldoParaProdutoAcabado)}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                );
-                            })()}
                         </div>
                     </div>
 
@@ -737,6 +745,74 @@ export default function FinishingAnalysisView() {
                 ══════════════════════════════════════════════════════════ */}
                 {activeStep === 2 && <>
 
+                    {/* ── Tracker visual de andamento dos pallets ── */}
+                    {(() => {
+                        const totalEsperado = palletLotSize > 0 && qtyProduzida > 0
+                            ? Math.ceil(qtyProduzida / palletLotSize) : null;
+                        const currentNum = savedPallets.length + 1;
+                        const total = Math.max(totalEsperado ?? currentNum, currentNum);
+                        const nums = Array.from({ length: total }, (_, i) => i + 1);
+                        return (
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-indigo-500 text-base">grid_view</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
+                                            Pallet {savedPallets.length} de {totalEsperado ?? '?'} concluído{savedPallets.length !== 1 ? 's' : ''}
+                                        </span>
+                                    </div>
+                                    {totalEsperado && palletLotSize > 0 && (
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                            {fmt(qtyProduzida)} un. ÷ {fmt(palletLotSize)} un/pallet = {totalEsperado} pallets estimados
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {nums.map(num => {
+                                        const saved = savedPallets.find(p => p.pallet_number === num);
+                                        const isCurrent = num === currentNum;
+                                        let cls = '';
+                                        let icon = '';
+                                        let label = '';
+                                        if (saved) {
+                                            if (saved.result === 'APPROVED')   { cls = 'bg-emerald-500 border-emerald-500 text-white'; icon = 'check'; }
+                                            else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white'; icon = 'warning'; }
+                                            else                               { cls = 'bg-rose-500 border-rose-500 text-white'; icon = 'close'; }
+                                        } else if (isCurrent) {
+                                            cls = 'bg-indigo-600 border-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-700 ring-offset-1';
+                                            label = 'atual';
+                                        } else {
+                                            cls = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
+                                        }
+                                        return (
+                                            <div key={num} title={saved ? `Pallet ${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `Pallet ${num}: em andamento` : `Pallet ${num}: pendente`}
+                                                className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl border-2 transition-all select-none ${cls}`}
+                                            >
+                                                <span className="text-[10px] font-black leading-none">#{num}</span>
+                                                {icon  && <span className="material-symbols-outlined text-[13px] leading-none mt-0.5">{icon}</span>}
+                                                {label && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80">{label}</span>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-4 mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                                    {[
+                                        { color: 'bg-emerald-500', label: 'Aprovado' },
+                                        { color: 'bg-amber-400',   label: 'Restrição' },
+                                        { color: 'bg-rose-500',    label: 'Reprovado' },
+                                        { color: 'bg-indigo-600',  label: 'Em andamento' },
+                                        { color: 'bg-slate-200 dark:bg-slate-700', label: 'Pendente' },
+                                    ].map(({ color, label }) => (
+                                        <div key={label} className="flex items-center gap-1.5">
+                                            <div className={`size-2.5 rounded-sm ${color}`} />
+                                            <span className="text-[9px] font-bold text-slate-400">{label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {/* Lista de pallets concluídos */}
                     {(loadingSavedPallets || savedPallets.length > 0) && (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -792,26 +868,16 @@ export default function FinishingAnalysisView() {
                     ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                             <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-indigo-50 dark:bg-indigo-950/20">
-                                <span className="flex items-center justify-center size-10 rounded-full bg-indigo-600 text-white text-base font-black shrink-0">#{savedPallets.length + 1}</span>
-                                <div className="flex-1 min-w-0">
+                                <span className="flex items-center justify-center size-8 rounded-full bg-indigo-600 text-white text-sm font-black">#{savedPallets.length + 1}</span>
+                                <div>
                                     <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallet {savedPallets.length + 1}</h2>
-                                    <p className="text-[10px] text-slate-400 font-bold">Inspeção NQA — {fmt(palletLotSize)} unidades · OP {selectedOrderId}</p>
+                                    <p className="text-[10px] text-slate-400 font-bold">Inspeção NQA — {fmt(palletLotSize)} unidades</p>
                                 </div>
                                 {palletNqaResult && (
-                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full shrink-0 ${palletNqaResult.overall ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    <span className={`ml-auto text-[10px] font-black uppercase px-3 py-1 rounded-full ${palletNqaResult.overall ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                                         {palletNqaResult.overall ? 'NQA OK' : 'NQA NOK'}
                                     </span>
                                 )}
-                            </div>
-                            {/* Analista deste pallet */}
-                            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center gap-3">
-                                <span className="material-symbols-outlined text-sm text-indigo-400">person_search</span>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">Analista deste pallet</label>
-                                <select value={palletAnalystId} onChange={e => setPalletAnalystId(e.target.value)}
-                                    className="flex-1 h-8 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs">
-                                    <option value="">Selecionar analista...</option>
-                                    {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                </select>
                             </div>
 
                             <div className="p-5 space-y-5">
@@ -932,9 +998,123 @@ export default function FinishingAnalysisView() {
                 </>}
 
                 {/* ══════════════════════════════════════════════════════════
-                    ETAPA 3 — Conclusão
+                    ETAPA 3 — Colagem
                 ══════════════════════════════════════════════════════════ */}
                 {activeStep === 3 && <>
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                            <span className="material-symbols-outlined text-indigo-500">precision_manufacturing</span>
+                            <div>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Colagem</h2>
+                                <p className="text-xs text-slate-500">Registro da coladeira — operador, quantidades e defeitos</p>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-5">
+
+                            {/* Máquina */}
+                            <div>
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1.5">
+                                    Máquina <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                    value={colagemMachineId}
+                                    onChange={e => setColagemMachineId(e.target.value)}
+                                    className={`h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 bg-slate-50 dark:bg-slate-800 ${!colagemMachineId ? 'border-rose-300 dark:border-rose-700 text-slate-400' : 'border-slate-200 dark:border-slate-700'}`}
+                                >
+                                    <option value="">Selecione a máquina</option>
+                                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Operadores (múltiplos) */}
+                            <div>
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1.5">
+                                    Operadores <span className="text-rose-500">*</span>
+                                    <span className="ml-auto text-[8px] font-bold text-slate-400 normal-case tracking-normal">Selecione todos que trabalharam</span>
+                                </label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {operators.map(o => {
+                                        const sel = colagemOperatorIds.includes(o.id);
+                                        return (
+                                            <button key={o.id} type="button"
+                                                onClick={() => setColagemOperatorIds(prev => sel ? prev.filter(id => id !== o.id) : [...prev, o.id])}
+                                                className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${sel ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'}`}
+                                            >
+                                                {sel && <span className="material-symbols-outlined text-[11px] mr-0.5 align-middle">check</span>}
+                                                {o.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {colagemOperatorIds.length === 0 && <p className="text-[10px] text-rose-500 mt-1 flex items-center gap-1"><span className="material-symbols-outlined text-xs">warning</span>Selecione ao menos um operador</p>}
+                            </div>
+
+                            {/* Quantidades */}
+                            <div>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Quantidades</p>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {([
+                                        { label: 'Qtd Rodada', value: colagemQtyRodadas, set: setColagemQtyRodadas, color: 'border-slate-200 dark:border-slate-700' },
+                                        { label: 'Saiu p/ Escolha', value: colagemQtyEscolha, set: setColagemQtyEscolha, color: 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20' },
+                                        { label: 'Reprovado', value: colagemQtyReprovadas, set: setColagemQtyReprovadas, color: 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20' },
+                                    ] as const).map(({ label, value, set, color }) => (
+                                        <div key={label} className={`flex flex-col gap-1 p-3 rounded-xl border ${color}`}>
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</span>
+                                            <div className="flex items-center gap-1 mt-1">
+                                                <button type="button" onClick={() => set(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">-</button>
+                                                <input type="number" value={value} onChange={e => set(Math.max(0, Number(e.target.value) || 0))} className="flex-1 h-6 bg-transparent text-center font-black text-xs outline-none min-w-0" />
+                                                <button type="button" onClick={() => set(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {colagemQtyRodadas > 0 && (
+                                    <p className="text-[10px] font-bold text-slate-400 mt-2">
+                                        Aprovadas direto: {fmt(Math.max(0, colagemQtyRodadas - colagemQtyEscolha - colagemQtyReprovadas))} un.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Defeitos da colagem */}
+                            <div>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Defeitos</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {COLAGEM_DEFECTS_COLS.map(d => {
+                                        const count = colagemDefects[d.key] ?? 0;
+                                        return (
+                                            <div key={d.key} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-colors ${count > 0 ? 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50'}`}>
+                                                <span className={`material-symbols-outlined text-sm ${count > 0 ? 'text-rose-500' : 'text-slate-400'}`}>{d.icon}</span>
+                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex-1 truncate">{d.label}</span>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button type="button" onClick={() => setColagemDefects(p => ({ ...p, [d.key]: Math.max(0, (p[d.key] ?? 0) - 1) }))} className="size-5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 text-xs flex items-center justify-center">-</button>
+                                                    <span className={`w-7 text-center text-xs font-black ${count > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{count}</span>
+                                                    <button type="button" onClick={() => setColagemDefects(p => ({ ...p, [d.key]: (p[d.key] ?? 0) + 1 }))} className="size-5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 text-xs flex items-center justify-center">+</button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Observações */}
+                            <div>
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Observações</label>
+                                <textarea
+                                    value={colagemObs}
+                                    onChange={e => setColagemObs(e.target.value)}
+                                    rows={3}
+                                    placeholder="Anotações sobre a colagem, ajustes de máquina, etc."
+                                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </>}
+
+                {/* ══════════════════════════════════════════════════════════
+                    ETAPA 4 — Conclusão
+                ══════════════════════════════════════════════════════════ */}
+                {activeStep === 4 && <>
 
                     {/* Resumo dos pallets */}
                     {savedPallets.length > 0 && (

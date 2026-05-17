@@ -223,7 +223,36 @@ export const reportService = {
             const parsedObservations = parseObservations(record.observations);
 
             const getDefects = () => {
-                const defectsMap = (parsedObservations.defects ?? {}) as Record<string, number>;
+                const obs = parsedObservations as Record<string, any>;
+                // Schema v2: defeitos.por_folha.cor + defeitos.por_unidade + verniz_uv.defeitos + hot_stamping.defeitos
+                if (obs.schema_version === 2 || obs.defeitos) {
+                    const result: Array<{ name: string; count: number }> = [];
+                    const defeitos = obs.defeitos ?? {};
+                    const cor = Number((defeitos.por_folha ?? {}).cor) || 0;
+                    if (cor > 0) result.push({ name: 'Cor', count: cor });
+                    const porUnidade = defeitos.por_unidade ?? {};
+                    Object.entries(porUnidade).forEach(([key, val]: [string, any]) => {
+                        const count = typeof val === 'object' ? (Number(val?.count) || 0) : (Number(val) || 0);
+                        if (count > 0) result.push({ name: key.replace(/_/g, ' '), count });
+                    });
+                    const uv = obs.verniz_uv ?? {};
+                    if (uv.aplicavel && uv.defeitos) {
+                        Object.entries(uv.defeitos).forEach(([key, val]: [string, any]) => {
+                            const count = typeof val === 'object' ? (Number(val?.count) || 0) : (Number(val) || 0);
+                            if (count > 0) result.push({ name: `UV: ${key.replace(/_/g, ' ')}`, count });
+                        });
+                    }
+                    const hs = obs.hot_stamping ?? {};
+                    if (hs.aplicavel && hs.defeitos) {
+                        Object.entries(hs.defeitos).forEach(([key, val]: [string, any]) => {
+                            const count = typeof val === 'object' ? (Number(val?.count) || 0) : (Number(val) || 0);
+                            if (count > 0) result.push({ name: `HS: ${key.replace(/_/g, ' ')}`, count });
+                        });
+                    }
+                    return result;
+                }
+                // Schema legado
+                const defectsMap = (obs.defects ?? {}) as Record<string, number>;
                 return Object.entries(defectsMap)
                     .filter(([, count]) => count > 0)
                     .map(([name, count]) => ({ name: name.replace(/_/g, ' '), count }));

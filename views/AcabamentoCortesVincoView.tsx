@@ -18,7 +18,7 @@ type RecentRecord = {
 };
 
 type OperatorOption = { id: string; name: string };
-type MachineOption = { id: string; name: string; code: string };
+type MachineOption  = { id: string; name: string; code: string };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFECTS = [
@@ -284,8 +284,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const { profile } = useUser();
 
   const [op, setOp] = useState('');
-  const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
-  const [selectedMachineId, setSelectedMachineId] = useState('');
   const [qtyRevisadas, setQtyRevisadas] = useState(0);
   const [qtyEscolha, setQtyEscolha] = useState(0);
   const [facaCounts, setFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts());
@@ -296,31 +294,26 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [opFound, setOpFound] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [opList, setOpList] = useState<string[]>([]);
+  const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
+  const [selectedMachineId, setSelectedMachineId]     = useState('');
   const [operators, setOperators] = useState<OperatorOption[]>([]);
-  const [machines, setMachines] = useState<MachineOption[]>([]);
+  const [machines, setMachines]   = useState<MachineOption[]>([]);
+
+  const [opList, setOpList] = useState<string[]>([]);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [saldoInspecao, setSaldoInspecao] = useState<{ em_escolha: number; rodadas: number } | null>(null);
 
-  // Carrega lista de OPs, operadores e máquinas
+  // Carrega lista de OPs, operadores e máquinas de Corte e Vinco
   useEffect(() => {
     supabase.from('orders').select('op').order('op').then(({ data }) => {
       if (data) setOpList(data.map((r: { op: string }) => r.op));
     });
-    supabase
-      .from('operators')
-      .select('id, name, area')
-      .eq('active', true)
-      .in('area', ['corte_vinco', 'ambos'])
-      .order('name')
+    supabase.from('operators').select('id, name, area').eq('active', true)
+      .in('area', ['corte_vinco', 'ambos']).order('name')
       .then(({ data }) => { if (data) setOperators(data as OperatorOption[]); });
-    supabase
-      .from('machines')
-      .select('id, name, code, area')
-      .eq('active', true)
-      .in('area', ['corte_vinco', 'ambos'])
-      .order('name')
+    supabase.from('machines').select('id, name, code, area').eq('active', true)
+      .in('area', ['corte_vinco', 'ambos']).order('name')
       .then(({ data }) => { if (data) setMachines(data as MachineOption[]); });
   }, []);
 
@@ -438,6 +431,14 @@ const AcabamentoCortesVincoView: React.FC = () => {
       showToast('Informe o número da OP', 'error');
       return;
     }
+    if (!selectedMachineId) {
+      showToast('Selecione a máquina antes de registrar', 'error');
+      return;
+    }
+    if (selectedOperatorIds.length === 0) {
+      showToast('Selecione ao menos um operador antes de registrar', 'error');
+      return;
+    }
     if (qtyRevisadas === 0) {
       showToast('Informe a quantidade revisada', 'error');
       return;
@@ -474,8 +475,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
       op: op.trim().toUpperCase(),
       modulo: 'corte_vinco',
       auxiliar_user_id: user.id,
-      operator_ids: selectedOperatorIds.length > 0 ? selectedOperatorIds : null,
-      machine_id: selectedMachineId || null,
+      operator_ids: selectedOperatorIds,
+      machine_id: selectedMachineId,
       qty_revisadas: qtyRevisadas,
       qty_aprovadas: Math.max(0, qtyRevisadas - qtyEscolha),
       qty_reprovadas: qtyEscolha,
@@ -544,17 +545,23 @@ const AcabamentoCortesVincoView: React.FC = () => {
             {opList.map(o => <option key={o} value={o} />)}
           </datalist>
 
-          {/* Máquina */}
+          {/* Máquina — obrigatória */}
           <div className="mt-3">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1">
+              Máquina <span className="text-rose-500">*</span>
+            </label>
             <select
               value={selectedMachineId}
               onChange={e => setSelectedMachineId(e.target.value)}
-              className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className={`mt-1.5 h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 bg-slate-50 dark:bg-slate-800 ${
+                !selectedMachineId
+                  ? 'border-rose-300 dark:border-rose-700 text-slate-400'
+                  : 'border-slate-200 dark:border-slate-700'
+              }`}
             >
               <option value="">Selecione a máquina</option>
               {machines.map(m => (
-                <option key={m.id} value={m.id}>{m.name} {m.code ? `(${m.code})` : ''}</option>
+                <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>
               ))}
             </select>
             {machines.length === 0 && (
@@ -562,13 +569,16 @@ const AcabamentoCortesVincoView: React.FC = () => {
             )}
           </div>
 
-          {/* Operadores */}
+          {/* Operadores — obrigatório, múltiplos (troca de turno) */}
           <div className="mt-3">
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operadores</label>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1">
+              Operadores <span className="text-rose-500">*</span>
+              <span className="ml-auto text-[8px] font-bold text-slate-400 normal-case tracking-normal">Selecione todos que trabalharam</span>
+            </label>
             {operators.length === 0 ? (
               <p className="text-[10px] text-amber-500 mt-1">Nenhum operador cadastrado para Corte e Vinco. Cadastre em Administração.</p>
             ) : (
-              <div className="mt-1.5 flex flex-wrap gap-2">
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {operators.map(o => {
                   const selected = selectedOperatorIds.includes(o.id);
                   return (
@@ -581,17 +591,25 @@ const AcabamentoCortesVincoView: React.FC = () => {
                       className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
                         selected
                           ? 'bg-indigo-600 border-indigo-600 text-white'
-                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'
                       }`}
                     >
+                      {selected && <span className="material-symbols-outlined text-[11px] mr-0.5 align-middle">check</span>}
                       {o.name}
                     </button>
                   );
                 })}
               </div>
             )}
+            {selectedOperatorIds.length === 0 && operators.length > 0 && (
+              <p className="text-[10px] text-rose-500 mt-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs">warning</span>
+                Selecione ao menos um operador para registrar
+              </p>
+            )}
           </div>
 
+          {/* Quantidade de Facas */}
           <div className="mt-3">
             <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
               Quantidade de Facas
@@ -774,7 +792,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || !op.trim()}
+          disabled={saving || !op.trim() || !selectedMachineId || selectedOperatorIds.length === 0}
           className="flex-[2] h-11 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
