@@ -126,6 +126,7 @@ export default function FinishingAnalysisView() {
     const [palletDefectsDetail, setPalletDefectsDetail] = useState<Record<string, number>>({ ...EMPTY_DEFECTS });
     const [palletResult, setPalletResult]               = useState<'APPROVED'|'REJECTED'|'RESTRICTED'>('APPROVED');
     const [palletObs, setPalletObs]                     = useState('');
+    const [palletAnalystId, setPalletAnalystId]         = useState('');
     const [isSavingPallet, setIsSavingPallet]           = useState(false);
     const [completedPalletId, setCompletedPalletId]     = useState<string | null>(null);
 
@@ -221,6 +222,9 @@ export default function FinishingAnalysisView() {
     }, [savedPallets]);
 
     useEffect(() => {
+        if (activeStep === 2) {
+            setPalletAnalystId(prev => prev || selectedAnalystIds[0] || '');
+        }
         if (activeStep === 3) {
             setStatus(autoStatus);
             if (!destinoFinal && autoDestino) setDestinoFinal(autoDestino as 'expedicao' | 'revisao_final');
@@ -277,12 +281,13 @@ export default function FinishingAnalysisView() {
         try {
             const { count } = await supabase.from('pallet_inspections').select('id', { count: 'exact', head: true }).eq('op', selectedOrder.op.toUpperCase());
             const nextNum = (count ?? 0) + 1;
-            const analystObj = analysts.find(a => a.id === selectedAnalystIds[0]);
+            const effectivePalletAnalystId = palletAnalystId || selectedAnalystIds[0] || null;
+            const analystObj = analysts.find(a => a.id === effectivePalletAnalystId);
             const machineObj = machines.find(m => m.id === selectedMachineId);
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
             const { data: saved, error } = await supabase.from('pallet_inspections').insert([{
                 op: selectedOrder.op.toUpperCase(), order_id: selectedOrder.id, pallet_number: nextNum,
-                analyst_id: selectedAnalystIds[0] || null, machine_id: selectedMachineId || null,
+                analyst_id: effectivePalletAnalystId, machine_id: selectedMachineId || null,
                 analyst_name: analystObj?.name ?? null, machine_name: machineObj?.name ?? null,
                 units_per_box: nqaConfig.unidades_por_caixa, boxes_per_pallet: nqaConfig.caixas_por_pallet,
                 total_boxes_sublote: palletBoxData.totalBoxes, boxes_to_inspect: palletBoxData.boxesToInspect,
@@ -382,12 +387,14 @@ export default function FinishingAnalysisView() {
     };
 
     const clearForm = () => {
-        setSelectedOrderId(''); setOrderFilter('');
-        setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero('');
+        // Limpa dados da OP/laudo mas preserva equipe, máquina e NQA para o próximo laudo
+        setSelectedOrderId(''); setOrderFilter(''); setLaudoNumero('');
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
         setPalletDefects({ critical: 0, major: 0, minor: 0 }); setPalletDefectsDetail({ ...EMPTY_DEFECTS });
         setPalletObs(''); setPalletResult('APPROVED'); setSavedPallets([]); setDestinoFinal('');
+        setRodadas([]); setCorteVincoSaldo(null);
         setActiveStep(1);
+        // selectedOperatorIds, selectedAnalystIds, selectedMachineId, nqaConfig, nqaProfileId são mantidos
     };
 
     // ─── Helpers visuais ─────────────────────────────────────────────────
@@ -426,10 +433,16 @@ export default function FinishingAnalysisView() {
                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Produto Acabado</p>
                             <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">{FINISHING_STEPS[activeStep - 1]?.label}</h1>
                         </div>
-                        <div className="hidden sm:flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
                             {selectedOrderId && <span className="text-indigo-600">OP: {selectedOrderId}</span>}
-                            {savedPallets.length > 0 && <span className="text-slate-500">{savedPallets.length} pallet{savedPallets.length > 1 ? 's' : ''}</span>}
-                            {savedPallets.some(p => p.result === 'REJECTED') && <span className="text-rose-500">Pallets reprovados</span>}
+                            {activeStep === 2 && (
+                                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[11px]">
+                                    <span className="material-symbols-outlined text-xs">inventory_2</span>
+                                    Pallet #{savedPallets.length + 1}
+                                </span>
+                            )}
+                            {savedPallets.length > 0 && activeStep !== 2 && <span className="text-slate-500">{savedPallets.length} pallet{savedPallets.length > 1 ? 's' : ''} registrados</span>}
+                            {savedPallets.some(p => p.result === 'REJECTED') && <span className="text-rose-500">· Pallets reprovados</span>}
                         </div>
                     </div>
                     <nav className="flex gap-2 overflow-x-auto pb-1">
@@ -779,16 +792,26 @@ export default function FinishingAnalysisView() {
                     ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                             <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-indigo-50 dark:bg-indigo-950/20">
-                                <span className="flex items-center justify-center size-8 rounded-full bg-indigo-600 text-white text-sm font-black">#{savedPallets.length + 1}</span>
-                                <div>
+                                <span className="flex items-center justify-center size-10 rounded-full bg-indigo-600 text-white text-base font-black shrink-0">#{savedPallets.length + 1}</span>
+                                <div className="flex-1 min-w-0">
                                     <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallet {savedPallets.length + 1}</h2>
-                                    <p className="text-[10px] text-slate-400 font-bold">Inspeção NQA — {fmt(palletLotSize)} unidades</p>
+                                    <p className="text-[10px] text-slate-400 font-bold">Inspeção NQA — {fmt(palletLotSize)} unidades · OP {selectedOrderId}</p>
                                 </div>
                                 {palletNqaResult && (
-                                    <span className={`ml-auto text-[10px] font-black uppercase px-3 py-1 rounded-full ${palletNqaResult.overall ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full shrink-0 ${palletNqaResult.overall ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                                         {palletNqaResult.overall ? 'NQA OK' : 'NQA NOK'}
                                     </span>
                                 )}
+                            </div>
+                            {/* Analista deste pallet */}
+                            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center gap-3">
+                                <span className="material-symbols-outlined text-sm text-indigo-400">person_search</span>
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">Analista deste pallet</label>
+                                <select value={palletAnalystId} onChange={e => setPalletAnalystId(e.target.value)}
+                                    className="flex-1 h-8 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs">
+                                    <option value="">Selecionar analista...</option>
+                                    {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                </select>
                             </div>
 
                             <div className="p-5 space-y-5">
