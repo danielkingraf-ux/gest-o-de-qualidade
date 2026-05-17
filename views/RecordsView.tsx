@@ -123,6 +123,39 @@ const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
     .map(([key, count]) => ({ name: key.replace(/_/g, ' '), count: count as number }));
 };
 
+// Extrai defeitos do schema v2 (defeitos.por_folha / por_unidade / verniz_uv / hot_stamping)
+// e faz fallback para o schema legado (defects: Record<string, number>)
+const extractDefects = (obs: any): Array<{ name: string; count: number }> => {
+  if (!obs) return [];
+  if (obs.schema_version === 2 || obs.defeitos) {
+    const result: Array<{ name: string; count: number }> = [];
+    const defeitos = obs.defeitos ?? {};
+    const cor = Number((defeitos.por_folha ?? {}).cor) || 0;
+    if (cor > 0) result.push({ name: 'Cor', count: cor });
+    const porUnidade = defeitos.por_unidade ?? {};
+    Object.entries(porUnidade).forEach(([key, val]: [string, any]) => {
+      const count = typeof val === 'object' ? (Number(val?.count) || 0) : (Number(val) || 0);
+      if (count > 0) result.push({ name: key.replace(/_/g, ' '), count });
+    });
+    const vernizUv = obs.verniz_uv ?? {};
+    if (vernizUv.aplicavel && vernizUv.defeitos) {
+      Object.entries(vernizUv.defeitos).forEach(([key, val]: [string, any]) => {
+        const count = typeof val === 'object' ? (Number(val?.count) || 0) : (Number(val) || 0);
+        if (count > 0) result.push({ name: `UV: ${key.replace(/_/g, ' ')}`, count });
+      });
+    }
+    const hs = obs.hot_stamping ?? {};
+    if (hs.aplicavel && hs.defeitos) {
+      Object.entries(hs.defeitos).forEach(([key, val]: [string, any]) => {
+        const count = typeof val === 'object' ? (Number(val?.count) || 0) : (Number(val) || 0);
+        if (count > 0) result.push({ name: `HS: ${key.replace(/_/g, ' ')}`, count });
+      });
+    }
+    return result;
+  }
+  return normalizeDefects(obs.defects);
+};
+
 const isSpreadsheetAnalysis = (record: any) => {
   const obs = parseObservations(record.observations);
   return obs.is_spreadsheet_analysis === true;
@@ -203,7 +236,7 @@ export default function RecordsView() {
         const order = getJoinedOrder(insp.orders);
         const parsedObservations = parseObservations(insp.observations);
         const displayProcessType = normalizeProcessType(insp.process_type || parsedObservations.process_type);
-        const defects = normalizeDefects(parsedObservations.defects);
+        const defects = extractDefects(parsedObservations);
         const total_defects = parsedObservations.totalDefects
           ?? defects.reduce((acc: number, d: any) => acc + (d.count || 0), 0);
         return {
@@ -293,7 +326,7 @@ export default function RecordsView() {
         return flattened;
       }
 
-      return normalizeDefects(obs.defects);
+      return extractDefects(obs);
     } catch (e) {
       return [];
     }
