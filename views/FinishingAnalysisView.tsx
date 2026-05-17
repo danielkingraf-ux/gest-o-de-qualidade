@@ -321,9 +321,8 @@ export default function FinishingAnalysisView() {
             showToast('Configure unidades por caixa e caixas por pallet antes de registrar', 'warning'); return;
         }
         setIsSavingPallet(true);
+        const nextNum = savedPallets.length + 1;
         try {
-            const { count } = await supabase.from('pallet_inspections').select('id', { count: 'exact', head: true }).eq('op', selectedOrder.op.toUpperCase());
-            const nextNum = (count ?? 0) + 1;
             const analystObj = analysts.find(a => a.id === selectedAnalystIds[0]);
             const machineObj = machines.find(m => m.id === selectedMachineId);
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
@@ -1260,12 +1259,16 @@ export default function FinishingAnalysisView() {
                                 </div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cole na caixa ou escaneie</p>
                             </div>
+                            <button onClick={() => setCompletedPalletId(null)}
+                                className="w-full h-11 rounded-2xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20">
+                                <span className="material-symbols-outlined text-sm">arrow_forward</span>Registrar Próximo Pallet
+                            </button>
                             <div className="grid grid-cols-2 gap-3">
                                 <button onClick={() => window.print()} className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-all">
                                     <span className="material-symbols-outlined text-sm">print</span>Imprimir
                                 </button>
                                 <Link to={`/pallet/${completedPalletId}`} onClick={() => setCompletedPalletId(null)}
-                                    className="h-10 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all">
+                                    className="h-10 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all">
                                     <span className="material-symbols-outlined text-sm">open_in_new</span>Ver Auditoria
                                 </Link>
                             </div>
