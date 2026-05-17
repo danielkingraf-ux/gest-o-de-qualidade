@@ -395,7 +395,9 @@ export default function FinishingAnalysisView() {
                     producao: { qty_produzida: qtyProduzida, qty_escolha: qtyEscolha, qty_refugo: qtyRefugo },
                     colagem: {
                         machine_id: colagemMachineId,
+                        machine_name: machines.find(m => m.id === colagemMachineId)?.name ?? null,
                         operator_ids: colagemOperatorIds,
+                        operator_names: colagemOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id),
                         qty_rodadas: colagemQtyRodadas,
                         qty_escolha: colagemQtyEscolha,
                         qty_reprovadas: colagemQtyReprovadas,

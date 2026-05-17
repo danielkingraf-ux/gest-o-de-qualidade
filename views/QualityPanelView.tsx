@@ -23,6 +23,7 @@ interface NormalizedRecord {
     qtyProduzida: number;
     qtyEscolha: number;
     qtyRefugo: number;
+    isColagem?: boolean;
 }
 
 const asN = (v: any) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -36,36 +37,30 @@ const parseObs = (v: any): any => {
 // Defeitos das inspeções (processo inicial + produto acabado via pallet_inspections + colagem)
 function normalizeInspections(
     raw: any[],
-    palletDefectsByOp: Map<string, Record<string, number>>
+    palletDefectsByOp: Map<string, Record<string, number>>,
+    machNames: Record<string, string>
 ): NormalizedRecord[] {
-    return raw.map(r => {
+    const result: NormalizedRecord[] = [];
+
+    for (const r of raw) {
         const obs = parseObs(r.observations);
         const isAcabado = obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis;
         const prod = obs.producao || {};
         const defMap: Record<string, number> = {};
 
         if (isAcabado) {
-            // Defeitos dos pallets (pallet_inspections.defects_detail agregado por OP)
             const palletDefs = palletDefectsByOp.get(String(r.op || '').toUpperCase()) || {};
             Object.entries(palletDefs).forEach(([k, v]) => {
                 const n = asN(v);
                 if (n > 0) defMap[k.replace(/_/g, ' ')] = (defMap[k.replace(/_/g, ' ')] || 0) + n;
             });
-            // Defeitos da colagem
-            const colagemDefs = obs.colagem?.defects || {};
-            Object.entries(colagemDefs).forEach(([k, v]) => {
-                const n = asN(v);
-                if (n > 0) defMap[`Colagem: ${k.replace(/_/g, ' ')}`] = (defMap[`Colagem: ${k.replace(/_/g, ' ')}`] || 0) + n;
-            });
         } else {
-            // Processo inicial: defeitos em obs.defeitos.por_unidade
             if (obs.defeitos?.por_unidade) {
                 Object.entries(obs.defeitos.por_unidade).forEach(([k, v]: [string, any]) => {
                     const n = asN(typeof v === 'object' ? v?.count : v);
                     if (n > 0) defMap[k.replace(/_/g, ' ')] = n;
                 });
             }
-            // UV e HS
             if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos) {
                 Object.entries(obs.verniz_uv.defeitos).forEach(([k, v]: [string, any]) => {
                     const n = asN(v?.count ?? v);
@@ -78,7 +73,6 @@ function normalizeInspections(
                     if (n > 0) defMap[`HS: ${k.replace(/_/g, ' ')}`] = n;
                 });
             }
-            // Cor na tabela por_folha (esquema v2)
             if (obs.defeitos?.por_folha?.cor) {
                 const n = asN(obs.defeitos.por_folha.cor);
                 if (n > 0) defMap['cor'] = (defMap['cor'] || 0) + n;
@@ -101,10 +95,13 @@ function normalizeInspections(
             ? obs.all_operator_ids.filter(Boolean)
             : r.operator_id ? [r.operator_id] : [];
 
-        return {
+        const date = new Date(r.created_at);
+        if (isNaN(date.getTime())) continue;
+
+        result.push({
             id: r.id,
             op: String(r.op || '—'),
-            date: new Date(r.created_at),
+            date,
             area: isAcabado ? 'acabado' as const : 'inicial' as const,
             status: String(r.status || ''),
             machineName: r.machines?.name || '—',
@@ -114,8 +111,42 @@ function normalizeInspections(
             qtyProduzida,
             qtyEscolha,
             qtyRefugo,
-        };
-    }).filter(r => !isNaN(r.date.getTime()));
+        });
+
+        // Registro virtual para colagem (operadores e máquina separados)
+        if (isAcabado && obs.colagem) {
+            const c = obs.colagem;
+            const colagemOpIds: string[] = Array.isArray(c.operator_ids) ? c.operator_ids.filter(Boolean) : [];
+            const colagemMachId = String(c.machine_id || '');
+            const colagemMachName = c.machine_name || machNames[colagemMachId] || '—';
+            if (colagemOpIds.length > 0 || colagemMachId) {
+                const cDefMap: Record<string, number> = {};
+                if (c.defects && typeof c.defects === 'object') {
+                    Object.entries(c.defects).forEach(([k, v]) => {
+                        const n = asN(v);
+                        if (n > 0) cDefMap[k.replace(/_/g, ' ')] = n;
+                    });
+                }
+                result.push({
+                    id: `${r.id}_colagem`,
+                    op: String(r.op || '—'),
+                    date,
+                    area: 'acabado',
+                    status: 'COMPLETED',
+                    machineName: colagemMachName,
+                    machineId: colagemMachId,
+                    operatorIds: colagemOpIds,
+                    defects: cDefMap,
+                    qtyProduzida: 0,
+                    qtyEscolha: asN(c.qty_escolha),
+                    qtyRefugo: asN(c.qty_reprovadas),
+                    isColagem: true,
+                });
+            }
+        }
+    }
+
+    return result;
 }
 
 // Defeitos do Corte e Vinco (acabamento_registros)
@@ -181,7 +212,7 @@ export default function QualityPanelView() {
     useEffect(() => {
         (async () => {
             setLoading(true);
-            const [insRes, acabRes, palletRes, opRes] = await Promise.all([
+            const [insRes, acabRes, palletRes, opRes, machRes] = await Promise.all([
                 supabase.from('inspections')
                     .select('id, op, created_at, status, machine_id, operator_id, observations, machines(name)')
                     .order('created_at', { ascending: false })
@@ -195,12 +226,17 @@ export default function QualityPanelView() {
                     .select('op, defects_detail')
                     .limit(5000),
                 supabase.from('operators').select('id, name'),
+                supabase.from('machines').select('id, name'),
             ]);
 
             // Mapa de nomes de operadores
             const names: Record<string, string> = {};
             (opRes.data || []).forEach((o: any) => { names[o.id] = o.name; });
             setOpNames(names);
+
+            // Mapa de nomes de máquinas (para colagem que não tem join)
+            const machNames: Record<string, string> = {};
+            (machRes.data || []).forEach((m: any) => { machNames[m.id] = m.name; });
 
             // Agrega defeitos de pallet por OP
             const palletDefectsByOp = new Map<string, Record<string, number>>();
@@ -214,7 +250,7 @@ export default function QualityPanelView() {
                 palletDefectsByOp.set(opKey, existing);
             });
 
-            const insRecords  = normalizeInspections(insRes.data || [], palletDefectsByOp);
+            const insRecords  = normalizeInspections(insRes.data || [], palletDefectsByOp, machNames);
             const acabRecords = normalizeCorteVinco(acabRes.data || []);
             setRecords([...insRecords, ...acabRecords].sort((a, b) => b.date.getTime() - a.date.getTime()));
             setLoading(false);
@@ -235,10 +271,10 @@ export default function QualityPanelView() {
         let registros = 0, produzida = 0, escolha = 0, refugo = 0;
         const opsSet = new Set<string>();
         filtered.forEach(r => {
-            registros++;
+            if (!r.isColagem) registros++;
             opsSet.add(r.op);
-            // No modo "Todos", usar apenas processo inicial como base de produção para evitar dupla contagem
-            if (areaTab !== 'all' || r.area === 'inicial') {
+            // Colagem não conta produzida (seria dupla contagem do produto acabado)
+            if (!r.isColagem && (areaTab !== 'all' || r.area === 'inicial')) {
                 produzida += r.qtyProduzida;
             }
             escolha += r.qtyEscolha;

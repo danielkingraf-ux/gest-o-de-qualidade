@@ -28,12 +28,13 @@ type StatusFinal = typeof STATUS_OPCOES[number]['value'] | '';
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Operador = { id: string; name: string };
 
+type ProblemaSetor = { setor: string; qty: string };
+
 type Problema = {
   id: string;
-  setor: string;
+  setores: ProblemaSetor[];
   operador_id: string;
   problema: string;
-  qty_afetada: string;
   observacao: string;
 };
 
@@ -46,11 +47,17 @@ type Periodo = {
   observacao: string;
 };
 
-type Resultado = {
-  qty_solicitada: string;
+type ResultadoEtapa = {
+  etapa: string;
+  label: string;
   qty_revisada: string;
   qty_boa: string;
   qty_refugada: string;
+};
+
+type Resultado = {
+  qty_solicitada: string;
+  etapas: ResultadoEtapa[];
 };
 
 type DbRecord = {
@@ -74,9 +81,24 @@ function localNow(): string {
   return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`;
 }
 
-const mkProblema = (): Problema => ({ id: newId(), setor: '', operador_id: '', problema: '', qty_afetada: '', observacao: '' });
+const mkProblema = (): Problema => ({ id: newId(), setores: [], operador_id: '', problema: '', observacao: '' });
 const mkPeriodo  = (): Periodo  => ({ id: newId(), inicio: localNow(), fim: localNow(), pessoas: '', qty_pessoas: 1, observacao: '' });
-const mkResultado = (): Resultado => ({ qty_solicitada: '', qty_revisada: '', qty_boa: '', qty_refugada: '' });
+const mkResultado = (): Resultado => ({ qty_solicitada: '', etapas: [] });
+
+function migrateProblema(p: any): Problema {
+  if (p.setores) return { id: newId(), setores: p.setores, operador_id: p.operador_id || '', problema: p.problema || '', observacao: p.observacao || '' };
+  // Formato antigo: { setor, qty_afetada }
+  return { id: newId(), setores: p.setor ? [{ setor: p.setor, qty: p.qty_afetada || '' }] : [], operador_id: p.operador_id || '', problema: p.problema || '', observacao: p.observacao || '' };
+}
+
+function migrateResultado(r: any): Resultado {
+  if (!r) return mkResultado();
+  if (r.etapas) return r as Resultado;
+  // Formato antigo: { qty_solicitada, qty_revisada, qty_boa, qty_refugada }
+  const etapas: ResultadoEtapa[] = [];
+  if (r.qty_revisada) etapas.push({ etapa: 'geral', label: 'Geral', qty_revisada: r.qty_revisada || '', qty_boa: r.qty_boa || '', qty_refugada: r.qty_refugada || '' });
+  return { qty_solicitada: r.qty_solicitada || '', etapas };
+}
 
 function periodoMinutos(p: Periodo): number {
   if (!p.inicio || !p.fim) return 0;
@@ -109,6 +131,19 @@ const ProblemaCard: React.FC<{
   onChange: (p: Problema) => void; onRemove: () => void;
 }> = ({ problema, operadores, index, onChange, onRemove }) => {
   const set = <K extends keyof Problema>(k: K, v: Problema[K]) => onChange({ ...problema, [k]: v });
+  const selectedSetores = problema.setores.map(s => s.setor);
+
+  const toggleSetor = (s: string) => {
+    if (selectedSetores.includes(s)) {
+      set('setores', problema.setores.filter(x => x.setor !== s));
+    } else {
+      set('setores', [...problema.setores, { setor: s, qty: '' }]);
+    }
+  };
+
+  const updateSetorQty = (setor: string, qty: string) => {
+    set('setores', problema.setores.map(x => x.setor === setor ? { ...x, qty } : x));
+  };
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-sm">
@@ -120,17 +155,39 @@ const ProblemaCard: React.FC<{
         </button>
       </div>
 
-      {/* Setor */}
+      {/* Setores — multi-setor com qty por setor */}
       <div className="mb-2.5">
-        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Setor de Origem</p>
+        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+          Setores Afetados <span className="text-rose-400">*</span>
+        </p>
+
+        {/* Setores selecionados com qty */}
+        {problema.setores.length > 0 && (
+          <div className="mb-2 space-y-1.5">
+            {problema.setores.map(ps => (
+              <div key={ps.setor} className="flex items-center gap-2">
+                <span className="flex-1 px-2 py-1 rounded-lg text-[10px] font-black bg-indigo-600 text-white truncate">{ps.setor}</span>
+                <input
+                  type="number" min="0" placeholder="Qtd" value={ps.qty}
+                  onChange={e => updateSetorQty(ps.setor, e.target.value)}
+                  className="w-24 h-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                <button type="button" onClick={() => toggleSetor(ps.setor)}
+                  className="size-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors shrink-0">
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pills para adicionar setores */}
         <div className="flex flex-wrap gap-1">
-          {SETORES_ORIGEM.map(s => (
-            <button key={s} type="button" onClick={() => set('setor', problema.setor === s ? '' : s)}
-              className={`px-2 py-1 rounded-lg text-[10px] font-black border transition-colors ${
-                problema.setor === s
-                  ? 'bg-indigo-600 border-indigo-600 text-white'
-                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300'
-              }`}>{s}</button>
+          {SETORES_ORIGEM.filter(s => !selectedSetores.includes(s)).map(s => (
+            <button key={s} type="button" onClick={() => toggleSetor(s)}
+              className="px-2 py-1 rounded-lg text-[10px] font-black border bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors flex items-center gap-0.5">
+              <span className="material-symbols-outlined text-[10px]">add</span>{s}
+            </button>
           ))}
         </div>
       </div>
@@ -144,17 +201,11 @@ const ProblemaCard: React.FC<{
           </select>
         </div>
         <div>
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Qtd Afetada</p>
-          <input type="number" min="0" placeholder="opcional" value={problema.qty_afetada}
-            onChange={e => set('qty_afetada', e.target.value)} className={inputCls} />
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Problema</p>
+          <input list={`def-${problema.id}`} placeholder="Selecione ou descreva..." value={problema.problema}
+            onChange={e => set('problema', e.target.value)} className={inputCls} />
+          <datalist id={`def-${problema.id}`}>{DEFEITOS_LISTA.map(d => <option key={d} value={d} />)}</datalist>
         </div>
-      </div>
-
-      <div className="mb-2">
-        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Problema Encontrado</p>
-        <input list={`def-${problema.id}`} placeholder="Selecione ou descreva..." value={problema.problema}
-          onChange={e => set('problema', e.target.value)} className={inputCls} />
-        <datalist id={`def-${problema.id}`}>{DEFEITOS_LISTA.map(d => <option key={d} value={d} />)}</datalist>
       </div>
 
       <div>
@@ -244,10 +295,13 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     rodadasImpressao: number; escolhaImpressao: number;
     rodadasCorteVinco: number; escolhaCorteVinco: number;
     rodadasProdutoAcabado: number; escolhaProdutoAcabado: number;
+    rodadasColagem: number; escolhaColagem: number; refugoColagem: number;
     totalEscolha: number;
     loteProdutoAcabadoReprovado: boolean;
     operadoresNomes: string[];
     maquinasNomes: string[];
+    colagemOperadoresNomes: string[];
+    colagemMaquinaNome: string;
   };
   const [saldoOp, setSaldoOp] = useState<SaldoConsolidado | null>(null);
 
@@ -289,8 +343,11 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
       let rodadasImpressao = 0, escolhaImpressao = 0;
       let rodadasProdutoAcabado = 0, escolhaProdutoAcabado = 0;
+      let rodadasColagem = 0, escolhaColagem = 0, refugoColagem = 0;
       const opIds = new Set<string>();
       const machineIds = new Set<string>();
+      const colagemOpIds = new Set<string>();
+      let colagemMachineId = '';
 
       for (const row of (inspRes.data ?? []) as Array<{ observations: string; machine_id: string | null }>) {
         try {
@@ -303,6 +360,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
             rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
             escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
           }
+          if (obs.process_area === 'produto_acabado' && obs.colagem) {
+            rodadasColagem += Number(obs.colagem.qty_rodadas)    || 0;
+            escolhaColagem += Number(obs.colagem.qty_escolha)    || 0;
+            refugoColagem  += Number(obs.colagem.qty_reprovadas) || 0;
+            if (Array.isArray(obs.colagem.operator_ids)) {
+              (obs.colagem.operator_ids as string[]).forEach((id: string) => id && colagemOpIds.add(id));
+            }
+            if (obs.colagem.machine_id && !colagemMachineId) colagemMachineId = obs.colagem.machine_id;
+          }
           if (Array.isArray(obs.all_operator_ids)) {
             (obs.all_operator_ids as string[]).forEach((id: string) => id && opIds.add(id));
           }
@@ -310,9 +376,12 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         if (row.machine_id) machineIds.add(row.machine_id);
       }
 
+      if (colagemMachineId) machineIds.add(colagemMachineId);
+      colagemOpIds.forEach(id => opIds.add(id));
+
       const rodadasCorteVinco = (cvRes.data ?? []).reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
       const escolhaCorteVinco = (cvRes.data ?? []).reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
-      const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaProdutoAcabado;
+      const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaProdutoAcabado + escolhaColagem;
       const loteProdutoAcabadoReprovado = rodadasProdutoAcabado > 0 && escolhaProdutoAcabado >= rodadasProdutoAcabado;
 
       const [maqRes, opRes] = await Promise.all([
@@ -320,14 +389,30 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         opIds.size > 0      ? supabase.from('operators').select('id, name').in('id', [...opIds])     : Promise.resolve({ data: [] }),
       ]);
 
-      const maquinasNomes  = ((maqRes.data ?? []) as Array<{ id: string; name: string }>).map(m => m.name);
-      const operadoresNomes = ((opRes.data ?? []) as Array<{ id: string; name: string }>).map(o => o.name);
-      const qtdSolicitada  = orderRes.data?.qtd_total ?? 0;
+      const allMachData = (maqRes.data ?? []) as Array<{ id: string; name: string }>;
+      const allOpData   = (opRes.data  ?? []) as Array<{ id: string; name: string }>;
+      const maquinasNomes    = allMachData.filter(m => m.id !== colagemMachineId).map(m => m.name);
+      const operadoresNomes  = allOpData.filter(o => !colagemOpIds.has(o.id)).map(o => o.name);
+      const colagemOperadoresNomes = allOpData.filter(o => colagemOpIds.has(o.id)).map(o => o.name);
+      const colagemMaquinaNome     = allMachData.find(m => m.id === colagemMachineId)?.name ?? '';
+      const qtdSolicitada = orderRes.data?.qtd_total ?? 0;
 
-      setSaldoOp({ qtdSolicitada, rodadasImpressao, escolhaImpressao, rodadasCorteVinco, escolhaCorteVinco, rodadasProdutoAcabado, escolhaProdutoAcabado, totalEscolha, loteProdutoAcabadoReprovado, operadoresNomes, maquinasNomes });
+      setSaldoOp({ qtdSolicitada, rodadasImpressao, escolhaImpressao, rodadasCorteVinco, escolhaCorteVinco, rodadasProdutoAcabado, escolhaProdutoAcabado, rodadasColagem, escolhaColagem, refugoColagem, totalEscolha, loteProdutoAcabadoReprovado, operadoresNomes, maquinasNomes, colagemOperadoresNomes, colagemMaquinaNome });
 
-      if (qtdSolicitada > 0) setResultado(prev => prev.qty_solicitada === '' ? { ...prev, qty_solicitada: String(qtdSolicitada) } : prev);
-      if (totalEscolha > 0) setResultado(prev => prev.qty_revisada === '' ? { ...prev, qty_revisada: String(totalEscolha) } : prev);
+      // Inicializa etapas do resultado se ainda vazio
+      setResultado(prev => {
+        const next = { ...prev };
+        if (qtdSolicitada > 0 && !next.qty_solicitada) next.qty_solicitada = String(qtdSolicitada);
+        if (next.etapas.length === 0) {
+          const etapas: ResultadoEtapa[] = [];
+          if (escolhaImpressao > 0)       etapas.push({ etapa: 'impressao',       label: 'Impressão',      qty_revisada: String(escolhaImpressao),       qty_boa: '', qty_refugada: '' });
+          if (escolhaCorteVinco > 0)      etapas.push({ etapa: 'corte_vinco',     label: 'Corte e Vinco',  qty_revisada: String(escolhaCorteVinco),      qty_boa: '', qty_refugada: '' });
+          if (escolhaProdutoAcabado > 0)  etapas.push({ etapa: 'produto_acabado', label: 'Prod. Acabado',  qty_revisada: String(escolhaProdutoAcabado),  qty_boa: '', qty_refugada: '' });
+          if (escolhaColagem > 0)         etapas.push({ etapa: 'colagem',         label: 'Colagem',        qty_revisada: String(escolhaColagem),         qty_boa: '', qty_refugada: '' });
+          if (etapas.length > 0) next.etapas = etapas;
+        }
+        return next;
+      });
     }, 600);
 
     return () => clearTimeout(timer);
@@ -336,13 +421,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const qtySolicitada  = toInt(resultado.qty_solicitada);
-  const qtyBoa         = toInt(resultado.qty_boa);
+  const qtyBoa         = resultado.etapas.reduce((s, e) => s + toInt(e.qty_boa), 0);
+  const qtyRefugada    = resultado.etapas.reduce((s, e) => s + toInt(e.qty_refugada), 0);
+  const qtyRevisada    = resultado.etapas.reduce((s, e) => s + toInt(e.qty_revisada), 0);
   const saldo          = qtyBoa - qtySolicitada;
-  const hasSaldoCalc   = resultado.qty_solicitada !== '' && resultado.qty_boa !== '';
+  const hasSaldoCalc   = qtySolicitada > 0 && qtyBoa > 0;
   const totalMinutos   = periodos.reduce((s, p) => s + periodoMinutos(p), 0);
   const totalHomemHora = periodos.reduce((s, p) => s + (periodoMinutos(p) / 60) * p.qty_pessoas, 0);
   const totalPessoas   = periodos.reduce((s, p) => s + p.qty_pessoas, 0);
-  const hasData        = problemas.length > 0 || toInt(resultado.qty_revisada) > 0 || periodos.length > 0;
+  const hasData        = problemas.length > 0 || qtyRevisada > 0 || periodos.length > 0;
   const isEditing      = !!editingId;
 
   // ── Session ─────────────────────────────────────────────────────────────────
@@ -354,9 +441,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   const restoreFromDefects = (def: Record<string, unknown>, record: DbRecord) => {
     setOp(record.op);
-    setProblemas(((def.problemas as unknown[]) ?? []).map((p: unknown) => ({ ...(p as Problema), id: newId() })));
-    const r = def.resultado as Resultado | undefined;
-    setResultado(r ?? mkResultado());
+    setProblemas(((def.problemas as unknown[]) ?? []).map((p: unknown) => migrateProblema(p)));
+    setResultado(migrateResultado(def.resultado));
     setPeriodos(((def.periodos as unknown[]) ?? []).map((p: unknown) => ({ ...(p as Periodo), id: newId() })));
     setStatusFinal((def.status_final as StatusFinal) ?? '');
     setNotes(record.notes ?? '');
@@ -375,7 +461,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     if (!user) { showToast('Sessão expirada. Faça login novamente.', 'error'); return; }
 
     const opName = op.trim().toUpperCase();
-    const setoresEnvolvidos  = [...new Set(problemas.map(p => p.setor).filter(Boolean))];
+    const setoresEnvolvidos  = [...new Set(problemas.flatMap(p => p.setores.map(s => s.setor)).filter(Boolean))];
     const operadoresEnvolvidos = [...new Set(
       problemas.filter(p => p.operador_id)
         .map(p => ({ id: p.operador_id as string, name: operadores.find(o => o.id === p.operador_id)?.name ?? p.operador_id as string }))
@@ -398,8 +484,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
     const row = {
       op: opName, modulo: 'revisao_final', auxiliar_user_id: user.id,
-      qty_revisadas: toInt(resultado.qty_revisada), qty_aprovadas: toInt(resultado.qty_boa),
-      qty_reprovadas: toInt(resultado.qty_refugada), defects: defectsPayload, notes: notes.trim() || null,
+      qty_revisadas: qtyRevisada, qty_aprovadas: qtyBoa,
+      qty_reprovadas: qtyRefugada, defects: defectsPayload, notes: notes.trim() || null,
     };
 
     setSaving(true);
@@ -427,7 +513,16 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     }
   };
 
-  const setResultadoField = (k: keyof Resultado, v: string) => setResultado(prev => ({ ...prev, [k]: v }));
+  const setResultadoSolicitada = (v: string) => setResultado(prev => ({ ...prev, qty_solicitada: v }));
+  const setEtapaField = (etapa: string, k: keyof ResultadoEtapa, v: string) =>
+    setResultado(prev => ({ ...prev, etapas: prev.etapas.map(e => e.etapa === etapa ? { ...e, [k]: v } : e) }));
+  const addEtapaManual = () => {
+    const existingLabels = resultado.etapas.map(e => e.etapa);
+    const next = (['impressao','corte_vinco','produto_acabado','colagem'] as const)
+      .find(e => !existingLabels.includes(e));
+    const labelMap: Record<string, string> = { impressao: 'Impressão', corte_vinco: 'Corte e Vinco', produto_acabado: 'Prod. Acabado', colagem: 'Colagem' };
+    if (next) setResultado(prev => ({ ...prev, etapas: [...prev.etapas, { etapa: next, label: labelMap[next], qty_revisada: '', qty_boa: '', qty_refugada: '' }] }));
+  };
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -567,6 +662,18 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                           <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaProdutoAcabado)}</td>
                         </tr>
                       )}
+                      {saldoOp.rodadasColagem > 0 && (
+                        <tr className="bg-white dark:bg-slate-900/50">
+                          <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-sm text-teal-400">glue</span>Colagem
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasColagem)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className="font-black text-amber-600">{fmt(saldoOp.escolhaColagem)}</span>
+                            {saldoOp.refugoColagem > 0 && <span className="ml-2 text-[10px] font-bold text-rose-500">Refugo: {fmt(saldoOp.refugoColagem)}</span>}
+                          </td>
+                        </tr>
+                      )}
                       <tr className="bg-amber-50 dark:bg-amber-950/20">
                         <td className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">Total para revisão</td>
                         <td className="px-3 py-2"></td>
@@ -586,16 +693,33 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 )}
 
                 {/* Máquinas e operadores */}
-                {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0) && (
-                  <div className="pt-3 border-t border-teal-100 dark:border-teal-900/40 flex flex-wrap gap-1.5">
-                    {saldoOp.maquinasNomes.map(m => (
-                      <span key={m} className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">precision_manufacturing</span>{m}
-                      </span>
-                    ))}
-                    {saldoOp.operadoresNomes.map(o => (
-                      <span key={o} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold">{o}</span>
-                    ))}
+                {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0 || saldoOp.colagemOperadoresNomes.length > 0 || saldoOp.colagemMaquinaNome) && (
+                  <div className="pt-3 border-t border-teal-100 dark:border-teal-900/40 space-y-1.5">
+                    {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {saldoOp.maquinasNomes.map(m => (
+                          <span key={m} className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs">precision_manufacturing</span>{m}
+                          </span>
+                        ))}
+                        {saldoOp.operadoresNomes.map(o => (
+                          <span key={o} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold">{o}</span>
+                        ))}
+                      </div>
+                    )}
+                    {(saldoOp.colagemOperadoresNomes.length > 0 || saldoOp.colagemMaquinaNome) && (
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-teal-600 dark:text-teal-400">Colagem:</span>
+                        {saldoOp.colagemMaquinaNome && (
+                          <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs">precision_manufacturing</span>{saldoOp.colagemMaquinaNome}
+                          </span>
+                        )}
+                        {saldoOp.colagemOperadoresNomes.map(o => (
+                          <span key={o} className="px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-[10px] font-bold">{o}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
@@ -607,21 +731,65 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 <span className="material-symbols-outlined text-sm text-teal-400">summarize</span>Resultado Final da Revisão
               </h2>
 
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                {([
-                  { k: 'qty_solicitada', label: 'Pedido',      cls: 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
-                  { k: 'qty_revisada',   label: 'Revisada',    cls: 'border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300' },
-                  { k: 'qty_boa',        label: 'Boa Final',   cls: 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300' },
-                  { k: 'qty_refugada',   label: 'Refugada',    cls: 'border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-600' },
-                ] as const).map(({ k, label, cls }) => (
-                  <div key={k}>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</p>
-                    <input type="number" min="0" placeholder="0" value={resultado[k]}
-                      onChange={e => setResultadoField(k, e.target.value)}
-                      className={`w-full h-10 rounded-xl border text-center text-sm font-black outline-none focus:ring-2 focus:ring-teal-500/20 ${cls}`} />
-                  </div>
-                ))}
+              {/* Pedido */}
+              <div className="mb-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Qtd Pedido</p>
+                <input type="number" min="0" placeholder="0" value={resultado.qty_solicitada}
+                  onChange={e => setResultadoSolicitada(e.target.value)}
+                  className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center text-sm font-black text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20" />
               </div>
+
+              {/* Tabela por etapa */}
+              {resultado.etapas.length > 0 && (
+                <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 mb-3">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        <th className="px-2 py-1.5 text-left">Etapa</th>
+                        <th className="px-2 py-1.5 text-center text-blue-500">Revisada</th>
+                        <th className="px-2 py-1.5 text-center text-emerald-600">Boa</th>
+                        <th className="px-2 py-1.5 text-center text-rose-500">Refugo</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {resultado.etapas.map(e => (
+                        <tr key={e.etapa}>
+                          <td className="px-2 py-1.5 font-black text-slate-600 dark:text-slate-300 text-[10px] whitespace-nowrap">{e.label}</td>
+                          {(['qty_revisada','qty_boa','qty_refugada'] as const).map(k => (
+                            <td key={k} className="px-1 py-1">
+                              <input type="number" min="0" placeholder="0" value={e[k]}
+                                onChange={ev => setEtapaField(e.etapa, k, ev.target.value)}
+                                className={`w-full h-7 rounded-lg border text-center text-[11px] font-black outline-none focus:ring-1 ${
+                                  k === 'qty_revisada' ? 'border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 focus:ring-blue-400/30'
+                                  : k === 'qty_boa'    ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 focus:ring-emerald-400/30'
+                                  : 'border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-600 focus:ring-rose-400/30'
+                                }`} />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                    {resultado.etapas.length > 1 && (
+                      <tfoot>
+                        <tr className="bg-slate-50 dark:bg-slate-800/40 text-[10px] font-black">
+                          <td className="px-2 py-1.5 text-slate-500 uppercase tracking-widest">Total</td>
+                          <td className="px-2 py-1.5 text-center text-blue-700 dark:text-blue-300">{fmt(qtyRevisada)}</td>
+                          <td className="px-2 py-1.5 text-center text-emerald-700 dark:text-emerald-300">{fmt(qtyBoa)}</td>
+                          <td className="px-2 py-1.5 text-center text-rose-600">{fmt(qtyRefugada)}</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              )}
+
+              {/* Botão para adicionar etapa manualmente */}
+              {resultado.etapas.length < 4 && (
+                <button type="button" onClick={addEtapaManual}
+                  className="mb-3 w-full h-8 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-[10px] font-black text-slate-400 hover:border-teal-300 hover:text-teal-500 transition-colors flex items-center justify-center gap-1">
+                  <span className="material-symbols-outlined text-sm">add</span>Adicionar etapa
+                </button>
+              )}
 
               {hasSaldoCalc && (
                 <div className={`rounded-xl p-3 border-2 ${saldo >= 0 ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/20' : 'border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/20'}`}>
