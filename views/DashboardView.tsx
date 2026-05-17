@@ -1,212 +1,81 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-    AlertTriangle,
-    BarChart3,
-    CalendarDays,
-    ClipboardList,
-    FileText,
-    Layers,
-    RefreshCw,
-    Search,
-    TrendingUp,
-    Users,
-} from 'lucide-react';
-import {
-    Bar,
-    BarChart,
-    CartesianGrid,
-    Cell,
-    Legend,
-    Line,
-    LineChart,
-    Pie,
-    PieChart,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
-} from 'recharts';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
-import { ProcessType } from '../types';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Period = 'day' | 'week' | 'month' | 'year';
-type AreaFilter = 'all' | 'initial' | 'final';
-type AreaKey = 'initial' | 'final';
 
-interface NormalizedDefect {
-    name: string;
-    count: number;
-}
-
-interface NormalizedInspection {
+interface InspectionRow {
     id: string;
-    op: string;
-    date: Date;
-    status: string;
-    area: AreaKey;
-    folhasRodadas: number;
-    folhasVerificadas: number;
-    folhasAprovadas: number;
-    folhasEscolha: number;
-    folhasReprovadas: number;
-    desviosTotal: number;
-    defects: NormalizedDefect[];
-    operatorIds: string[];
-    machineId: string | null;
+    op: string | null;
+    created_at: string;
+    observations: string | object | null;
 }
 
-interface Summary {
+interface AcabamentoRow {
+    id: string;
+    op: string | null;
+    modulo: string;
+    qty_revisadas: number | null;
+    qty_aprovadas: number | null;
+    qty_reprovadas: number | null;
+    timestamp: string;
+}
+
+interface ProcessMetrics {
     laudos: number;
     ops: number;
-    folhasRodadas: number;
-    folhasVerificadas: number;
-    folhasAprovadas: number;
-    folhasEscolha: number;
-    folhasReprovadas: number;
-    saldoSemRevisao: number;
-    desviosTotal: number;
-    taxaAprovacao: number;
-    taxaReprovacao: number;
+    rodadas: number;
+    aprovadas: number;
+    escolha: number;
+    reprovadas: number;
 }
 
-const PERIOD_OPTIONS: Array<{ value: Period; label: string }> = [
-    { value: 'day', label: 'Dia' },
-    { value: 'week', label: 'Semana' },
-    { value: 'month', label: 'Mês' },
-    { value: 'year', label: 'Ano' },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const AREA_OPTIONS: Array<{ value: AreaFilter; label: string }> = [
-    { value: 'all', label: 'Todos os processos' },
-    { value: 'initial', label: 'Processo inicial' },
-    { value: 'final', label: 'Produto acabado' },
-];
-
-const emptySummary = (): Summary => ({
-    laudos: 0,
-    ops: 0,
-    folhasRodadas: 0,
-    folhasVerificadas: 0,
-    folhasAprovadas: 0,
-    folhasEscolha: 0,
-    folhasReprovadas: 0,
-    saldoSemRevisao: 0,
-    desviosTotal: 0,
-    taxaAprovacao: 0,
-    taxaReprovacao: 0,
-});
-
-const asNumber = (value: any) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const parseObs = (v: string | object | null): Record<string, any> => {
+    if (!v) return {};
+    if (typeof v === 'object') return v as Record<string, any>;
+    try { return JSON.parse(v as string); } catch { return {}; }
 };
 
-const parseObs = (value: any) => {
-    if (!value) return {};
-    if (typeof value === 'object') return value;
-    try {
-        return JSON.parse(value);
-    } catch {
-        return {};
-    }
+const asN = (v: unknown): number => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
 };
 
-const normalizeDefects = (raw: any): NormalizedDefect[] => {
-    if (!raw) return [];
+const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(Math.round(n));
 
-    if (Array.isArray(raw)) {
-        return raw
-            .map((item) => ({
-                name: String(item?.name || item?.label || 'Outros'),
-                count: asNumber(item?.count ?? item?.qty ?? item?.value),
-            }))
-            .filter((item) => item.count > 0);
-    }
+const fmtPct = (n: number, d: number) =>
+    d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '—';
 
-    if (typeof raw === 'object') {
-        // Formato InspectionView v2: { por_unidade: { key: { count: N } } }
-        if (raw.por_unidade && typeof raw.por_unidade === 'object') {
-            return Object.entries(raw.por_unidade)
-                .map(([name, val]: [string, any]) => ({
-                    name: name.replace(/_/g, ' '),
-                    count: asNumber(typeof val === 'object' ? val?.count : val),
-                }))
-                .filter((item) => item.count > 0);
-        }
-
-        // Formato FinishingView: { critical, major, minor }
-        const groups = ['critical', 'major', 'minor'];
-        const hasFinishingGroups = groups.some((group) => raw[group] && typeof raw[group] === 'object');
-        if (hasFinishingGroups) {
-            return groups.flatMap((group) =>
-                Object.entries(raw[group] || {}).map(([name, count]) => ({
-                    name,
-                    count: asNumber(count),
-                }))
-            ).filter((item) => item.count > 0);
-        }
-
-        return Object.entries(raw)
-            .map(([name, count]) => ({ name, count: asNumber(count) }))
-            .filter((item) => item.count > 0);
-    }
-
-    return [];
+const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const extractAllDefects = (obs: any): NormalizedDefect[] => {
-    const result: NormalizedDefect[] = [];
-    // InspectionView salva em "defeitos" (pt), FinishingView em "defects" (en)
-    result.push(...normalizeDefects(obs.defeitos ?? obs.defects));
-    if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos)
-        normalizeDefects(obs.verniz_uv.defeitos).forEach(d => result.push({ name: `UV: ${d.name}`, count: d.count }));
-    if (obs.hot_stamping?.aplicavel && obs.hot_stamping?.defeitos)
-        normalizeDefects(obs.hot_stamping.defeitos).forEach(d => result.push({ name: `HS: ${d.name}`, count: d.count }));
-    return result;
-};
-
-const getProcessArea = (record: any, obs: any): AreaKey => {
-    const process = record.process_type || obs.process_type;
-    if (
-        process === ProcessType.ACABAMENTO ||
-        obs.process_area === 'produto_acabado' ||
-        obs.is_spreadsheet_analysis === true ||
-        obs.is_finishing_laudo === true
-    ) {
-        return 'final';
-    }
-    return 'initial';
-};
-
-const getOperatorIds = (record: any, obs: any) => {
-    if (Array.isArray(obs.all_operator_ids) && obs.all_operator_ids.length > 0) {
-        return obs.all_operator_ids.filter(Boolean);
-    }
-    return record.operator_id ? [record.operator_id] : [];
-};
-
-const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
-
-const getPeriodBounds = (period: Period, anchor: string) => {
+// Returns [start, end) bounds for the given period and anchor date string (YYYY-MM-DD)
+const getPeriodBounds = (period: Period, anchor: string): { start: Date; end: Date } => {
     const base = anchor ? new Date(`${anchor}T00:00:00`) : new Date();
     const start = new Date(base);
     const end = new Date(base);
 
-    if (period === 'week') {
-        const day = start.getDay();
-        const diff = day === 0 ? -6 : 1 - day;
+    if (period === 'day') {
+        end.setDate(start.getDate() + 1);
+    } else if (period === 'week') {
+        const dow = start.getDay(); // 0=Sun
+        const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday
         start.setDate(start.getDate() + diff);
         end.setTime(start.getTime());
         end.setDate(start.getDate() + 7);
     } else if (period === 'month') {
         start.setDate(1);
         end.setFullYear(start.getFullYear(), start.getMonth() + 1, 1);
-    } else if (period === 'year') {
+    } else {
         start.setMonth(0, 1);
         end.setFullYear(start.getFullYear() + 1, 0, 1);
-    } else {
-        end.setDate(start.getDate() + 1);
     }
 
     start.setHours(0, 0, 0, 0);
@@ -214,89 +83,211 @@ const getPeriodBounds = (period: Period, anchor: string) => {
     return { start, end };
 };
 
-const periodLabel = (period: Period, anchor: string) => {
+const periodLabel = (period: Period, anchor: string): string => {
     const { start, end } = getPeriodBounds(period, anchor);
-    const format = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    if (period === 'day') return format.format(start);
+    const f = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (period === 'day') return f.format(start);
     const inclusiveEnd = new Date(end);
     inclusiveEnd.setDate(inclusiveEnd.getDate() - 1);
-    return `${format.format(start)} a ${format.format(inclusiveEnd)}`;
+    return `${f.format(start)} a ${f.format(inclusiveEnd)}`;
 };
 
-const bucketKey = (date: Date, period: Period) => {
-    if (period === 'year') {
-        return date.toLocaleDateString('pt-BR', { month: 'short' });
+// Advance anchor by ±1 period unit, returning new YYYY-MM-DD string
+const shiftAnchor = (period: Period, anchor: string, direction: -1 | 1): string => {
+    const base = new Date(`${anchor}T00:00:00`);
+
+    if (period === 'day') {
+        base.setDate(base.getDate() + direction);
+    } else if (period === 'week') {
+        base.setDate(base.getDate() + direction * 7);
+    } else if (period === 'month') {
+        base.setMonth(base.getMonth() + direction);
+    } else {
+        base.setFullYear(base.getFullYear() + direction);
     }
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+    return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
 };
 
-const summarize = (items: NormalizedInspection[]): Summary => {
-    const uniqueOps = new Set<string>();
-    const s = items.reduce((acc, item) => {
-        acc.laudos += 1;
-        uniqueOps.add(item.op);
-        acc.folhasRodadas += item.folhasRodadas;
-        acc.folhasVerificadas += item.folhasVerificadas;
-        acc.folhasAprovadas += item.folhasAprovadas;
-        acc.folhasEscolha += item.folhasEscolha;
-        acc.folhasReprovadas += item.folhasReprovadas;
-        acc.desviosTotal += item.desviosTotal;
-        return acc;
-    }, emptySummary());
-    s.ops = uniqueOps.size;
-    s.saldoSemRevisao = Math.max(0, s.folhasRodadas - s.folhasVerificadas);
-    s.taxaAprovacao = s.folhasVerificadas > 0 ? (s.folhasAprovadas / s.folhasVerificadas) * 100 : 0;
-    s.taxaReprovacao = s.folhasVerificadas > 0 ? (s.folhasReprovadas / s.folhasVerificadas) * 100 : 0;
-    return s;
-};
+const emptyMetrics = (): ProcessMetrics => ({
+    laudos: 0,
+    ops: 0,
+    rodadas: 0,
+    aprovadas: 0,
+    escolha: 0,
+    reprovadas: 0,
+});
 
-const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.round(value));
-const formatPercent = (value: number) => `${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatCard({
+    label,
+    value,
+    tone = 'slate',
+}: {
+    label: string;
+    value: string;
+    tone?: 'slate' | 'indigo' | 'amber' | 'rose';
+}) {
+    const valueColors: Record<string, string> = {
+        slate: 'text-slate-900 dark:text-white',
+        indigo: 'text-indigo-700 dark:text-indigo-300',
+        amber: 'text-amber-700 dark:text-amber-300',
+        rose: 'text-rose-700 dark:text-rose-300',
+    };
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+            <p className={`mt-1 text-2xl font-black tabular-nums ${valueColors[tone]}`}>{value}</p>
+        </div>
+    );
+}
+
+function ProcessCard({
+    name,
+    icon,
+    color,
+    metrics,
+}: {
+    name: string;
+    icon: string;
+    color: 'indigo' | 'emerald' | 'violet' | 'rose';
+    metrics: ProcessMetrics;
+}) {
+    const colorMap = {
+        indigo: {
+            badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300',
+            icon: 'text-indigo-600 dark:text-indigo-400',
+            bar: { green: 'bg-indigo-500', amber: 'bg-amber-400', rose: 'bg-rose-500' },
+            border: 'border-indigo-200 dark:border-indigo-800',
+        },
+        emerald: {
+            badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+            icon: 'text-emerald-600 dark:text-emerald-400',
+            bar: { green: 'bg-emerald-500', amber: 'bg-amber-400', rose: 'bg-rose-500' },
+            border: 'border-emerald-200 dark:border-emerald-800',
+        },
+        violet: {
+            badge: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
+            icon: 'text-violet-600 dark:text-violet-400',
+            bar: { green: 'bg-violet-500', amber: 'bg-amber-400', rose: 'bg-rose-500' },
+            border: 'border-violet-200 dark:border-violet-800',
+        },
+        rose: {
+            badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300',
+            icon: 'text-rose-600 dark:text-rose-400',
+            bar: { green: 'bg-rose-400', amber: 'bg-amber-400', rose: 'bg-rose-600' },
+            border: 'border-rose-200 dark:border-rose-800',
+        },
+    };
+
+    const c = colorMap[color];
+    const { rodadas, aprovadas, escolha, reprovadas, laudos, ops } = metrics;
+
+    const pctAprov = rodadas > 0 ? (aprovadas / rodadas) * 100 : 0;
+    const pctEsc = rodadas > 0 ? (escolha / rodadas) * 100 : 0;
+    const pctRep = rodadas > 0 ? (reprovadas / rodadas) * 100 : 0;
+
+    return (
+        <div className={`rounded-xl border bg-white p-5 shadow-sm dark:bg-slate-900 ${c.border}`}>
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <span className={`material-symbols-outlined text-2xl ${c.icon}`}>{icon}</span>
+                    <span className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">{name}</span>
+                </div>
+                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${c.badge}`}>
+                    {laudos} laudo{laudos !== 1 ? 's' : ''}
+                </span>
+            </div>
+
+            {/* Metric grid */}
+            <div className="grid grid-cols-4 gap-2">
+                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Unid. Rodadas</p>
+                    <p className="mt-1 text-lg font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas</p>
+                    <p className="mt-1 text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(aprovadas)}</p>
+                    <p className="text-[10px] font-bold text-slate-400">{fmtPct(aprovadas, rodadas)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Em Escolha</p>
+                    <p className="mt-1 text-lg font-black tabular-nums text-amber-600 dark:text-amber-400">{fmt(escolha)}</p>
+                    <p className="text-[10px] font-bold text-slate-400">{fmtPct(escolha, rodadas)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas</p>
+                    <p className="mt-1 text-lg font-black tabular-nums text-rose-600 dark:text-rose-400">{fmt(reprovadas)}</p>
+                    <p className="text-[10px] font-bold text-slate-400">{fmtPct(reprovadas, rodadas)}</p>
+                </div>
+            </div>
+
+            {/* OPs */}
+            <p className="mt-3 text-xs font-bold text-slate-400">
+                OPs: <span className="font-black text-slate-700 dark:text-slate-200">{ops}</span>
+            </p>
+
+            {/* Proportion bar */}
+            {rodadas > 0 && (
+                <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                    <div
+                        className={`h-full ${c.bar.green} transition-all duration-500`}
+                        style={{ width: `${Math.min(pctAprov, 100)}%` }}
+                    />
+                    <div
+                        className={`h-full ${c.bar.amber} transition-all duration-500`}
+                        style={{ width: `${Math.min(pctEsc, 100 - pctAprov)}%` }}
+                    />
+                    <div
+                        className={`h-full ${c.bar.rose} transition-all duration-500`}
+                        style={{ width: `${Math.min(pctRep, 100 - pctAprov - pctEsc)}%` }}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function DashboardView() {
     const { showToast } = useToast();
+
     const [loading, setLoading] = useState(true);
-    const [rawInspections, setRawInspections] = useState<any[]>([]);
-    const [operators, setOperators] = useState<Record<string, string>>({});
-    const [machines, setMachines] = useState<Record<string, string>>({});
+    const [inspections, setInspections] = useState<InspectionRow[]>([]);
+    const [acabamentos, setAcabamentos] = useState<AcabamentoRow[]>([]);
     const [period, setPeriod] = useState<Period>('month');
-    const [selectedDate, setSelectedDate] = useState(formatDateInput(new Date()));
-    const [areaFilter, setAreaFilter] = useState<AreaFilter>('all');
-    const [opFilter, setOpFilter] = useState('');
+    const [anchor, setAnchor] = useState<string>(todayStr());
+
+    // ── Fetch ──────────────────────────────────────────────────────────────────
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const { data: inspections, error: inspectionsError } = await supabase
-                .from('inspections')
-                .select('*, machines(name), operators(name), analysts(name)')
-                .order('created_at', { ascending: false });
-
-            if (inspectionsError) throw inspectionsError;
-
-            const [{ data: operatorsData, error: operatorsError }, { data: machinesData, error: machinesError }] = await Promise.all([
-                supabase.from('operators').select('id, name'),
-                supabase.from('machines').select('id, name'),
+            const [inspRes, acabRes] = await Promise.all([
+                supabase
+                    .from('inspections')
+                    .select('id, op, created_at, observations')
+                    .order('created_at', { ascending: false })
+                    .limit(2000),
+                supabase
+                    .from('acabamento_registros')
+                    .select('id, op, modulo, qty_revisadas, qty_aprovadas, qty_reprovadas, timestamp')
+                    .order('timestamp', { ascending: false })
+                    .limit(2000),
             ]);
 
-            if (operatorsError) throw operatorsError;
-            if (machinesError) throw machinesError;
+            if (inspRes.error) throw inspRes.error;
+            if (acabRes.error) throw acabRes.error;
 
-            const names = (operatorsData || []).reduce((acc: Record<string, string>, operator: any) => {
-                acc[operator.id] = operator.name;
-                return acc;
-            }, {});
-
-            const machineNames = (machinesData || []).reduce((acc: Record<string, string>, machine: any) => {
-                acc[machine.id] = machine.name;
-                return acc;
-            }, {});
-
-            setRawInspections(inspections || []);
-            setOperators(names);
-            setMachines(machineNames);
-        } catch (error) {
-            showToast('Erro ao carregar painel da diretoria', 'error');
+            setInspections((inspRes.data ?? []) as InspectionRow[]);
+            setAcabamentos((acabRes.data ?? []) as AcabamentoRow[]);
+        } catch (err) {
+            console.error(err);
+            showToast('Erro ao carregar dados do painel', 'error');
         } finally {
             setLoading(false);
         }
@@ -304,495 +295,281 @@ export default function DashboardView() {
 
     useEffect(() => {
         fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const normalized = useMemo<NormalizedInspection[]>(() => {
-        return rawInspections.map((record) => {
-            const obs = parseObs(record.observations);
-            const defects = extractAllDefects(obs);
+    // ── Period bounds ─────────────────────────────────────────────────────────
 
-            // Produção: InspectionView salva em obs.producao
-            const producao = obs.producao || {};
-            const area = getProcessArea(record, obs);
+    const { start, end } = useMemo(() => getPeriodBounds(period, anchor), [period, anchor]);
 
-            let folhasRodadas = 0;
-            let folhasVerificadas = 0;
-            let folhasAprovadas = 0;
-            let folhasEscolha = 0;
-            let folhasReprovadas = 0;
+    // ── Filter helpers ────────────────────────────────────────────────────────
 
-            if (area === 'initial') {
-                // InspectionView: campos em folhas/pilhas
-                const folhasPorPilha = Math.max(1, asNumber(producao.folhas_por_pilha ?? 1));
-                const unidadesPorFolha = Math.max(1, asNumber(producao.unidades_por_folha ?? 1));
-                const unidadesAprovadas = asNumber(producao.unidades_aprovadas);
-                const unidadesEscolha = asNumber(producao.unidades_escolha);
-                const unidadesReprovadas = asNumber(producao.unidades_reprovadas);
-                folhasRodadas = asNumber(producao.quantidade_rodada_folhas);
-                folhasVerificadas = asNumber(producao.pilhas_verificadas) * folhasPorPilha;
-                folhasAprovadas = unidadesAprovadas > 0
-                    ? Math.round(unidadesAprovadas / unidadesPorFolha)
-                    : asNumber(producao.pilhas_aprovadas) * folhasPorPilha;
-                folhasEscolha = unidadesEscolha > 0
-                    ? Math.round(unidadesEscolha / unidadesPorFolha)
-                    : asNumber(producao.folhas_escolha);
-                folhasReprovadas = unidadesReprovadas > 0
-                    ? Math.round(unidadesReprovadas / unidadesPorFolha)
-                    : asNumber(producao.folhas_reprovadas);
-            } else {
-                // FinishingAnalysisView: campos em unidades (qty_produzida, qty_escolha, qty_refugo)
-                const qtyTotal = asNumber(producao.qty_produzida);
-                const qtyEscolha = asNumber(producao.qty_escolha);
-                const qtyRefugo = asNumber(producao.qty_refugo);
-                folhasRodadas = qtyTotal;
-                folhasVerificadas = asNumber(record.samples_count) || qtyTotal;
-                folhasEscolha = qtyEscolha;
-                folhasReprovadas = qtyRefugo;
-                folhasAprovadas = record.status === 'APPROVED'
-                    ? Math.max(0, qtyTotal - qtyEscolha - qtyRefugo)
-                    : 0;
-            }
+    const inRange = (dateStr: string) => {
+        const d = new Date(dateStr);
+        return d >= start && d < end;
+    };
 
-            return {
-                id: record.id,
-                op: String(record.op || 'Sem OP'),
-                date: new Date(record.created_at || record.timestamp),
-                status: record.status,
-                area,
-                folhasRodadas,
-                folhasVerificadas,
-                folhasAprovadas,
-                folhasEscolha,
-                folhasReprovadas,
-                desviosTotal:
-                    asNumber(obs.metricas_falha?.falhas_por_unidade) ||
-                    asNumber(obs.totalDefects) ||
-                    defects.reduce((sum, d) => sum + d.count, 0),
-                defects,
-                operatorIds: getOperatorIds(record, obs),
-                machineId: record.machine_id || null,
-            };
-        }).filter((item) => !Number.isNaN(item.date.getTime()));
-    }, [rawInspections]);
+    // ── Metrics per process ───────────────────────────────────────────────────
 
-    const opOptions = useMemo(() => {
-        const map = new Map<string, number>();
-        normalized.forEach((item) => {
-            map.set(item.op, (map.get(item.op) || 0) + 1);
-        });
-        return Array.from(map.entries())
-            .map(([op, count]) => ({ op, count }))
-            .sort((a, b) => a.op.localeCompare(b.op, 'pt-BR', { numeric: true }));
-    }, [normalized]);
-
-    const filtered = useMemo(() => {
-        const { start, end } = getPeriodBounds(period, selectedDate);
-        const op = opFilter.trim().toLowerCase();
-
-        return normalized.filter((item) => {
-            if (item.date < start || item.date >= end) return false;
-            if (areaFilter !== 'all' && item.area !== areaFilter) return false;
-            if (op && !item.op.toLowerCase().includes(op)) return false;
-            return true;
-        });
-    }, [areaFilter, normalized, opFilter, period, selectedDate]);
-
-    const analytics = useMemo(() => {
-        const initial = summarize(filtered.filter((item) => item.area === 'initial'));
-        const final = summarize(filtered.filter((item) => item.area === 'final'));
-
-        // Folhas rodadas representa a entrada da OP (quantidade da máquina, processo inicial).
-        // Não somar com produto acabado — é a mesma OP em estágio diferente.
-        const total = summarize(filtered);
-        if (areaFilter === 'all') {
-            total.folhasRodadas = initial.folhasRodadas;
-            total.folhasVerificadas = initial.folhasVerificadas;
-            total.folhasAprovadas = initial.folhasAprovadas;
-            total.saldoSemRevisao = Math.max(0, total.folhasRodadas - initial.folhasVerificadas);
-            total.taxaAprovacao = initial.taxaAprovacao;
-            total.taxaReprovacao = initial.taxaReprovacao;
-        }
-
-        const defectMap = new Map<string, number>();
-        const operatorMap = new Map<string, { name: string; defects: number; inspections: number }>();
-        const machineMap = new Map<string, { name: string; defects: number; inspections: number }>();
-        const timelineMap = new Map<string, { periodo: string; inicial: number; final: number; desvios: number }>();
-
-        filtered.forEach((item) => {
-            item.defects.forEach((defect) => {
-                defectMap.set(defect.name, (defectMap.get(defect.name) || 0) + defect.count);
-            });
-
-            const ids = item.operatorIds.length > 0 ? item.operatorIds : ['sem-operador'];
-            ids.forEach((id) => {
-                const name = id === 'sem-operador' ? 'Sem operador' : operators[id] || 'Desconhecido';
-                const current = operatorMap.get(id) || { name, defects: 0, inspections: 0 };
-                current.defects += item.desviosTotal;
-                current.inspections += 1;
-                operatorMap.set(id, current);
-            });
-
-            if (item.machineId) {
-                const machineName = machines[item.machineId] || 'Desconhecida';
-                const cur = machineMap.get(item.machineId) || { name: machineName, defects: 0, inspections: 0 };
-                cur.defects += item.desviosTotal;
-                cur.inspections += 1;
-                machineMap.set(item.machineId, cur);
-            }
-
-            const key = bucketKey(item.date, period);
-            const current = timelineMap.get(key) || { periodo: key, inicial: 0, final: 0, desvios: 0 };
-            if (item.area === 'initial') current.inicial += 1;
-            if (item.area === 'final') current.final += 1;
-            current.desvios += item.desviosTotal;
-            timelineMap.set(key, current);
+    const metrics = useMemo(() => {
+        // 1. Processo Inicial
+        const inspInitial = inspections.filter((r) => {
+            if (!inRange(r.created_at)) return false;
+            const obs = parseObs(r.observations);
+            return obs.process_area === 'producao_inicial';
         });
 
-        const defects = Array.from(defectMap.entries())
-            .map(([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10);
+        const metricInicial: ProcessMetrics = {
+            laudos: inspInitial.length,
+            ops: new Set(inspInitial.map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size,
+            rodadas: inspInitial.reduce((s, r) => s + asN(parseObs(r.observations).saldo_unidades?.rodadas), 0),
+            aprovadas: inspInitial.reduce((s, r) => s + asN(parseObs(r.observations).saldo_unidades?.aprovadas), 0),
+            escolha: inspInitial.reduce((s, r) => s + asN(parseObs(r.observations).saldo_unidades?.em_escolha), 0),
+            reprovadas: inspInitial.reduce((s, r) => s + asN(parseObs(r.observations).saldo_unidades?.reprovadas), 0),
+        };
 
-        const byOperator = Array.from(operatorMap.values())
-            .map((item) => ({
-                ...item,
-                sharePercent: total.desviosTotal > 0 ? (item.defects / total.desviosTotal) * 100 : 0,
-                defectsPerRecord: item.inspections > 0 ? item.defects / item.inspections : 0,
-            }))
-            .sort((a, b) => b.defects - a.defects)
-            .slice(0, 10);
+        // 2. Corte e Vinco
+        const corteRows = acabamentos.filter(
+            (r) => r.modulo === 'corte_vinco' && inRange(r.timestamp),
+        );
 
-        const byMachine = Array.from(machineMap.values())
-            .map((item) => ({
-                ...item,
-                sharePercent: total.desviosTotal > 0 ? (item.defects / total.desviosTotal) * 100 : 0,
-                defectsPerRecord: item.inspections > 0 ? item.defects / item.inspections : 0,
-            }))
-            .sort((a, b) => b.defects - a.defects)
-            .slice(0, 10);
+        const metricCorte: ProcessMetrics = {
+            laudos: corteRows.length,
+            ops: new Set(corteRows.map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size,
+            rodadas: corteRows.reduce((s, r) => s + asN(r.qty_revisadas), 0),
+            aprovadas: corteRows.reduce((s, r) => s + asN(r.qty_aprovadas), 0),
+            escolha: corteRows.reduce((s, r) => s + asN(r.qty_reprovadas), 0), // sent to revision
+            reprovadas: 0,
+        };
 
-        const timeline = Array.from(timelineMap.values());
+        // 3. Produto Acabado
+        const inspFinal = inspections.filter((r) => {
+            if (!inRange(r.created_at)) return false;
+            const obs = parseObs(r.observations);
+            return obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis === true;
+        });
+
+        const metricAcabado: ProcessMetrics = {
+            laudos: inspFinal.length,
+            ops: new Set(inspFinal.map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size,
+            rodadas: inspFinal.reduce((s, r) => s + asN(parseObs(r.observations).producao?.qty_produzida), 0),
+            aprovadas: inspFinal.reduce((s, r) => {
+                const obs = parseObs(r.observations);
+                const prod = obs.producao ?? {};
+                const total = asN(prod.qty_produzida);
+                const esc = asN(prod.qty_escolha);
+                const ref = asN(prod.qty_refugo);
+                return s + Math.max(0, total - esc - ref);
+            }, 0),
+            escolha: inspFinal.reduce((s, r) => s + asN(parseObs(r.observations).producao?.qty_escolha), 0),
+            reprovadas: inspFinal.reduce((s, r) => s + asN(parseObs(r.observations).producao?.qty_refugo), 0),
+        };
+
+        // 4. Revisão Final
+        const revisaoRows = acabamentos.filter(
+            (r) => r.modulo === 'revisao_final' && inRange(r.timestamp),
+        );
+
+        const metricRevisao: ProcessMetrics = {
+            laudos: revisaoRows.length,
+            ops: new Set(revisaoRows.map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size,
+            rodadas: revisaoRows.reduce((s, r) => s + asN(r.qty_revisadas), 0),
+            aprovadas: revisaoRows.reduce((s, r) => s + asN(r.qty_aprovadas), 0),
+            escolha: 0,
+            reprovadas: revisaoRows.reduce((s, r) => s + asN(r.qty_reprovadas), 0),
+        };
+
+        return { metricInicial, metricCorte, metricAcabado, metricRevisao };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inspections, acabamentos, start, end]);
+
+    // ── Summary totals ────────────────────────────────────────────────────────
+
+    const summary = useMemo(() => {
+        const { metricInicial, metricCorte, metricAcabado, metricRevisao } = metrics;
+
+        // Unique OPs across all sources
+        const allOps = new Set<string>();
+        [inspections, acabamentos].forEach((rows) =>
+            rows.forEach((r) => {
+                const op = (r.op ?? '').trim().toUpperCase();
+                if (op) allOps.add(op);
+            }),
+        );
+
+        // filter to period
+        const periodInspOps = new Set<string>();
+        inspections.filter((r) => inRange(r.created_at)).forEach((r) => {
+            const op = (r.op ?? '').trim().toUpperCase();
+            if (op) periodInspOps.add(op);
+        });
+        const periodAcabOps = new Set<string>();
+        acabamentos.filter((r) => inRange(r.timestamp)).forEach((r) => {
+            const op = (r.op ?? '').trim().toUpperCase();
+            if (op) periodAcabOps.add(op);
+        });
+        const totalOps = new Set([...periodInspOps, ...periodAcabOps]).size;
 
         return {
-            total,
-            initial,
-            final,
-            defects,
-            byOperator,
-            byMachine,
-            timeline,
-            areaPie: [
-                { name: 'Processo inicial', value: initial.desviosTotal, color: '#2563eb' },
-                { name: 'Produto acabado', value: final.desviosTotal, color: '#f97316' },
-            ].filter((item) => item.value > 0),
+            totalOps,
+            rodadas: metricInicial.rodadas, // avoid double-counting
+            escolha:
+                metricInicial.escolha +
+                metricCorte.escolha +
+                metricAcabado.escolha +
+                metricRevisao.escolha,
+            reprovadas:
+                metricInicial.reprovadas +
+                metricCorte.reprovadas +
+                metricAcabado.reprovadas +
+                metricRevisao.reprovadas,
         };
-    }, [filtered, operators, machines, period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [metrics, inspections, acabamentos, start, end]);
 
-    if (loading) {
-        return (
-            <div className="flex h-full items-center justify-center p-8">
-                <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
-            </div>
-        );
-    }
+    // ── Period navigation ─────────────────────────────────────────────────────
 
-    const hasData = filtered.length > 0;
+    const handlePrev = () => setAnchor((a) => shiftAnchor(period, a, -1));
+    const handleNext = () => setAnchor((a) => shiftAnchor(period, a, 1));
+
+    const PERIOD_TABS: Array<{ value: Period; label: string }> = [
+        { value: 'day', label: 'Dia' },
+        { value: 'week', label: 'Semana' },
+        { value: 'month', label: 'Mês' },
+        { value: 'year', label: 'Ano' },
+    ];
+
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
         <div className="mx-auto w-full max-w-7xl animate-fade-in space-y-5 p-4 pb-20 md:p-6">
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            {/* ── Header ────────────────────────────────────────────────────── */}
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    {/* Title */}
                     <div>
-                        <div className="flex items-center gap-3">
-                            <BarChart3 className="size-7 text-primary" />
-                            <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 dark:text-white">
-                                Painel Direção
-                            </h1>
-                        </div>
-                        <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
-                            Filtro atual: {periodLabel(period, selectedDate)}
+                        <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                            Painel da Direção
+                        </h1>
+                        <p className="mt-0.5 text-xs font-bold text-slate-400">
+                            Métricas consolidadas de produção — todas as unidades
                         </p>
                     </div>
 
+                    {/* Actions */}
                     <button
                         type="button"
                         onClick={fetchData}
-                        className="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+                        disabled={loading}
+                        className="flex h-10 items-center gap-2 rounded-lg bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-700 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
-                        <RefreshCw className="size-4" />
+                        <span
+                            className={`material-symbols-outlined text-base ${loading ? 'animate-spin' : ''}`}
+                        >
+                            refresh
+                        </span>
                         Atualizar
                     </button>
                 </div>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
-                    <label className="relative block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">OP</span>
-                        <Search className="pointer-events-none absolute bottom-3 left-3 size-4 text-slate-400" />
-                        <input
-                            value={opFilter}
-                            onChange={(event) => setOpFilter(event.target.value)}
-                            list="dashboard-op-list"
-                            placeholder="Filtrar por OP"
-                            className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm font-bold text-slate-800 outline-none transition focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                        />
-                        <datalist id="dashboard-op-list">
-                            {opOptions.map((item) => (
-                                <option key={item.op} value={item.op}>{`${item.op} (${item.count})`}</option>
-                            ))}
-                        </datalist>
-                    </label>
+                {/* Period tabs + date navigator */}
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    {/* Pill tabs */}
+                    <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                        {PERIOD_TABS.map((tab) => (
+                            <button
+                                key={tab.value}
+                                type="button"
+                                onClick={() => setPeriod(tab.value)}
+                                className={`rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
+                                    period === tab.value
+                                        ? 'bg-white text-indigo-700 shadow dark:bg-slate-900 dark:text-indigo-400'
+                                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
 
-                    <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Período</span>
-                        <div className="grid h-11 grid-cols-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
-                            {PERIOD_OPTIONS.map((option) => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    onClick={() => setPeriod(option.value)}
-                                    className={`text-[10px] font-black uppercase tracking-wide transition ${period === option.value ? 'bg-primary text-white' : 'bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800'}`}
-                                >
-                                    {option.label}
-                                </button>
-                            ))}
-                        </div>
-                    </label>
-
-                    <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Data base</span>
-                        <div className="relative">
-                            <CalendarDays className="pointer-events-none absolute left-3 top-3.5 size-4 text-slate-400" />
-                            <input
-                                type="date"
-                                value={selectedDate}
-                                onChange={(event) => setSelectedDate(event.target.value)}
-                                className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm font-bold text-slate-800 outline-none transition focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                            />
-                        </div>
-                    </label>
-
-                    <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Área</span>
-                        <select
-                            value={areaFilter}
-                            onChange={(event) => setAreaFilter(event.target.value as AreaFilter)}
-                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    {/* Date navigator */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handlePrev}
+                            className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+                            aria-label="Período anterior"
                         >
-                            {AREA_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
-                    </label>
+                            <span className="material-symbols-outlined text-base">chevron_left</span>
+                        </button>
+                        <span className="min-w-[200px] text-center text-xs font-black text-slate-700 dark:text-slate-200">
+                            {periodLabel(period, anchor)}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={handleNext}
+                            className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+                            aria-label="Próximo período"
+                        >
+                            <span className="material-symbols-outlined text-base">chevron_right</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-                <MetricCard title="OPs Analisadas" value={String(analytics.total.ops)} icon={<ClipboardList />} />
-                <MetricCard title="Folhas Rodadas" value={formatNumber(analytics.total.folhasRodadas)} icon={<FileText />} />
-                <MetricCard title="Verificadas" value={formatNumber(analytics.total.folhasVerificadas)} icon={<Search />} tone="blue" />
-                <MetricCard title="Aprovadas" value={formatNumber(analytics.total.folhasAprovadas)} icon={<Layers />} tone="blue" />
-                <MetricCard title="Em Escolha" value={formatNumber(analytics.total.folhasEscolha)} icon={<TrendingUp />} tone="amber" />
-                <MetricCard title="Reprovadas" value={formatNumber(analytics.total.folhasReprovadas)} icon={<AlertTriangle />} tone="rose" />
-                <MetricCard title="Sem Revisão" value={formatNumber(analytics.total.saldoSemRevisao)} icon={<BarChart3 />} tone="amber" />
+            {/* ── Summary row ───────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <StatCard label="OPs analisadas" value={String(summary.totalOps)} />
+                <StatCard
+                    label="Unidades rodadas"
+                    value={fmt(summary.rodadas)}
+                    tone="indigo"
+                />
+                <StatCard
+                    label="Unidades em escolha"
+                    value={fmt(summary.escolha)}
+                    tone="amber"
+                />
+                <StatCard
+                    label="Unidades reprovadas"
+                    value={fmt(summary.reprovadas)}
+                    tone="rose"
+                />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <AreaSummary title="Processo inicial" summary={analytics.initial} color="blue" />
-                <AreaSummary title="Produto acabado" summary={analytics.final} color="orange" />
-            </div>
-
-            {!hasData ? (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center dark:border-slate-700 dark:bg-slate-900">
-                    <p className="text-sm font-black uppercase tracking-widest text-slate-400">Nenhum registro encontrado para os filtros atuais</p>
+            {/* ── Process cards ─────────────────────────────────────────────── */}
+            {loading ? (
+                <div className="flex items-center justify-center py-16">
+                    <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600" />
                 </div>
             ) : (
-                <>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                        <ChartPanel title="Evolução por período" subtitle="Inspeções por processo e desvios apontados" className="lg:col-span-2">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={analytics.timeline} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                    <XAxis dataKey="periodo" tick={{ fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                                    <YAxis tick={{ fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Line type="monotone" dataKey="inicial" name="Inicial" stroke="#2563eb" strokeWidth={3} dot={false} />
-                                    <Line type="monotone" dataKey="final" name="Final" stroke="#f97316" strokeWidth={3} dot={false} />
-                                    <Line type="monotone" dataKey="desvios" name="Desvios" stroke="#e11d48" strokeWidth={3} dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </ChartPanel>
-
-                        <ChartPanel title="Desvios por processo" subtitle="Separação inicial x final">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={analytics.areaPie} dataKey="value" nameKey="name" innerRadius={58} outerRadius={84} paddingAngle={4}>
-                                        {analytics.areaPie.map((item) => (
-                                            <Cell key={item.name} fill={item.color} stroke={item.color} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip />
-                                    <Legend iconType="circle" />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </ChartPanel>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                        <ChartPanel title="Principais desvios" subtitle="Maiores recorrências no filtro atual" className="lg:col-span-2">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={analytics.defects} layout="vertical" margin={{ top: 5, right: 20, left: 35, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                                    <XAxis type="number" tick={{ fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                                    <YAxis dataKey="name" type="category" width={115} tick={{ fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                                    <Tooltip />
-                                    <Bar dataKey="count" name="Desvios" fill="#e11d48" radius={[0, 4, 4, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </ChartPanel>
-
-                        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                            <div className="mb-4 flex items-center justify-between gap-3">
-                                <div>
-                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Desvios por operador</h3>
-                                    <p className="text-xs font-bold text-slate-400">Média = desvios por registro. % do total = participação nos desvios do filtro.</p>
-                                </div>
-                                <Users className="size-5 text-slate-400" />
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full min-w-[520px] text-left">
-                                    <thead>
-                                        <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
-                                            <th className="py-3">Operador</th>
-                                            <th className="py-3 text-right">Desvios</th>
-                                            <th className="py-3 text-right">Média</th>
-                                            <th className="py-3 text-right">% do total</th>
-                                            <th className="py-3 text-right">Registros</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {analytics.byOperator.map((operator) => (
-                                            <tr key={operator.name} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
-                                                <td className="py-3">{operator.name}</td>
-                                                <td className="py-3 text-right">{formatNumber(operator.defects)}</td>
-                                                <td className="py-3 text-right">{operator.defectsPerRecord.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
-                                                <td className="py-3 text-right">{formatPercent(operator.sharePercent)}</td>
-                                                <td className="py-3 text-right">{formatNumber(operator.inspections)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                            <div className="mb-4 flex items-center justify-between gap-3">
-                                <div>
-                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Desvios por máquina</h3>
-                                    <p className="text-xs font-bold text-slate-400">Média = desvios por registro. % do total = participação nos desvios do filtro.</p>
-                                </div>
-                                <BarChart3 className="size-5 text-slate-400" />
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full min-w-[520px] text-left">
-                                    <thead>
-                                        <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
-                                            <th className="py-3">Máquina</th>
-                                            <th className="py-3 text-right">Desvios</th>
-                                            <th className="py-3 text-right">Média</th>
-                                            <th className="py-3 text-right">% do total</th>
-                                            <th className="py-3 text-right">Registros</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {analytics.byMachine.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={5} className="py-6 text-center text-xs font-bold text-slate-400">Nenhum dado disponível</td>
-                                            </tr>
-                                        ) : analytics.byMachine.map((machine) => (
-                                            <tr key={machine.name} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
-                                                <td className="py-3">{machine.name}</td>
-                                                <td className="py-3 text-right">{formatNumber(machine.defects)}</td>
-                                                <td className="py-3 text-right">{machine.defectsPerRecord.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
-                                                <td className="py-3 text-right">{formatPercent(machine.sharePercent)}</td>
-                                                <td className="py-3 text-right">{formatNumber(machine.inspections)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <ProcessCard
+                        name="Processo Inicial"
+                        icon="print"
+                        color="indigo"
+                        metrics={metrics.metricInicial}
+                    />
+                    <ProcessCard
+                        name="Corte e Vinco"
+                        icon="content_cut"
+                        color="emerald"
+                        metrics={metrics.metricCorte}
+                    />
+                    <ProcessCard
+                        name="Produto Acabado"
+                        icon="inventory_2"
+                        color="violet"
+                        metrics={metrics.metricAcabado}
+                    />
+                    <ProcessCard
+                        name="Revisão Final"
+                        icon="checklist"
+                        color="rose"
+                        metrics={metrics.metricRevisao}
+                    />
+                </div>
             )}
-        </div>
-    );
-}
-
-function MetricCard({ title, value, icon, tone = 'slate' }: { title: string; value: string; icon: React.ReactElement; tone?: 'slate' | 'amber' | 'rose' | 'blue' }) {
-    const colors = {
-        slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-        amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-        rose: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-        blue: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-    };
-
-    return (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className={`mb-3 flex size-10 items-center justify-center rounded-lg ${colors[tone]}`}>
-                {React.cloneElement(icon, { size: 19 })}
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</p>
-            <p className="mt-1 text-xl font-black text-slate-900 dark:text-white">{value}</p>
-        </div>
-    );
-}
-
-function AreaSummary({ title, summary, color }: { title: string; summary: Summary; color: 'blue' | 'orange' }) {
-    const colorClass = color === 'blue' ? 'border-blue-500 text-blue-600' : 'border-orange-500 text-orange-600';
-
-    return (
-        <div className={`rounded-lg border-l-4 ${colorClass} border-y border-r border-slate-200 bg-white p-5 shadow-sm dark:border-y-slate-800 dark:border-r-slate-800 dark:bg-slate-900`}>
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">{title}</h2>
-                    <p className="mt-1 text-xs font-bold text-slate-400">{formatNumber(summary.laudos)} registros analisados</p>
-                </div>
-                <div className="text-right">
-                    <p className="text-lg font-black">{formatPercent(summary.taxaAprovacao)}</p>
-                    <p className="text-xs font-bold text-slate-400">Aprovação</p>
-                    <p className="text-xs font-bold text-rose-500">{formatPercent(summary.taxaReprovacao)} reprovação</p>
-                </div>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <SmallMetric label="Folhas rodadas" value={summary.folhasRodadas} />
-                <SmallMetric label="Verificadas" value={summary.folhasVerificadas} />
-                <SmallMetric label="Aprovadas" value={summary.folhasAprovadas} />
-                <SmallMetric label="Em Escolha" value={summary.folhasEscolha} />
-                <SmallMetric label="Reprovadas" value={summary.folhasReprovadas} />
-                <SmallMetric label="Aguardando Revisão" value={summary.saldoSemRevisao} />
-            </div>
-        </div>
-    );
-}
-
-function SmallMetric({ label, value }: { label: string; value: number }) {
-    return (
-        <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-            <p className="mt-1 text-base font-black text-slate-800 dark:text-white">{formatNumber(value)}</p>
-        </div>
-    );
-}
-
-function ChartPanel({ title, subtitle, className = '', children }: { title: string; subtitle: string; className?: string; children: React.ReactNode }) {
-    return (
-        <div className={`flex h-[360px] flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 ${className}`}>
-            <div className="mb-4">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">{title}</h3>
-                <p className="text-xs font-bold text-slate-400">{subtitle}</p>
-            </div>
-            <div className="min-h-0 flex-1">{children}</div>
         </div>
     );
 }
