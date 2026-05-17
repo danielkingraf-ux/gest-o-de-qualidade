@@ -138,6 +138,39 @@ export default function FinishingAnalysisView() {
 
     const [activeStep, setActiveStep] = useState(1);
 
+    // ─── Persistência de sessão em localStorage ───────────────────────────
+    const SESSION_KEY = 'kg_produto_acabado_session';
+
+    // Restaura sessão ao montar (antes do fetchData completar)
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(SESSION_KEY);
+            if (!raw) return;
+            const s = JSON.parse(raw);
+            if (s.selectedOrderId) { setSelectedOrderId(s.selectedOrderId); setOrderFilter(s.selectedOrderId); }
+            if (s.selectedMachineId) setSelectedMachineId(s.selectedMachineId);
+            if (Array.isArray(s.selectedOperatorIds) && s.selectedOperatorIds.length) setSelectedOperatorIds(s.selectedOperatorIds);
+            if (Array.isArray(s.selectedAnalystIds) && s.selectedAnalystIds.length) setSelectedAnalystIds(s.selectedAnalystIds);
+            if (s.laudoNumero) setLaudoNumero(s.laudoNumero);
+            if (s.selectedMonth !== undefined) setSelectedMonth(s.selectedMonth);
+            if (s.selectedYear !== undefined) setSelectedYear(s.selectedYear);
+            if (s.nqaProfileId) setNqaProfileId(s.nqaProfileId);
+            if (s.nqaConfig) setNqaConfig(s.nqaConfig);
+            if (s.activeStep && s.activeStep > 1) setActiveStep(s.activeStep);
+        } catch { /* ignora sessão corrompida */ }
+    }, []); // executa apenas na montagem
+
+    // Salva sessão sempre que estado relevante muda
+    useEffect(() => {
+        if (!selectedOrderId) { localStorage.removeItem(SESSION_KEY); return; }
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+            selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
+            laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
+            activeStep,
+        }));
+    }, [selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
+        laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig, activeStep]);
+
     // ─── Carga inicial ────────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -362,6 +395,7 @@ export default function FinishingAnalysisView() {
     };
 
     const clearForm = () => {
+        localStorage.removeItem(SESSION_KEY);
         setSelectedOrderId(''); setOrderFilter('');
         setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero('');
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
