@@ -102,6 +102,7 @@ export default function FinishingAnalysisView() {
     const [orderFilter, setOrderFilter]         = useState('');
     const [rodadas, setRodadas]                 = useState<RodadaSummary[]>([]);
     const [showRodadas, setShowRodadas]         = useState(false);
+    const [corteVincoSaldo, setCorteVincoSaldo] = useState<{ rodadas: number; escolha: number } | null>(null);
 
     // Pallets salvos
     const [savedPallets, setSavedPallets]               = useState<SavedPallet[]>([]);
@@ -160,22 +161,33 @@ export default function FinishingAnalysisView() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // ─── Rodadas de impressão da OP ───────────────────────────────────────
+    // ─── Rodadas de impressão + saldo Corte e Vinco da OP ────────────────
     useEffect(() => {
-        if (!selectedOrderId) { setRodadas([]); setQtyProduzida(0); return; }
+        if (!selectedOrderId) { setRodadas([]); setCorteVincoSaldo(null); return; }
         const order = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
-        if (!order) { setRodadas([]); setQtyProduzida(0); return; }
+        if (!order) { setRodadas([]); setCorteVincoSaldo(null); return; }
         const load = async () => {
-            const { data } = await supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true });
+            const [inspRes, cvRes] = await Promise.all([
+                supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true }),
+                supabase.from('acabamento_registros').select('qty_revisadas, qty_reprovadas').eq('op', order.op.toUpperCase()).eq('modulo', 'corte_vinco'),
+            ]);
             const summaries: RodadaSummary[] = [];
-            for (const row of data || []) {
+            for (const row of inspRes.data || []) {
                 let obs: any = {};
                 try { obs = JSON.parse(row.observations || '{}'); } catch { /* */ }
                 if (obs.process_area !== 'producao_inicial') continue;
                 summaries.push({ id: row.id, numero: obs.numero_rodada ?? summaries.length + 1, date: row.created_at, status: obs.status_final ?? 'APPROVED', qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0, aprovadas: obs.saldo_unidades?.aprovadas ?? 0, em_escolha: obs.saldo_unidades?.em_escolha ?? 0, reprovadas: obs.saldo_unidades?.reprovadas ?? 0 });
             }
             setRodadas(summaries);
-            // não pré-preenche qtyProduzida aqui — calculado na etapa 3 com base nos pallets
+            // Corte e Vinco
+            const cvData = cvRes.data ?? [];
+            if (cvData.length > 0) {
+                const cvRodadas = cvData.reduce((s: number, r: any) => s + (r.qty_revisadas || 0), 0);
+                const cvEscolha = cvData.reduce((s: number, r: any) => s + (r.qty_reprovadas || 0), 0);
+                setCorteVincoSaldo({ rodadas: cvRodadas, escolha: cvEscolha });
+            } else {
+                setCorteVincoSaldo(null);
+            }
         };
         load();
     }, [selectedOrderId, orders]);
@@ -497,6 +509,49 @@ export default function FinishingAnalysisView() {
                                     </table>
                                 </div>
                             )}
+
+                            {/* Saldo consolidado Impressão + Corte e Vinco */}
+                            {(() => {
+                                const totalRodadas = rodadas.reduce((s, r) => s + r.em_escolha + r.aprovadas, 0);
+                                const escolhaImpressao = rodadas.reduce((s, r) => s + r.em_escolha, 0);
+                                const escolhaCorteVinco = corteVincoSaldo?.escolha ?? 0;
+                                const saldoParaProdutoAcabado = totalRodadas - escolhaImpressao - escolhaCorteVinco;
+                                if (totalRodadas === 0) return null;
+                                return (
+                                    <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50 dark:bg-indigo-950/20 overflow-hidden">
+                                        <p className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-indigo-500 border-b border-indigo-100 dark:border-indigo-900/40">
+                                            Saldo acumulado da OP
+                                        </p>
+                                        <table className="w-full text-xs">
+                                            <tbody>
+                                                <tr className="border-b border-indigo-100 dark:border-indigo-900/30">
+                                                    <td className="px-4 py-2 font-black text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-sm text-indigo-400">print</span>Impressão
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right text-slate-500">{fmt(totalRodadas)} rod.</td>
+                                                    <td className="px-4 py-2 text-right text-amber-600 font-black">−{fmt(escolhaImpressao)} esc.</td>
+                                                </tr>
+                                                {corteVincoSaldo && (
+                                                    <tr className="border-b border-indigo-100 dark:border-indigo-900/30">
+                                                        <td className="px-4 py-2 font-black text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                                                            <span className="material-symbols-outlined text-sm text-indigo-400">content_cut</span>Corte e Vinco
+                                                        </td>
+                                                        <td className="px-4 py-2 text-right text-slate-500">{fmt(corteVincoSaldo.rodadas)} rod.</td>
+                                                        <td className="px-4 py-2 text-right text-amber-600 font-black">−{fmt(escolhaCorteVinco)} esc.</td>
+                                                    </tr>
+                                                )}
+                                                <tr className="bg-indigo-100/60 dark:bg-indigo-900/30 font-black">
+                                                    <td className="px-4 py-2 text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-sm">inventory_2</span>Chega ao Produto Acabado
+                                                    </td>
+                                                    <td className="px-4 py-2"></td>
+                                                    <td className="px-4 py-2 text-right text-lg text-indigo-700 dark:text-indigo-300">{fmt(saldoParaProdutoAcabado)}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
