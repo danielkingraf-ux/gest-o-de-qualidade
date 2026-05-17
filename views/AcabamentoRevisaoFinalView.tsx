@@ -307,6 +307,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     // Corte e Vinco
     rodadasCorteVinco: number;
     escolhaCorteVinco: number;
+    // Colagem
+    rodadasColagem: number;
+    escolhaColagem: number;
     // Produto Acabado
     rodadasProdutoAcabado: number;
     escolhaProdutoAcabado: number;
@@ -349,13 +352,17 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     if (trimmed.length < 3) { setSaldoOp(null); return; }
 
     const timer = setTimeout(async () => {
-      const [orderRes, inspRes, cvRes] = await Promise.all([
+      const [orderRes, inspRes, cvRes, colRes] = await Promise.all([
         supabase.from('orders').select('qtd_total').eq('op', trimmed).maybeSingle(),
         supabase.from('inspections').select('observations, machine_id').eq('op', trimmed),
         supabase.from('acabamento_registros')
           .select('qty_revisadas, qty_reprovadas')
           .eq('op', trimmed)
           .eq('modulo', 'corte_vinco'),
+        supabase.from('acabamento_registros')
+          .select('qty_revisadas, qty_reprovadas, operator_ids, machine_id')
+          .eq('op', trimmed)
+          .eq('modulo', 'colagem'),
       ]);
 
       let rodadasImpressao = 0, escolhaImpressao = 0;
@@ -388,7 +395,18 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       const escolhaCorteVinco = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
 
-      const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaProdutoAcabado;
+      const rodadasColagem = (colRes.data ?? [])
+        .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
+      const escolhaColagem = (colRes.data ?? [])
+        .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
+
+      // Coleta operadores e máquinas da colagem
+      for (const row of (colRes.data ?? []) as Array<{ operator_ids: string[] | null; machine_id: string | null }>) {
+        if (Array.isArray(row.operator_ids)) row.operator_ids.forEach((id: string) => id && opIds.add(id));
+        if (row.machine_id) machineIds.add(row.machine_id);
+      }
+
+      const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaColagem + escolhaProdutoAcabado;
 
       // Busca nomes de máquinas e operadores
       const [maqRes, opRes] = await Promise.all([
@@ -408,6 +426,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         qtdSolicitada,
         rodadasImpressao, escolhaImpressao,
         rodadasCorteVinco, escolhaCorteVinco,
+        rodadasColagem, escolhaColagem,
         rodadasProdutoAcabado, escolhaProdutoAcabado,
         totalEscolha,
         operadoresNomes, maquinasNomes,
@@ -652,7 +671,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         <OpTraceBanner op={op} moduloAtual="revisao_final" />
 
         {/* ── Saldo consolidado da OP ───────────────────────────────────────── */}
-        {saldoOp && (saldoOp.rodadasImpressao > 0 || saldoOp.rodadasCorteVinco > 0 || saldoOp.rodadasProdutoAcabado > 0) && (
+        {saldoOp && (saldoOp.rodadasImpressao > 0 || saldoOp.rodadasCorteVinco > 0 || saldoOp.rodadasColagem > 0 || saldoOp.rodadasProdutoAcabado > 0) && (
           <section className="mb-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="material-symbols-outlined text-teal-500 text-base">summarize</span>
@@ -693,6 +712,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                       </td>
                       <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasCorteVinco)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaCorteVinco)}</td>
+                    </tr>
+                  )}
+                  {saldoOp.rodadasColagem > 0 && (
+                    <tr className="bg-white dark:bg-slate-900/50">
+                      <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-indigo-400">precision_manufacturing</span>Colagem
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasColagem)}</td>
+                      <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaColagem)}</td>
                     </tr>
                   )}
                   {saldoOp.rodadasProdutoAcabado > 0 && (

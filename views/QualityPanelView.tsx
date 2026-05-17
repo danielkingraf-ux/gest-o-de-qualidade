@@ -111,17 +111,54 @@ export default function QualityPanelView() {
     useEffect(() => {
         (async () => {
             setLoading(true);
-            const [insRes, opRes] = await Promise.all([
+            const [insRes, opRes, colRes, machRes] = await Promise.all([
                 supabase.from('inspections')
                     .select('id, op, created_at, status, machine_id, operator_id, observations, machines(name)')
                     .order('created_at', { ascending: false })
                     .limit(1000),
                 supabase.from('operators').select('id, name'),
+                supabase.from('acabamento_registros')
+                    .select('id, op, timestamp, machine_id, operator_ids, qty_revisadas, qty_reprovadas, defects')
+                    .eq('modulo', 'colagem')
+                    .order('timestamp', { ascending: false })
+                    .limit(500),
+                supabase.from('machines').select('id, name'),
             ]);
+
             const names: Record<string, string> = {};
             (opRes.data || []).forEach((o: any) => { names[o.id] = o.name; });
             setOpNames(names);
-            setRecords(normalize(insRes.data || []));
+
+            const machNames: Record<string, string> = {};
+            (machRes.data || []).forEach((m: any) => { machNames[m.id] = m.name; });
+
+            const inspRecs = normalize(insRes.data || []);
+
+            // Normaliza registros de colagem para o formato NormalizedRecord
+            const colagemRecs: NormalizedRecord[] = (colRes.data || []).map((r: any) => {
+                const defRaw = r.defects || {};
+                const defMap: Record<string, number> = {};
+                Object.entries(defRaw).forEach(([k, v]) => {
+                    if (k !== 'qty_refugo' && typeof v === 'number' && v > 0) defMap[k] = v;
+                });
+                const qtyRefugo = asN(defRaw.qty_refugo);
+                return {
+                    id: `col_${r.id}`,
+                    op: String(r.op || '—'),
+                    date: new Date(r.timestamp || r.created_at),
+                    area: 'acabado' as const,
+                    status: 'APPROVED',
+                    machineName: machNames[r.machine_id] || '—',
+                    machineId: String(r.machine_id || ''),
+                    operatorIds: Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [],
+                    defects: defMap,
+                    qtyProduzida: 0,
+                    qtyEscolha: asN(r.qty_reprovadas),
+                    qtyRefugo,
+                };
+            }).filter((r: NormalizedRecord) => !isNaN(r.date.getTime()));
+
+            setRecords([...inspRecs, ...colagemRecs]);
             setLoading(false);
         })();
     }, []);

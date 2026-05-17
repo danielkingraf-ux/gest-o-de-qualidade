@@ -70,22 +70,9 @@ const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','A
 const FINISHING_STEPS = [
     { id: 1, label: 'Identificação',     short: 'Identificação' },
     { id: 2, label: 'Inspeção de Pallets', short: 'Pallets'      },
-    { id: 3, label: 'Colagem',           short: 'Colagem'       },
-    { id: 4, label: 'Conclusão',         short: 'Conclusão'     },
+    { id: 3, label: 'Conclusão',         short: 'Conclusão'     },
 ];
 
-const COLAGEM_DEFECTS_COLS = [
-    { key: 'fundo_virado',     label: 'Fundo Virado',      icon: 'rotate_90_degrees_cw' },
-    { key: 'falta_cola',       label: 'Falta de Cola',     icon: 'water_drop'           },
-    { key: 'cola_fraca',       label: 'Cola Fraca',        icon: 'opacity'              },
-    { key: 'queimado_correia', label: 'Queimado Correia',  icon: 'local_fire_department'},
-    { key: 'rasgado',          label: 'Rasgado',           icon: 'block'               },
-    { key: 'modelo_misturado', label: 'Modelo Misturado',  icon: 'shuffle'             },
-    { key: 'outros',           label: 'Outros',            icon: 'more_horiz'          },
-];
-const EMPTY_COLAGEM_DEFECTS = COLAGEM_DEFECTS_COLS.reduce(
-    (acc, col) => ({ ...acc, [col.key]: 0 }), {} as Record<string, number>
-);
 
 // ─── Chip de pessoa ───────────────────────────────────────────────────────────
 const PersonChip = ({ name, onRemove }: { key?: React.Key; name: string; onRemove: () => void }) => (
@@ -142,16 +129,7 @@ export default function FinishingAnalysisView() {
     const [isSavingPallet, setIsSavingPallet]           = useState(false);
     const [completedPalletId, setCompletedPalletId]     = useState<string | null>(null);
 
-    // Step 3 — Colagem
-    const [colagemMachineId, setColagemMachineId]       = useState('');
-    const [colagemOperatorIds, setColagemOperatorIds]   = useState<string[]>([]);
-    const [colagemQtyRodadas, setColagemQtyRodadas]     = useState(0);
-    const [colagemQtyEscolha, setColagemQtyEscolha]     = useState(0);
-    const [colagemQtyReprovadas, setColagemQtyReprovadas] = useState(0);
-    const [colagemDefects, setColagemDefects]           = useState<Record<string, number>>({ ...EMPTY_COLAGEM_DEFECTS });
-    const [colagemObs, setColagemObs]                   = useState('');
-
-    // Step 4 — Conclusão
+    // Step 3 — Conclusão
     const [qtyProduzida, setQtyProduzida] = useState(0);
     const [qtyEscolha, setQtyEscolha]     = useState(0);
     const [qtyRefugo, setQtyRefugo]       = useState(0);
@@ -179,13 +157,6 @@ export default function FinishingAnalysisView() {
             if (s.selectedYear !== undefined) setSelectedYear(s.selectedYear);
             if (s.nqaProfileId) setNqaProfileId(s.nqaProfileId);
             if (s.nqaConfig) setNqaConfig(s.nqaConfig);
-            if (s.colagemMachineId) setColagemMachineId(s.colagemMachineId);
-            if (Array.isArray(s.colagemOperatorIds)) setColagemOperatorIds(s.colagemOperatorIds);
-            if (s.colagemQtyRodadas) setColagemQtyRodadas(s.colagemQtyRodadas);
-            if (s.colagemQtyEscolha) setColagemQtyEscolha(s.colagemQtyEscolha);
-            if (s.colagemQtyReprovadas) setColagemQtyReprovadas(s.colagemQtyReprovadas);
-            if (s.colagemDefects) setColagemDefects(s.colagemDefects);
-            if (s.colagemObs) setColagemObs(s.colagemObs);
             if (s.activeStep && s.activeStep > 1) setActiveStep(s.activeStep);
         } catch { /* ignora sessão corrompida */ }
     }, []); // executa apenas na montagem
@@ -196,14 +167,10 @@ export default function FinishingAnalysisView() {
         localStorage.setItem(SESSION_KEY, JSON.stringify({
             selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
             laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
-            colagemMachineId, colagemOperatorIds, colagemQtyRodadas, colagemQtyEscolha,
-            colagemQtyReprovadas, colagemDefects, colagemObs,
             activeStep,
         }));
     }, [selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
-        laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
-        colagemMachineId, colagemOperatorIds, colagemQtyRodadas, colagemQtyEscolha,
-        colagemQtyReprovadas, colagemDefects, colagemObs, activeStep]);
+        laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig, activeStep]);
 
     // ─── Carga inicial ────────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
@@ -277,7 +244,7 @@ export default function FinishingAnalysisView() {
     }, [savedPallets]);
 
     useEffect(() => {
-        if (activeStep === 4) {
+        if (activeStep === 3) {
             setStatus(autoStatus);
             if (!destinoFinal && autoDestino) setDestinoFinal(autoDestino as 'expedicao' | 'revisao_final');
         }
@@ -386,16 +353,6 @@ export default function FinishingAnalysisView() {
                     observacoes: observacoes.trim(),
                     defects: { ...EMPTY_DEFECTS },
                     producao: { qty_produzida: qtyProduzida, qty_escolha: qtyEscolha, qty_refugo: qtyRefugo },
-                    colagem: {
-                        machine_id: colagemMachineId,
-                        operator_ids: colagemOperatorIds,
-                        qty_rodadas: colagemQtyRodadas,
-                        qty_escolha: colagemQtyEscolha,
-                        qty_reprovadas: colagemQtyReprovadas,
-                        qty_aprovadas: Math.max(0, colagemQtyRodadas - colagemQtyEscolha - colagemQtyReprovadas),
-                        defects: colagemDefects,
-                        observacoes: colagemObs.trim() || null,
-                    },
                     all_operator_ids: selectedOperatorIds,
                     all_analyst_ids:  selectedAnalystIds,
                     operator_names: operatorNames,
@@ -426,9 +383,6 @@ export default function FinishingAnalysisView() {
         if (step === 1 && !laudoNumero.trim())           return 'Informe o número do laudo.';
         if (step === 1 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
         if (step === 1 && nqaConfig.caixas_por_pallet <= 0)  return 'Informe caixas por pallet.';
-        if (step === 3 && !colagemMachineId)             return 'Selecione a máquina de colagem.';
-        if (step === 3 && colagemOperatorIds.length === 0)   return 'Selecione ao menos um operador da colagem.';
-        if (step === 3 && colagemQtyRodadas <= 0)        return 'Informe a quantidade rodada na colagem.';
         return null;
     };
 
@@ -448,9 +402,6 @@ export default function FinishingAnalysisView() {
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
         setPalletDefects({ critical: 0, major: 0, minor: 0 }); setPalletDefectsDetail({ ...EMPTY_DEFECTS });
         setPalletObs(''); setPalletResult('APPROVED'); setSavedPallets([]); setDestinoFinal('');
-        setColagemMachineId(''); setColagemOperatorIds([]); setColagemQtyRodadas(0);
-        setColagemQtyEscolha(0); setColagemQtyReprovadas(0);
-        setColagemDefects({ ...EMPTY_COLAGEM_DEFECTS }); setColagemObs('');
         setActiveStep(1);
     };
 
@@ -998,123 +949,9 @@ export default function FinishingAnalysisView() {
                 </>}
 
                 {/* ══════════════════════════════════════════════════════════
-                    ETAPA 3 — Colagem
+                    ETAPA 3 — Conclusão
                 ══════════════════════════════════════════════════════════ */}
                 {activeStep === 3 && <>
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                            <span className="material-symbols-outlined text-indigo-500">precision_manufacturing</span>
-                            <div>
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Colagem</h2>
-                                <p className="text-xs text-slate-500">Registro da coladeira — operador, quantidades e defeitos</p>
-                            </div>
-                        </div>
-                        <div className="p-6 space-y-5">
-
-                            {/* Máquina */}
-                            <div>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1.5">
-                                    Máquina <span className="text-rose-500">*</span>
-                                </label>
-                                <select
-                                    value={colagemMachineId}
-                                    onChange={e => setColagemMachineId(e.target.value)}
-                                    className={`h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 bg-slate-50 dark:bg-slate-800 ${!colagemMachineId ? 'border-rose-300 dark:border-rose-700 text-slate-400' : 'border-slate-200 dark:border-slate-700'}`}
-                                >
-                                    <option value="">Selecione a máquina</option>
-                                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>)}
-                                </select>
-                            </div>
-
-                            {/* Operadores (múltiplos) */}
-                            <div>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1.5">
-                                    Operadores <span className="text-rose-500">*</span>
-                                    <span className="ml-auto text-[8px] font-bold text-slate-400 normal-case tracking-normal">Selecione todos que trabalharam</span>
-                                </label>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {operators.map(o => {
-                                        const sel = colagemOperatorIds.includes(o.id);
-                                        return (
-                                            <button key={o.id} type="button"
-                                                onClick={() => setColagemOperatorIds(prev => sel ? prev.filter(id => id !== o.id) : [...prev, o.id])}
-                                                className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${sel ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'}`}
-                                            >
-                                                {sel && <span className="material-symbols-outlined text-[11px] mr-0.5 align-middle">check</span>}
-                                                {o.name}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                {colagemOperatorIds.length === 0 && <p className="text-[10px] text-rose-500 mt-1 flex items-center gap-1"><span className="material-symbols-outlined text-xs">warning</span>Selecione ao menos um operador</p>}
-                            </div>
-
-                            {/* Quantidades */}
-                            <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Quantidades</p>
-                                <div className="grid grid-cols-3 gap-3">
-                                    {([
-                                        { label: 'Qtd Rodada', value: colagemQtyRodadas, set: setColagemQtyRodadas, color: 'border-slate-200 dark:border-slate-700' },
-                                        { label: 'Saiu p/ Escolha', value: colagemQtyEscolha, set: setColagemQtyEscolha, color: 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20' },
-                                        { label: 'Reprovado', value: colagemQtyReprovadas, set: setColagemQtyReprovadas, color: 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20' },
-                                    ] as const).map(({ label, value, set, color }) => (
-                                        <div key={label} className={`flex flex-col gap-1 p-3 rounded-xl border ${color}`}>
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</span>
-                                            <div className="flex items-center gap-1 mt-1">
-                                                <button type="button" onClick={() => set(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">-</button>
-                                                <input type="number" value={value} onChange={e => set(Math.max(0, Number(e.target.value) || 0))} className="flex-1 h-6 bg-transparent text-center font-black text-xs outline-none min-w-0" />
-                                                <button type="button" onClick={() => set(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                {colagemQtyRodadas > 0 && (
-                                    <p className="text-[10px] font-bold text-slate-400 mt-2">
-                                        Aprovadas direto: {fmt(Math.max(0, colagemQtyRodadas - colagemQtyEscolha - colagemQtyReprovadas))} un.
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Defeitos da colagem */}
-                            <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Defeitos</p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {COLAGEM_DEFECTS_COLS.map(d => {
-                                        const count = colagemDefects[d.key] ?? 0;
-                                        return (
-                                            <div key={d.key} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-colors ${count > 0 ? 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50'}`}>
-                                                <span className={`material-symbols-outlined text-sm ${count > 0 ? 'text-rose-500' : 'text-slate-400'}`}>{d.icon}</span>
-                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex-1 truncate">{d.label}</span>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <button type="button" onClick={() => setColagemDefects(p => ({ ...p, [d.key]: Math.max(0, (p[d.key] ?? 0) - 1) }))} className="size-5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 text-xs flex items-center justify-center">-</button>
-                                                    <span className={`w-7 text-center text-xs font-black ${count > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{count}</span>
-                                                    <button type="button" onClick={() => setColagemDefects(p => ({ ...p, [d.key]: (p[d.key] ?? 0) + 1 }))} className="size-5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 text-xs flex items-center justify-center">+</button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Observações */}
-                            <div>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Observações</label>
-                                <textarea
-                                    value={colagemObs}
-                                    onChange={e => setColagemObs(e.target.value)}
-                                    rows={3}
-                                    placeholder="Anotações sobre a colagem, ajustes de máquina, etc."
-                                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </>}
-
-                {/* ══════════════════════════════════════════════════════════
-                    ETAPA 4 — Conclusão
-                ══════════════════════════════════════════════════════════ */}
-                {activeStep === 4 && <>
 
                     {/* Resumo dos pallets */}
                     {savedPallets.length > 0 && (
