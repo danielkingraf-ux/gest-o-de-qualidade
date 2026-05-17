@@ -70,22 +70,9 @@ const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','A
 const FINISHING_STEPS = [
     { id: 1, label: 'Identificação',     short: 'Identificação' },
     { id: 2, label: 'Inspeção de Pallets', short: 'Pallets'      },
-    { id: 3, label: 'Colagem',           short: 'Colagem'       },
-    { id: 4, label: 'Conclusão',         short: 'Conclusão'     },
+    { id: 3, label: 'Conclusão',         short: 'Conclusão'     },
 ];
 
-const COLAGEM_DEFECTS_COLS = [
-    { key: 'fundo_virado',     label: 'Fundo Virado',      icon: 'rotate_90_degrees_cw' },
-    { key: 'falta_cola',       label: 'Falta de Cola',     icon: 'water_drop'           },
-    { key: 'cola_fraca',       label: 'Cola Fraca',        icon: 'opacity'              },
-    { key: 'queimado_correia', label: 'Queimado Correia',  icon: 'local_fire_department'},
-    { key: 'rasgado',          label: 'Rasgado',           icon: 'block'               },
-    { key: 'modelo_misturado', label: 'Modelo Misturado',  icon: 'shuffle'             },
-    { key: 'outros',           label: 'Outros',            icon: 'more_horiz'          },
-];
-const EMPTY_COLAGEM_DEFECTS = COLAGEM_DEFECTS_COLS.reduce(
-    (acc, col) => ({ ...acc, [col.key]: 0 }), {} as Record<string, number>
-);
 
 // ─── Chip de pessoa ───────────────────────────────────────────────────────────
 const PersonChip = ({ name, onRemove }: { key?: React.Key; name: string; onRemove: () => void }) => (
@@ -142,16 +129,7 @@ export default function FinishingAnalysisView() {
     const [isSavingPallet, setIsSavingPallet]           = useState(false);
     const [completedPalletId, setCompletedPalletId]     = useState<string | null>(null);
 
-    // Step 3 — Colagem
-    const [colagemMachineId, setColagemMachineId]       = useState('');
-    const [colagemOperatorIds, setColagemOperatorIds]   = useState<string[]>([]);
-    const [colagemQtyRodadas, setColagemQtyRodadas]     = useState(0);
-    const [colagemQtyEscolha, setColagemQtyEscolha]     = useState(0);
-    const [colagemQtyReprovadas, setColagemQtyReprovadas] = useState(0);
-    const [colagemDefects, setColagemDefects]           = useState<Record<string, number>>({ ...EMPTY_COLAGEM_DEFECTS });
-    const [colagemObs, setColagemObs]                   = useState('');
-
-    // Step 4 — Conclusão
+    // Step 3 — Conclusão
     const [qtyProduzida, setQtyProduzida] = useState(0);
     const [qtyEscolha, setQtyEscolha]     = useState(0);
     const [qtyRefugo, setQtyRefugo]       = useState(0);
@@ -179,13 +157,6 @@ export default function FinishingAnalysisView() {
             if (s.selectedYear !== undefined) setSelectedYear(s.selectedYear);
             if (s.nqaProfileId) setNqaProfileId(s.nqaProfileId);
             if (s.nqaConfig) setNqaConfig(s.nqaConfig);
-            if (s.colagemMachineId) setColagemMachineId(s.colagemMachineId);
-            if (Array.isArray(s.colagemOperatorIds)) setColagemOperatorIds(s.colagemOperatorIds);
-            if (s.colagemQtyRodadas) setColagemQtyRodadas(s.colagemQtyRodadas);
-            if (s.colagemQtyEscolha) setColagemQtyEscolha(s.colagemQtyEscolha);
-            if (s.colagemQtyReprovadas) setColagemQtyReprovadas(s.colagemQtyReprovadas);
-            if (s.colagemDefects) setColagemDefects(s.colagemDefects);
-            if (s.colagemObs) setColagemObs(s.colagemObs);
             if (s.activeStep && s.activeStep > 1) setActiveStep(s.activeStep);
         } catch { /* ignora sessão corrompida */ }
     }, []); // executa apenas na montagem
@@ -196,14 +167,10 @@ export default function FinishingAnalysisView() {
         localStorage.setItem(SESSION_KEY, JSON.stringify({
             selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
             laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
-            colagemMachineId, colagemOperatorIds, colagemQtyRodadas, colagemQtyEscolha,
-            colagemQtyReprovadas, colagemDefects, colagemObs,
             activeStep,
         }));
     }, [selectedOrderId, selectedMachineId, selectedOperatorIds, selectedAnalystIds,
-        laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig,
-        colagemMachineId, colagemOperatorIds, colagemQtyRodadas, colagemQtyEscolha,
-        colagemQtyReprovadas, colagemDefects, colagemObs, activeStep]);
+        laudoNumero, selectedMonth, selectedYear, nqaProfileId, nqaConfig, activeStep]);
 
     // ─── Carga inicial ────────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
@@ -277,7 +244,7 @@ export default function FinishingAnalysisView() {
     }, [savedPallets]);
 
     useEffect(() => {
-        if (activeStep === 4) {
+        if (activeStep === 3) {
             setStatus(autoStatus);
             if (!destinoFinal && autoDestino) setDestinoFinal(autoDestino as 'expedicao' | 'revisao_final');
         }
@@ -322,15 +289,8 @@ export default function FinishingAnalysisView() {
         }
         setIsSavingPallet(true);
         try {
-            // Busca o maior pallet_number já gravado no banco para evitar duplicata
-            const { data: maxRow } = await supabase
-                .from('pallet_inspections')
-                .select('pallet_number')
-                .eq('op', selectedOrder.op.toUpperCase())
-                .order('pallet_number', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            const nextNum = (maxRow?.pallet_number ?? 0) + 1;
+            const { count } = await supabase.from('pallet_inspections').select('id', { count: 'exact', head: true }).eq('op', selectedOrder.op.toUpperCase());
+            const nextNum = (count ?? 0) + 1;
             const analystObj = analysts.find(a => a.id === selectedAnalystIds[0]);
             const machineObj = machines.find(m => m.id === selectedMachineId);
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
@@ -393,18 +353,6 @@ export default function FinishingAnalysisView() {
                     observacoes: observacoes.trim(),
                     defects: { ...EMPTY_DEFECTS },
                     producao: { qty_produzida: qtyProduzida, qty_escolha: qtyEscolha, qty_refugo: qtyRefugo },
-                    colagem: {
-                        machine_id: colagemMachineId,
-                        machine_name: machines.find(m => m.id === colagemMachineId)?.name ?? null,
-                        operator_ids: colagemOperatorIds,
-                        operator_names: colagemOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id),
-                        qty_rodadas: colagemQtyRodadas,
-                        qty_escolha: colagemQtyEscolha,
-                        qty_reprovadas: colagemQtyReprovadas,
-                        qty_aprovadas: Math.max(0, colagemQtyRodadas - colagemQtyEscolha - colagemQtyReprovadas),
-                        defects: colagemDefects,
-                        observacoes: colagemObs.trim() || null,
-                    },
                     all_operator_ids: selectedOperatorIds,
                     all_analyst_ids:  selectedAnalystIds,
                     operator_names: operatorNames,
@@ -435,9 +383,6 @@ export default function FinishingAnalysisView() {
         if (step === 1 && !laudoNumero.trim())           return 'Informe o número do laudo.';
         if (step === 1 && nqaConfig.unidades_por_caixa <= 0) return 'Informe unidades por caixa.';
         if (step === 1 && nqaConfig.caixas_por_pallet <= 0)  return 'Informe caixas por pallet.';
-        if (step === 3 && !colagemMachineId)             return 'Selecione a máquina de colagem.';
-        if (step === 3 && colagemOperatorIds.length === 0)   return 'Selecione ao menos um operador da colagem.';
-        if (step === 3 && colagemQtyRodadas <= 0)        return 'Informe a quantidade rodada na colagem.';
         return null;
     };
 
@@ -457,9 +402,6 @@ export default function FinishingAnalysisView() {
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
         setPalletDefects({ critical: 0, major: 0, minor: 0 }); setPalletDefectsDetail({ ...EMPTY_DEFECTS });
         setPalletObs(''); setPalletResult('APPROVED'); setSavedPallets([]); setDestinoFinal('');
-        setColagemMachineId(''); setColagemOperatorIds([]); setColagemQtyRodadas(0);
-        setColagemQtyEscolha(0); setColagemQtyReprovadas(0);
-        setColagemDefects({ ...EMPTY_COLAGEM_DEFECTS }); setColagemObs('');
         setActiveStep(1);
     };
 
@@ -761,100 +703,62 @@ export default function FinishingAnalysisView() {
                         const currentNum = savedPallets.length + 1;
                         const total = Math.max(totalEsperado ?? currentNum, currentNum);
                         const nums = Array.from({ length: total }, (_, i) => i + 1);
-                        const allDone = totalEsperado !== null && savedPallets.length >= totalEsperado;
-                        const pct = totalEsperado ? Math.round((savedPallets.length / totalEsperado) * 100) : null;
-
                         return (
-                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-
-                                {/* Cabeçalho — progresso grande */}
-                                <div className={`px-5 py-4 ${allDone ? 'bg-emerald-50 dark:bg-emerald-950/20' : 'bg-indigo-50 dark:bg-indigo-950/20'}`}>
-                                    <div className="flex items-center justify-between gap-3 mb-3">
-                                        <div className="flex items-center gap-3">
-                                            <span className={`material-symbols-outlined text-2xl ${allDone ? 'text-emerald-500' : 'text-indigo-500'}`}>
-                                                {allDone ? 'task_alt' : 'grid_view'}
-                                            </span>
-                                            <div>
-                                                {allDone ? (
-                                                    <p className="text-base font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-tight leading-none">
-                                                        Todos os {totalEsperado} pallets concluídos!
-                                                    </p>
-                                                ) : (
-                                                    <p className="text-base font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-tight leading-none">
-                                                        Pallet <span className="text-2xl">{currentNum}</span>
-                                                        {totalEsperado ? <span className="text-indigo-400 font-bold"> de {totalEsperado}</span> : ''}
-                                                        {' '}— Em andamento
-                                                    </p>
-                                                )}
-                                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                                                    {savedPallets.length} concluído{savedPallets.length !== 1 ? 's' : ''}
-                                                    {totalEsperado && palletLotSize > 0 && ` · ${fmt(qtyProduzida)} un. ÷ ${fmt(palletLotSize)} un/pallet`}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {pct !== null && (
-                                            <span className={`text-2xl font-black shrink-0 ${allDone ? 'text-emerald-600' : 'text-indigo-600'}`}>{pct}%</span>
-                                        )}
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-indigo-500 text-base">grid_view</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
+                                            Pallet {savedPallets.length} de {totalEsperado ?? '?'} concluído{savedPallets.length !== 1 ? 's' : ''}
+                                        </span>
                                     </div>
-
-                                    {/* Barra de progresso */}
-                                    {totalEsperado && (
-                                        <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-emerald-500' : 'bg-indigo-600'}`}
-                                                style={{ width: `${Math.min(100, (savedPallets.length / totalEsperado) * 100)}%` }}
-                                            />
-                                        </div>
+                                    {totalEsperado && palletLotSize > 0 && (
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                            {fmt(qtyProduzida)} un. ÷ {fmt(palletLotSize)} un/pallet = {totalEsperado} pallets estimados
+                                        </span>
                                     )}
                                 </div>
-
-                                {/* Grid de quadradinhos */}
-                                <div className="p-4">
-                                    <div className="flex flex-wrap gap-2">
-                                        {nums.map(num => {
-                                            const saved = savedPallets.find(p => p.pallet_number === num);
-                                            const isCurrent = !allDone && num === currentNum;
-                                            let cls = '';
-                                            let icon = '';
-
-                                            if (saved) {
-                                                if (saved.result === 'APPROVED')        { cls = 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-200'; icon = 'check'; }
-                                                else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white shadow-sm shadow-amber-200'; icon = 'warning'; }
-                                                else                                    { cls = 'bg-rose-500 border-rose-500 text-white shadow-sm shadow-rose-200'; icon = 'close'; }
-                                            } else if (isCurrent) {
-                                                cls = 'bg-indigo-600 border-indigo-600 text-white ring-4 ring-indigo-200 dark:ring-indigo-800';
-                                            } else {
-                                                cls = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
-                                            }
-
-                                            return (
-                                                <div key={num}
-                                                    title={saved ? `Pallet ${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `Pallet ${num}: em andamento` : `Pallet ${num}: pendente`}
-                                                    className={`relative flex flex-col items-center justify-center w-14 h-14 rounded-2xl border-2 transition-all select-none cursor-default ${cls}`}
-                                                >
-                                                    <span className="text-[11px] font-black leading-none">#{num}</span>
-                                                    {icon && <span className="material-symbols-outlined text-[14px] leading-none mt-0.5">{icon}</span>}
-                                                    {isCurrent && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80 uppercase">atual</span>}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {/* Legenda */}
-                                    <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                                        {[
-                                            { color: 'bg-emerald-500', label: 'Aprovado' },
-                                            { color: 'bg-amber-400',   label: 'Restrição' },
-                                            { color: 'bg-rose-500',    label: 'Reprovado' },
-                                            { color: 'bg-indigo-600',  label: 'Em andamento' },
-                                            { color: 'bg-slate-200 dark:bg-slate-700', label: 'Pendente' },
-                                        ].map(({ color, label }) => (
-                                            <div key={label} className="flex items-center gap-1.5">
-                                                <div className={`size-2.5 rounded-sm ${color}`} />
-                                                <span className="text-[9px] font-bold text-slate-400">{label}</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {nums.map(num => {
+                                        const saved = savedPallets.find(p => p.pallet_number === num);
+                                        const isCurrent = num === currentNum;
+                                        let cls = '';
+                                        let icon = '';
+                                        let label = '';
+                                        if (saved) {
+                                            if (saved.result === 'APPROVED')   { cls = 'bg-emerald-500 border-emerald-500 text-white'; icon = 'check'; }
+                                            else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white'; icon = 'warning'; }
+                                            else                               { cls = 'bg-rose-500 border-rose-500 text-white'; icon = 'close'; }
+                                        } else if (isCurrent) {
+                                            cls = 'bg-indigo-600 border-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-700 ring-offset-1';
+                                            label = 'atual';
+                                        } else {
+                                            cls = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
+                                        }
+                                        return (
+                                            <div key={num} title={saved ? `Pallet ${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `Pallet ${num}: em andamento` : `Pallet ${num}: pendente`}
+                                                className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl border-2 transition-all select-none ${cls}`}
+                                            >
+                                                <span className="text-[10px] font-black leading-none">#{num}</span>
+                                                {icon  && <span className="material-symbols-outlined text-[13px] leading-none mt-0.5">{icon}</span>}
+                                                {label && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80">{label}</span>}
                                             </div>
-                                        ))}
-                                    </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-4 mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                                    {[
+                                        { color: 'bg-emerald-500', label: 'Aprovado' },
+                                        { color: 'bg-amber-400',   label: 'Restrição' },
+                                        { color: 'bg-rose-500',    label: 'Reprovado' },
+                                        { color: 'bg-indigo-600',  label: 'Em andamento' },
+                                        { color: 'bg-slate-200 dark:bg-slate-700', label: 'Pendente' },
+                                    ].map(({ color, label }) => (
+                                        <div key={label} className="flex items-center gap-1.5">
+                                            <div className={`size-2.5 rounded-sm ${color}`} />
+                                            <span className="text-[9px] font-bold text-slate-400">{label}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         );
@@ -907,48 +811,17 @@ export default function FinishingAnalysisView() {
                     )}
 
                     {/* Formulário do próximo pallet */}
-                    {(() => {
-                        const totalEsperado = palletLotSize > 0 && qtyProduzida > 0
-                            ? Math.ceil(qtyProduzida / palletLotSize) : null;
-                        const allDone = totalEsperado !== null && savedPallets.length >= totalEsperado;
-                        const currentNum = savedPallets.length + 1;
-
-                        if (nqaConfig.unidades_por_caixa <= 0 || nqaConfig.caixas_por_pallet <= 0) return (
-                            <div className="flex items-center gap-3 p-5 rounded-3xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                                <span className="material-symbols-outlined text-amber-500 text-2xl">info</span>
-                                <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Volte à etapa 1 e configure <strong>unidades por caixa</strong> e <strong>caixas por pallet</strong>.</p>
-                            </div>
-                        );
-
-                        if (allDone) return (
-                            <div className="rounded-3xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 p-8 flex flex-col items-center gap-4 text-center">
-                                <span className="material-symbols-outlined text-6xl text-emerald-500">task_alt</span>
-                                <div>
-                                    <p className="text-xl font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-tight">
-                                        Todos os {totalEsperado} pallets concluídos!
-                                    </p>
-                                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                                        {savedPallets.filter(p => p.result === 'APPROVED').length} aprovados
-                                        {savedPallets.filter(p => p.result === 'RESTRICTED').length > 0 && ` · ${savedPallets.filter(p => p.result === 'RESTRICTED').length} com restrição`}
-                                        {savedPallets.filter(p => p.result === 'REJECTED').length > 0 && ` · ${savedPallets.filter(p => p.result === 'REJECTED').length} reprovados`}
-                                    </p>
-                                </div>
-                                <button type="button" onClick={() => setActiveStep(3)}
-                                    className="h-11 px-8 rounded-2xl bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20">
-                                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                                    Ir para Colagem
-                                </button>
-                            </div>
-                        );
-
-                        return (
+                    {nqaConfig.unidades_por_caixa <= 0 || nqaConfig.caixas_por_pallet <= 0 ? (
+                        <div className="flex items-center gap-3 p-5 rounded-3xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                            <span className="material-symbols-outlined text-amber-500 text-2xl">info</span>
+                            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Volte à etapa 1 e configure <strong>unidades por caixa</strong> e <strong>caixas por pallet</strong>.</p>
+                        </div>
+                    ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                             <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-indigo-50 dark:bg-indigo-950/20">
-                                <span className="flex items-center justify-center size-8 rounded-full bg-indigo-600 text-white text-sm font-black">#{currentNum}</span>
+                                <span className="flex items-center justify-center size-8 rounded-full bg-indigo-600 text-white text-sm font-black">#{savedPallets.length + 1}</span>
                                 <div>
-                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">
-                                        Pallet {currentNum}{totalEsperado ? ` de ${totalEsperado}` : ''}
-                                    </h2>
+                                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallet {savedPallets.length + 1}</h2>
                                     <p className="text-[10px] text-slate-400 font-bold">Inspeção NQA — {fmt(palletLotSize)} unidades</p>
                                 </div>
                                 {palletNqaResult && (
@@ -1068,132 +941,17 @@ export default function FinishingAnalysisView() {
                                     {isSavingPallet
                                         ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span>
                                         : <span className="material-symbols-outlined text-sm">add_task</span>}
-                                    Registrar Pallet #{currentNum} e Gerar QR
+                                    Registrar Pallet #{savedPallets.length + 1} e Gerar QR
                                 </button>
                             </div>
                         </div>
-                        );
-                    })()}
+                    )}
                 </>}
 
                 {/* ══════════════════════════════════════════════════════════
-                    ETAPA 3 — Colagem
+                    ETAPA 3 — Conclusão
                 ══════════════════════════════════════════════════════════ */}
                 {activeStep === 3 && <>
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                            <span className="material-symbols-outlined text-indigo-500">precision_manufacturing</span>
-                            <div>
-                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Colagem</h2>
-                                <p className="text-xs text-slate-500">Registro da coladeira — operador, quantidades e defeitos</p>
-                            </div>
-                        </div>
-                        <div className="p-6 space-y-5">
-
-                            {/* Máquina */}
-                            <div>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1.5">
-                                    Máquina <span className="text-rose-500">*</span>
-                                </label>
-                                <select
-                                    value={colagemMachineId}
-                                    onChange={e => setColagemMachineId(e.target.value)}
-                                    className={`h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 bg-slate-50 dark:bg-slate-800 ${!colagemMachineId ? 'border-rose-300 dark:border-rose-700 text-slate-400' : 'border-slate-200 dark:border-slate-700'}`}
-                                >
-                                    <option value="">Selecione a máquina</option>
-                                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>)}
-                                </select>
-                            </div>
-
-                            {/* Operadores (múltiplos) */}
-                            <div>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1.5">
-                                    Operadores <span className="text-rose-500">*</span>
-                                    <span className="ml-auto text-[8px] font-bold text-slate-400 normal-case tracking-normal">Selecione todos que trabalharam</span>
-                                </label>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {operators.map(o => {
-                                        const sel = colagemOperatorIds.includes(o.id);
-                                        return (
-                                            <button key={o.id} type="button"
-                                                onClick={() => setColagemOperatorIds(prev => sel ? prev.filter(id => id !== o.id) : [...prev, o.id])}
-                                                className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${sel ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'}`}
-                                            >
-                                                {sel && <span className="material-symbols-outlined text-[11px] mr-0.5 align-middle">check</span>}
-                                                {o.name}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                {colagemOperatorIds.length === 0 && <p className="text-[10px] text-rose-500 mt-1 flex items-center gap-1"><span className="material-symbols-outlined text-xs">warning</span>Selecione ao menos um operador</p>}
-                            </div>
-
-                            {/* Quantidades */}
-                            <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Quantidades</p>
-                                <div className="grid grid-cols-3 gap-3">
-                                    {([
-                                        { label: 'Qtd Rodada', value: colagemQtyRodadas, set: setColagemQtyRodadas, color: 'border-slate-200 dark:border-slate-700' },
-                                        { label: 'Saiu p/ Escolha', value: colagemQtyEscolha, set: setColagemQtyEscolha, color: 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20' },
-                                        { label: 'Reprovado', value: colagemQtyReprovadas, set: setColagemQtyReprovadas, color: 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20' },
-                                    ] as const).map(({ label, value, set, color }) => (
-                                        <div key={label} className={`flex flex-col gap-1 p-3 rounded-xl border ${color}`}>
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</span>
-                                            <div className="flex items-center gap-1 mt-1">
-                                                <button type="button" onClick={() => set(Math.max(0, value - 1))} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">-</button>
-                                                <input type="number" value={value} onChange={e => set(Math.max(0, Number(e.target.value) || 0))} className="flex-1 h-6 bg-transparent text-center font-black text-xs outline-none min-w-0" />
-                                                <button type="button" onClick={() => set(value + 1)} className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs">+</button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                {colagemQtyRodadas > 0 && (
-                                    <p className="text-[10px] font-bold text-slate-400 mt-2">
-                                        Aprovadas direto: {fmt(Math.max(0, colagemQtyRodadas - colagemQtyEscolha - colagemQtyReprovadas))} un.
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Defeitos da colagem */}
-                            <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Defeitos</p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {COLAGEM_DEFECTS_COLS.map(d => {
-                                        const count = colagemDefects[d.key] ?? 0;
-                                        return (
-                                            <div key={d.key} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-colors ${count > 0 ? 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20' : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50'}`}>
-                                                <span className={`material-symbols-outlined text-sm ${count > 0 ? 'text-rose-500' : 'text-slate-400'}`}>{d.icon}</span>
-                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex-1 truncate">{d.label}</span>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <button type="button" onClick={() => setColagemDefects(p => ({ ...p, [d.key]: Math.max(0, (p[d.key] ?? 0) - 1) }))} className="size-5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 text-xs flex items-center justify-center">-</button>
-                                                    <span className={`w-7 text-center text-xs font-black ${count > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{count}</span>
-                                                    <button type="button" onClick={() => setColagemDefects(p => ({ ...p, [d.key]: (p[d.key] ?? 0) + 1 }))} className="size-5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 text-xs flex items-center justify-center">+</button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Observações */}
-                            <div>
-                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Observações</label>
-                                <textarea
-                                    value={colagemObs}
-                                    onChange={e => setColagemObs(e.target.value)}
-                                    rows={3}
-                                    placeholder="Anotações sobre a colagem, ajustes de máquina, etc."
-                                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </>}
-
-                {/* ══════════════════════════════════════════════════════════
-                    ETAPA 4 — Conclusão
-                ══════════════════════════════════════════════════════════ */}
-                {activeStep === 4 && <>
 
                     {/* Resumo dos pallets */}
                     {savedPallets.length > 0 && (
@@ -1339,16 +1097,12 @@ export default function FinishingAnalysisView() {
                                 </div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cole na caixa ou escaneie</p>
                             </div>
-                            <button onClick={() => setCompletedPalletId(null)}
-                                className="w-full h-11 rounded-2xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20">
-                                <span className="material-symbols-outlined text-sm">arrow_forward</span>Registrar Próximo Pallet
-                            </button>
                             <div className="grid grid-cols-2 gap-3">
                                 <button onClick={() => window.print()} className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-all">
                                     <span className="material-symbols-outlined text-sm">print</span>Imprimir
                                 </button>
                                 <Link to={`/pallet/${completedPalletId}`} onClick={() => setCompletedPalletId(null)}
-                                    className="h-10 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all">
+                                    className="h-10 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all">
                                     <span className="material-symbols-outlined text-sm">open_in_new</span>Ver Auditoria
                                 </Link>
                             </div>

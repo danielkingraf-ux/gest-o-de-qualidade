@@ -25,6 +25,7 @@ import QualityPanelView from './views/QualityPanelView';
 import OPTraceView from './views/OPTraceView';
 import AcabamentoEscolhasView from './views/AcabamentoEscolhasView';
 import AcabamentoCortesVincoView from './views/AcabamentoCortesVincoView';
+import AcabamentoColagemView from './views/AcabamentoColagemView';
 import AcabamentoRevisaoFinalView from './views/AcabamentoRevisaoFinalView';
 import EscolhaRevisaoView from './views/EscolhaRevisaoView';
 import OcorrenciasOpView from './views/OcorrenciasOpView';
@@ -109,6 +110,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
       items: [
         { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['administrador', 'analista_qualidade'] },
         { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/acabamento-colagem', label: 'Colagem', icon: 'precision_manufacturing', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
         { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['administrador', 'analista_qualidade'] },
         { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
       ],
@@ -675,6 +677,7 @@ const AppShell = ({ session }: { session: Session }) => {
               {/* ── Acabamento ──────────────────────────────────────────────── */}
               <Route path="/acabamento-escolhas" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoEscolhasView />)} />
               <Route path="/acabamento-corte-vinco" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoCortesVincoView />)} />
+              <Route path="/acabamento-colagem" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoColagemView />)} />
               <Route path="/acabamento-revisao-final" element={protectedElement(['administrador', 'supervisao', 'revisao_escolha'], <AcabamentoRevisaoFinalView />)} />
               <Route path="*" element={<Navigate to={fallbackPath} replace />} />
             </Routes>
