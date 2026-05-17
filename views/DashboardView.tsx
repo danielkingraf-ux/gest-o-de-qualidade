@@ -143,72 +143,99 @@ function StatCard({
     );
 }
 
-function ProcessCard({
-    name,
-    icon,
-    metrics,
-}: {
-    name: string;
-    icon: string;
-    color?: string; // kept for call-site compatibility, ignored
-    metrics: ProcessMetrics;
-}) {
+// Card do Processo Inicial — mostra o volume total (rodadas, aprovadas, escolha, reprovadas)
+function ProcessInicialCard({ name, icon, metrics }: { name: string; icon: string; color?: string; metrics: ProcessMetrics }) {
     const { rodadas, aprovadas, escolha, reprovadas, laudos, ops } = metrics;
-
     const pctAprov = rodadas > 0 ? (aprovadas / rodadas) * 100 : 0;
     const pctEsc   = rodadas > 0 ? (escolha   / rodadas) * 100 : 0;
     const pctRep   = rodadas > 0 ? (reprovadas / rodadas) * 100 : 0;
 
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-xl text-slate-500 dark:text-slate-400">{icon}</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">{name}</span>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    {laudos} laudo{laudos !== 1 ? 's' : ''} · {ops} OP{ops !== 1 ? 's' : ''}
+                </span>
+            </div>
+            <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-slate-800">
+                <div className="p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Unid. Rodadas</p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
+                </div>
+                <div className="p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas</p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
+                    <p className="mt-0.5 text-[10px] font-bold text-emerald-600">{fmtPct(aprovadas, rodadas)}</p>
+                </div>
+                <div className="p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Em Escolha</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
+                    <p className={`mt-0.5 text-[10px] font-bold ${escolha > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(escolha, rodadas)}</p>
+                </div>
+                <div className="p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
+                    <p className={`mt-0.5 text-[10px] font-bold ${reprovadas > 0 ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(reprovadas, rodadas)}</p>
+                </div>
+            </div>
+            {rodadas > 0 && (
+                <div className="flex h-1.5 w-full overflow-hidden rounded-b-xl bg-slate-100 dark:bg-slate-800">
+                    <div className="h-full bg-slate-300 transition-all duration-500 dark:bg-slate-600" style={{ width: `${Math.min(pctAprov, 100)}%` }} />
+                    <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${Math.min(pctEsc, 100 - pctAprov)}%` }} />
+                    <div className="h-full bg-red-500 transition-all duration-500"  style={{ width: `${Math.min(pctRep, 100 - pctAprov - pctEsc)}%` }} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Card dos processos subsequentes — mostra apenas os desvios do fluxo (escolha e reprovadas)
+// "Rodadas" não é exibido pois o volume total é definido pelo Processo Inicial
+function ProcessDesvioCard({ name, icon, metrics }: { name: string; icon: string; color?: string; metrics: ProcessMetrics }) {
+    const { escolha, reprovadas, aprovadas, laudos, ops } = metrics;
+    const total = escolha + reprovadas + aprovadas;
+    const pctEsc = total > 0 ? (escolha / total) * 100 : 0;
+    const pctRep = total > 0 ? (reprovadas / total) * 100 : 0;
     const hasAlert = escolha > 0 || reprovadas > 0;
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            {/* Header */}
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
                 <div className="flex items-center gap-2.5">
                     <span className="material-symbols-outlined text-xl text-slate-500 dark:text-slate-400">{icon}</span>
                     <span className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">{name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    {hasAlert && (
-                        <span className="size-2 rounded-full bg-amber-400" title="Há unidades em escolha ou reprovadas" />
-                    )}
+                    {hasAlert && <span className="size-2 rounded-full bg-amber-400" />}
                     <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        {laudos} laudo{laudos !== 1 ? 's' : ''}
+                        {laudos} reg. · {ops} OP{ops !== 1 ? 's' : ''}
                     </span>
                 </div>
             </div>
-
-            {/* Metrics */}
-            <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-slate-800">
+            <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
                 <div className="p-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rodadas</p>
-                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
-                    <p className="mt-0.5 text-[10px] font-bold text-slate-400">{ops} OP{ops !== 1 ? 's' : ''}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas / Boas</p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
                 </div>
                 <div className="p-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas</p>
-                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
-                    <p className="mt-0.5 text-[10px] font-bold text-emerald-600">{fmtPct(aprovadas, rodadas)}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Saíram p/ Escolha</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
+                    {total > 0 && <p className={`mt-0.5 text-[10px] font-bold ${escolha > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(escolha, total)}</p>}
                 </div>
                 <div className="p-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Em Escolha</p>
-                    <p className={`mt-1 text-xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
-                    <p className={`mt-0.5 text-[10px] font-bold ${escolha > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(escolha, rodadas)}</p>
-                </div>
-                <div className="p-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas</p>
-                    <p className={`mt-1 text-xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
-                    <p className={`mt-0.5 text-[10px] font-bold ${reprovadas > 0 ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(reprovadas, rodadas)}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas / Refugo</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
+                    {total > 0 && <p className={`mt-0.5 text-[10px] font-bold ${reprovadas > 0 ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(reprovadas, total)}</p>}
                 </div>
             </div>
-
-            {/* Proportion bar */}
-            {rodadas > 0 && (
+            {(pctEsc > 0 || pctRep > 0) && (
                 <div className="flex h-1.5 w-full overflow-hidden rounded-b-xl bg-slate-100 dark:bg-slate-800">
-                    <div className="h-full bg-slate-300 transition-all duration-500 dark:bg-slate-600" style={{ width: `${Math.min(pctAprov, 100)}%` }} />
-                    <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${Math.min(pctEsc, 100 - pctAprov)}%` }} />
-                    <div className="h-full bg-red-500 transition-all duration-500"  style={{ width: `${Math.min(pctRep, 100 - pctAprov - pctEsc)}%` }} />
+                    <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${Math.min(pctEsc, 100)}%` }} />
+                    <div className="h-full bg-red-500 transition-all duration-500"  style={{ width: `${Math.min(pctRep, 100 - pctEsc)}%` }} />
                 </div>
             )}
         </div>
@@ -507,28 +534,24 @@ export default function DashboardView() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <ProcessCard
+                    <ProcessInicialCard
                         name="Processo Inicial"
                         icon="print"
-                        color="indigo"
                         metrics={metrics.metricInicial}
                     />
-                    <ProcessCard
+                    <ProcessDesvioCard
                         name="Corte e Vinco"
                         icon="content_cut"
-                        color="emerald"
                         metrics={metrics.metricCorte}
                     />
-                    <ProcessCard
+                    <ProcessDesvioCard
                         name="Produto Acabado"
                         icon="inventory_2"
-                        color="violet"
                         metrics={metrics.metricAcabado}
                     />
-                    <ProcessCard
+                    <ProcessDesvioCard
                         name="Revisão Final"
                         icon="checklist"
-                        color="rose"
                         metrics={metrics.metricRevisao}
                     />
                 </div>
