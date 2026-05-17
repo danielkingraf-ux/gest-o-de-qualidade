@@ -745,6 +745,74 @@ export default function FinishingAnalysisView() {
                 ══════════════════════════════════════════════════════════ */}
                 {activeStep === 2 && <>
 
+                    {/* ── Tracker visual de andamento dos pallets ── */}
+                    {(() => {
+                        const totalEsperado = palletLotSize > 0 && qtyProduzida > 0
+                            ? Math.ceil(qtyProduzida / palletLotSize) : null;
+                        const currentNum = savedPallets.length + 1;
+                        const total = Math.max(totalEsperado ?? currentNum, currentNum);
+                        const nums = Array.from({ length: total }, (_, i) => i + 1);
+                        return (
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-indigo-500 text-base">grid_view</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
+                                            Pallet {savedPallets.length} de {totalEsperado ?? '?'} concluído{savedPallets.length !== 1 ? 's' : ''}
+                                        </span>
+                                    </div>
+                                    {totalEsperado && palletLotSize > 0 && (
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                            {fmt(qtyProduzida)} un. ÷ {fmt(palletLotSize)} un/pallet = {totalEsperado} pallets estimados
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {nums.map(num => {
+                                        const saved = savedPallets.find(p => p.pallet_number === num);
+                                        const isCurrent = num === currentNum;
+                                        let cls = '';
+                                        let icon = '';
+                                        let label = '';
+                                        if (saved) {
+                                            if (saved.result === 'APPROVED')   { cls = 'bg-emerald-500 border-emerald-500 text-white'; icon = 'check'; }
+                                            else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white'; icon = 'warning'; }
+                                            else                               { cls = 'bg-rose-500 border-rose-500 text-white'; icon = 'close'; }
+                                        } else if (isCurrent) {
+                                            cls = 'bg-indigo-600 border-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-700 ring-offset-1';
+                                            label = 'atual';
+                                        } else {
+                                            cls = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
+                                        }
+                                        return (
+                                            <div key={num} title={saved ? `Pallet ${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `Pallet ${num}: em andamento` : `Pallet ${num}: pendente`}
+                                                className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl border-2 transition-all select-none ${cls}`}
+                                            >
+                                                <span className="text-[10px] font-black leading-none">#{num}</span>
+                                                {icon  && <span className="material-symbols-outlined text-[13px] leading-none mt-0.5">{icon}</span>}
+                                                {label && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80">{label}</span>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-4 mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                                    {[
+                                        { color: 'bg-emerald-500', label: 'Aprovado' },
+                                        { color: 'bg-amber-400',   label: 'Restrição' },
+                                        { color: 'bg-rose-500',    label: 'Reprovado' },
+                                        { color: 'bg-indigo-600',  label: 'Em andamento' },
+                                        { color: 'bg-slate-200 dark:bg-slate-700', label: 'Pendente' },
+                                    ].map(({ color, label }) => (
+                                        <div key={label} className="flex items-center gap-1.5">
+                                            <div className={`size-2.5 rounded-sm ${color}`} />
+                                            <span className="text-[9px] font-bold text-slate-400">{label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {/* Lista de pallets concluídos */}
                     {(loadingSavedPallets || savedPallets.length > 0) && (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
