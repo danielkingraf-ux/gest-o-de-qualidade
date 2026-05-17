@@ -321,8 +321,16 @@ export default function FinishingAnalysisView() {
             showToast('Configure unidades por caixa e caixas por pallet antes de registrar', 'warning'); return;
         }
         setIsSavingPallet(true);
-        const nextNum = savedPallets.length + 1;
         try {
+            // Busca o maior pallet_number já gravado no banco para evitar duplicata
+            const { data: maxRow } = await supabase
+                .from('pallet_inspections')
+                .select('pallet_number')
+                .eq('op', selectedOrder.op.toUpperCase())
+                .order('pallet_number', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            const nextNum = (maxRow?.pallet_number ?? 0) + 1;
             const analystObj = analysts.find(a => a.id === selectedAnalystIds[0]);
             const machineObj = machines.find(m => m.id === selectedMachineId);
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
