@@ -9,21 +9,18 @@ export default function PrivacyNoticeModal({ userId }: { userId: string }) {
 
   useEffect(() => {
     let active = true;
-
-    const checkAcceptance = async () => {
+    const check = async () => {
       const { data, error } = await supabase
         .from('privacy_acknowledgements')
         .select('id')
         .eq('user_id', userId)
         .eq('notice_version', LGPD_NOTICE_VERSION)
         .maybeSingle();
-
       if (!active) return;
       setNeedsAcceptance(Boolean(error || !data));
       setLoading(false);
     };
-
-    checkAcceptance();
+    check();
     return () => { active = false; };
   }, [userId]);
 
@@ -45,55 +42,23 @@ export default function PrivacyNoticeModal({ userId }: { userId: string }) {
   if (loading || !needsAcceptance) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-4 flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <span className="material-symbols-outlined text-base">verified_user</span>
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Aviso de privacidade LGPD</p>
-            <h2 className="text-base font-black uppercase tracking-tight text-slate-900 dark:text-white">
-              Uso de dados pessoais no sistema
-            </h2>
-          </div>
-        </div>
-
-        <div className="space-y-2 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
-          <p>
-            Este sistema registra dados necessários para controle de qualidade, rastreabilidade operacional,
-            auditoria de alterações, documentos internos e comunicação entre turnos.
-          </p>
-          <p>
-            Podem ser tratados nome, e-mail corporativo, função, registros de acesso, autoria de cadastros,
-            mensagens operacionais, vínculos com OPs, máquinas, análises e documentos.
-          </p>
-          <p>
-            O acesso deve ser feito somente por usuários autorizados e para finalidade profissional.
-          </p>
-        </div>
-
-        <div className="mt-4 rounded-lg bg-slate-50 p-3 text-[10px] font-bold text-slate-500 dark:bg-slate-950">
-          Versão: {LGPD_NOTICE_VERSION}. O aceite será registrado para fins de conformidade.
-        </div>
-
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <a
-            href="/#/lgpd"
-            className="flex h-11 items-center justify-center rounded-lg border border-slate-200 px-5 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            Ver detalhes
-          </a>
-          <button
-            type="button"
-            onClick={acceptNotice}
-            disabled={saving}
-            className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-primary/90 disabled:opacity-50"
-          >
-            {saving && <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>}
-            Li e estou ciente
-          </button>
-        </div>
+    <div className="fixed bottom-4 left-1/2 z-[120] w-full max-w-lg -translate-x-1/2 px-4">
+      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <span className="material-symbols-outlined shrink-0 text-base text-primary">verified_user</span>
+        <p className="flex-1 text-[10px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
+          Este sistema trata dados operacionais (nome, e-mail, registros) para controle de qualidade e rastreabilidade.{' '}
+          <a href="/#/lgpd" className="underline hover:text-primary">Saiba mais</a>
+        </p>
+        <button
+          type="button"
+          onClick={acceptNotice}
+          disabled={saving}
+          className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving
+            ? <span className="material-symbols-outlined animate-spin text-sm leading-none">progress_activity</span>
+            : 'Ciente'}
+        </button>
       </div>
     </div>
   );
