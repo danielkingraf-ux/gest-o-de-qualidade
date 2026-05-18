@@ -986,7 +986,10 @@ export default function InspectionView() {
           {/* Operadores */}
           <div className="space-y-1 flex flex-col">
             <div className="flex justify-between items-center pr-1">
-              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador(es)</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                Operador(es)
+                <span className="text-[8px] font-bold text-amber-500 normal-case tracking-normal">⚠ 1 registro por turno</span>
+              </label>
               <button onClick={() => setSelectedOperatorRows(prev => [...prev, { rowId: nextRowId(), value: '' }])} className="text-primary hover:bg-primary/10 rounded-full size-6 flex items-center justify-center transition-colors">
                 <span className="material-symbols-outlined text-sm font-black">add</span>
               </button>

@@ -285,7 +285,7 @@ const AcabamentoColagemView: React.FC = () => {
           <div className="mt-3">
             <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1">
               Operadores <span className="text-rose-500">*</span>
-              <span className="ml-auto text-[8px] font-bold text-slate-400 normal-case tracking-normal">Selecione todos que trabalharam</span>
+              <span className="ml-auto text-[8px] font-bold text-amber-500 normal-case tracking-normal">⚠ 1 registro por turno</span>
             </label>
             {operators.length === 0 ? (
               <p className="text-[10px] text-amber-500 mt-1">Nenhum operador cadastrado para Colagem. Cadastre em Administração.</p>
