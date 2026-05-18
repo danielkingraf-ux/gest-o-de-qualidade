@@ -107,11 +107,12 @@ export default function QualityPanelView() {
     const [opNames, setOpNames]   = useState<Record<string, string>>({});
     const [period, setPeriod]     = useState<Period>('month');
     const [areaTab, setAreaTab]   = useState<'all' | 'inicial' | 'acabado'>('all');
+    const [palletRecs, setPalletRecs] = useState<any[]>([]);
 
     useEffect(() => {
         (async () => {
             setLoading(true);
-            const [insRes, opRes, colRes, machRes] = await Promise.all([
+            const [insRes, opRes, colRes, machRes, palRes] = await Promise.all([
                 supabase.from('inspections')
                     .select('id, op, created_at, status, machine_id, operator_id, observations, machines(name)')
                     .order('created_at', { ascending: false })
@@ -123,7 +124,13 @@ export default function QualityPanelView() {
                     .order('timestamp', { ascending: false })
                     .limit(500),
                 supabase.from('machines').select('id, name'),
+                supabase.from('pallet_inspections')
+                    .select('op, pallet_number, result, created_at, units_per_box, boxes_per_pallet')
+                    .order('pallet_number', { ascending: true })
+                    .limit(1000),
             ]);
+
+            setPalletRecs(palRes.data || []);
 
             const names: Record<string, string> = {};
             (opRes.data || []).forEach((o: any) => { names[o.id] = o.name; });
@@ -249,6 +256,37 @@ export default function QualityPanelView() {
             .slice(0, 10);
     }, [filtered]);
 
+    // ── Status de pallets por OP ────────────────────────────────────────────
+    const palletsByOp = useMemo(() => {
+        type PalletOp = {
+            op: string; inspecionados: number; aprovados: number;
+            reprovados: number; restritos: number; currentPallet: number;
+            palletLotSize: number; latestDate: string;
+            qtyProduzida: number; totalExpected: number | null; faltam: number | null;
+        };
+        const map = new Map<string, PalletOp>();
+        palletRecs.forEach((r: any) => {
+            const op = String(r.op || '').trim().toUpperCase();
+            if (!op) return;
+            const cur = map.get(op) ?? { op, inspecionados: 0, aprovados: 0, reprovados: 0, restritos: 0, currentPallet: 0, palletLotSize: 0, latestDate: '', qtyProduzida: 0, totalExpected: null, faltam: null };
+            cur.inspecionados++;
+            if (r.result === 'APPROVED') cur.aprovados++;
+            else if (r.result === 'REJECTED') cur.reprovados++;
+            else cur.restritos++;
+            cur.currentPallet = Math.max(cur.currentPallet, r.pallet_number);
+            cur.palletLotSize = (r.units_per_box || 0) * (r.boxes_per_pallet || 0);
+            if (!cur.latestDate || r.created_at > cur.latestDate) cur.latestDate = r.created_at;
+            map.set(op, cur);
+        });
+        return Array.from(map.values()).map(p => {
+            const opRecs = records.filter(r => r.op.toUpperCase() === p.op && r.area === 'inicial');
+            const qtyProduzida = opRecs.reduce((s, r) => s + r.qtyEscolha, 0);
+            const totalExpected = p.palletLotSize > 0 && qtyProduzida > 0 ? Math.ceil(qtyProduzida / p.palletLotSize) : null;
+            const faltam = totalExpected !== null ? Math.max(0, totalExpected - p.inspecionados) : null;
+            return { ...p, qtyProduzida, totalExpected, faltam };
+        }).sort((a, b) => b.latestDate.localeCompare(a.latestDate)).slice(0, 30);
+    }, [palletRecs, records]);
+
     if (loading) return (
         <div className="flex items-center justify-center h-64">
             <span className="material-symbols-outlined animate-spin text-3xl text-slate-400">progress_activity</span>
@@ -336,6 +374,62 @@ export default function QualityPanelView() {
                     <p className="text-[10px] font-bold text-rose-500">{fmtPct(totals.refugo, totals.produzida)} do total</p>
                 </div>
             </div>
+
+            {/* Pallets por OP */}
+            {palletsByOp.length > 0 && (
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-indigo-500">stacks</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallets por OP</h2>
+                        <span className="ml-auto text-[9px] font-bold text-slate-400">{palletsByOp.length} OPs em andamento</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[560px] text-left text-xs">
+                            <thead>
+                                <tr className="border-b border-slate-100 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                    <th className="pb-2">OP</th>
+                                    <th className="pb-2 text-center text-indigo-500">Em análise</th>
+                                    <th className="pb-2 text-center">Analisados</th>
+                                    <th className="pb-2 text-center text-amber-500">Faltam</th>
+                                    <th className="pb-2 text-center text-emerald-500">Aprov.</th>
+                                    <th className="pb-2 text-center text-rose-500">Reprov.</th>
+                                    <th className="pb-2 text-center text-amber-400">Rest.</th>
+                                    <th className="pb-2 text-right">Última ativ.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {palletsByOp.map(p => (
+                                    <tr key={p.op} className="border-b border-slate-50 dark:border-slate-800 last:border-0 font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                        <td className="py-2.5 pr-3 font-black text-slate-900 dark:text-white">{p.op}</td>
+                                        <td className="py-2.5 text-center">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-black">
+                                                <span className="material-symbols-outlined text-[11px]">radio_button_checked</span>
+                                                #{p.currentPallet + 1}
+                                            </span>
+                                        </td>
+                                        <td className="py-2.5 text-center font-black text-slate-700 dark:text-slate-200">
+                                            {p.inspecionados}{p.totalExpected !== null ? ` / ${p.totalExpected}` : ''}
+                                        </td>
+                                        <td className="py-2.5 text-center">
+                                            {p.faltam !== null ? (
+                                                <span className={`font-black ${p.faltam === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                                    {p.faltam === 0 ? '✓ 0' : p.faltam}
+                                                </span>
+                                            ) : <span className="text-slate-300">—</span>}
+                                        </td>
+                                        <td className="py-2.5 text-center text-emerald-600 font-black">{p.aprovados || <span className="text-slate-300">—</span>}</td>
+                                        <td className="py-2.5 text-center text-rose-500 font-black">{p.reprovados || <span className="text-slate-300">—</span>}</td>
+                                        <td className="py-2.5 text-center text-amber-500 font-black">{p.restritos || <span className="text-slate-300">—</span>}</td>
+                                        <td className="py-2.5 text-right text-slate-400 text-[10px]">
+                                            {new Date(p.latestDate).toLocaleDateString('pt-BR')}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             {/* Defeitos + Operadores */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
