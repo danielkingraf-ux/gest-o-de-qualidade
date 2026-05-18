@@ -83,6 +83,7 @@ const AcabamentoColagemView: React.FC = () => {
   const [notes, setNotes]                 = useState('');
 
   const [saldoCorteVinco, setSaldoCorteVinco] = useState<number | null>(null);
+  const [opHistory, setOpHistory]             = useState<any[]>([]);
   const [recentRecords, setRecentRecords]     = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent]     = useState(false);
   const [saving, setSaving]                   = useState(false);
@@ -114,9 +115,10 @@ const AcabamentoColagemView: React.FC = () => {
         .eq('op', opUpper)
         .eq('modulo', 'corte_vinco'),
       supabase.from('acabamento_registros')
-        .select('qty_revisadas')
+        .select('id, qty_revisadas, qty_reprovadas, qty_aprovadas, defects, operator_ids, machine_id, timestamp')
         .eq('op', opUpper)
-        .eq('modulo', 'colagem'),
+        .eq('modulo', 'colagem')
+        .order('timestamp', { ascending: true }),
     ]).then(([cvRes, colRes]) => {
       const totalAprovadosCv = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
@@ -129,6 +131,7 @@ const AcabamentoColagemView: React.FC = () => {
       } else {
         setSaldoCorteVinco(null);
       }
+      setOpHistory(colRes.data ?? []);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op]);
@@ -335,6 +338,49 @@ const AcabamentoColagemView: React.FC = () => {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Histórico desta OP */}
+        {opHistory.length > 0 && (
+          <section className="mb-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/20">
+              <span className="material-symbols-outlined text-indigo-500 text-sm">history</span>
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300 flex-1">
+                Histórico desta OP — {opHistory.length} turno{opHistory.length > 1 ? 's' : ''}
+              </h2>
+            </div>
+            <div className="divide-y divide-slate-50 dark:divide-slate-800">
+              {opHistory.map((r: any, i: number) => {
+                const names = (r.operator_ids ?? [])
+                  .map((id: string) => operators.find(o => o.id === id)?.name ?? '?')
+                  .filter(Boolean).join(', ') || '—';
+                const defTotal = Object.entries(r.defects ?? {})
+                  .filter(([k]) => k !== 'qty_refugo')
+                  .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
+                const topDef = (Object.entries(r.defects ?? {}) as [string, number][])
+                  .filter(([k, v]) => k !== 'qty_refugo' && v > 0)
+                  .sort((a, b) => b[1] - a[1])[0];
+                const refugo = r.defects?.qty_refugo ?? 0;
+                const hasProblems = defTotal > 0 || refugo > 0;
+                const ts = new Date(r.timestamp);
+                return (
+                  <div key={r.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 ${hasProblems ? 'bg-rose-50/60 dark:bg-rose-950/10' : ''}`}>
+                    <span className={`size-5 shrink-0 rounded-full flex items-center justify-center text-[9px] font-black ${hasProblems ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400'}`}>{i + 1}</span>
+                    <span className="text-[10px] font-black text-slate-500 shrink-0">
+                      {ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} {ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]" title={names}>{names}</span>
+                    <div className="ml-auto flex items-center gap-2 shrink-0 text-[10px] font-bold">
+                      <span className="text-slate-500">{fmt(r.qty_revisadas)} rod.</span>
+                      {r.qty_reprovadas > 0 && <span className="text-amber-600">{fmt(r.qty_reprovadas)} esc.</span>}
+                      {refugo > 0 && <span className="text-rose-500">{fmt(refugo)} ref.</span>}
+                      {topDef && <span className="px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 text-[9px] font-black">{topDef[0].replace(/_/g, ' ')} ×{topDef[1]}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* Seção 2: Quantidades */}
