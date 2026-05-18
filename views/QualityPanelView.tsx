@@ -126,6 +126,7 @@ export default function QualityPanelView() {
                 supabase.from('machines').select('id, name'),
                 supabase.from('pallet_inspections')
                     .select('op, pallet_number, result, created_at, units_per_box, boxes_per_pallet')
+                    .is('archived_at', null)
                     .order('pallet_number', { ascending: true })
                     .limit(1000),
             ]);
@@ -258,18 +259,20 @@ export default function QualityPanelView() {
 
     // ── Status de pallets por OP ────────────────────────────────────────────
     const palletsByOp = useMemo(() => {
+        type PalletItem = { pallet_number: number; result: string };
         type PalletOp = {
             op: string; inspecionados: number; aprovados: number;
             reprovados: number; restritos: number; currentPallet: number;
-            palletLotSize: number; latestDate: string;
+            palletLotSize: number; latestDate: string; pallets: PalletItem[];
             qtyProduzida: number; totalExpected: number | null; faltam: number | null;
         };
         const map = new Map<string, PalletOp>();
         palletRecs.forEach((r: any) => {
             const op = String(r.op || '').trim().toUpperCase();
             if (!op) return;
-            const cur = map.get(op) ?? { op, inspecionados: 0, aprovados: 0, reprovados: 0, restritos: 0, currentPallet: 0, palletLotSize: 0, latestDate: '', qtyProduzida: 0, totalExpected: null, faltam: null };
+            const cur = map.get(op) ?? { op, inspecionados: 0, aprovados: 0, reprovados: 0, restritos: 0, currentPallet: 0, palletLotSize: 0, latestDate: '', pallets: [], qtyProduzida: 0, totalExpected: null, faltam: null };
             cur.inspecionados++;
+            cur.pallets.push({ pallet_number: r.pallet_number, result: r.result });
             if (r.result === 'APPROVED') cur.aprovados++;
             else if (r.result === 'REJECTED') cur.reprovados++;
             else cur.restritos++;
@@ -380,53 +383,67 @@ export default function QualityPanelView() {
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
                     <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-indigo-500">stacks</span>
-                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallets por OP</h2>
-                        <span className="ml-auto text-[9px] font-bold text-slate-400">{palletsByOp.length} OPs em andamento</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallets em andamento</h2>
+                        <span className="ml-auto text-[9px] font-bold text-slate-400">{palletsByOp.length} OP{palletsByOp.length > 1 ? 's' : ''}</span>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[560px] text-left text-xs">
-                            <thead>
-                                <tr className="border-b border-slate-100 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400">
-                                    <th className="pb-2">OP</th>
-                                    <th className="pb-2 text-center text-indigo-500">Em análise</th>
-                                    <th className="pb-2 text-center">Analisados</th>
-                                    <th className="pb-2 text-center text-amber-500">Faltam</th>
-                                    <th className="pb-2 text-center text-emerald-500">Aprov.</th>
-                                    <th className="pb-2 text-center text-rose-500">Reprov.</th>
-                                    <th className="pb-2 text-center text-amber-400">Rest.</th>
-                                    <th className="pb-2 text-right">Última ativ.</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {palletsByOp.map(p => (
-                                    <tr key={p.op} className="border-b border-slate-50 dark:border-slate-800 last:border-0 font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                                        <td className="py-2.5 pr-3 font-black text-slate-900 dark:text-white">{p.op}</td>
-                                        <td className="py-2.5 text-center">
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-black">
-                                                <span className="material-symbols-outlined text-[11px]">radio_button_checked</span>
-                                                #{p.currentPallet + 1}
+                    <div className="space-y-3">
+                        {palletsByOp.map(p => {
+                            const total = Math.max(p.totalExpected ?? p.currentPallet + 1, p.currentPallet + 1);
+                            const nums = Array.from({ length: total }, (_, i) => i + 1);
+                            const nextNum = p.currentPallet + 1;
+                            return (
+                                <div key={p.op} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4 space-y-3">
+                                    {/* Cabeçalho do card */}
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <span className="text-sm font-black text-slate-900 dark:text-white">OP {p.op}</span>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-black">
+                                            <span className="material-symbols-outlined text-[11px]">radio_button_checked</span>
+                                            Analisando #{nextNum}
+                                        </span>
+                                        {p.faltam !== null && p.faltam > 0 && (
+                                            <span className="text-[10px] font-black text-amber-600">
+                                                {p.inspecionados}/{p.totalExpected} — faltam {p.faltam}
                                             </span>
-                                        </td>
-                                        <td className="py-2.5 text-center font-black text-slate-700 dark:text-slate-200">
-                                            {p.inspecionados}{p.totalExpected !== null ? ` / ${p.totalExpected}` : ''}
-                                        </td>
-                                        <td className="py-2.5 text-center">
-                                            {p.faltam !== null ? (
-                                                <span className={`font-black ${p.faltam === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                                    {p.faltam === 0 ? '✓ 0' : p.faltam}
-                                                </span>
-                                            ) : <span className="text-slate-300">—</span>}
-                                        </td>
-                                        <td className="py-2.5 text-center text-emerald-600 font-black">{p.aprovados || <span className="text-slate-300">—</span>}</td>
-                                        <td className="py-2.5 text-center text-rose-500 font-black">{p.reprovados || <span className="text-slate-300">—</span>}</td>
-                                        <td className="py-2.5 text-center text-amber-500 font-black">{p.restritos || <span className="text-slate-300">—</span>}</td>
-                                        <td className="py-2.5 text-right text-slate-400 text-[10px]">
-                                            {new Date(p.latestDate).toLocaleDateString('pt-BR')}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                        )}
+                                        {p.faltam === 0 && (
+                                            <span className="text-[10px] font-black text-emerald-600">✓ Todos analisados</span>
+                                        )}
+                                        <span className="ml-auto text-[10px] text-slate-400">{new Date(p.latestDate).toLocaleDateString('pt-BR')}</span>
+                                    </div>
+                                    {/* Grade de pallets */}
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {nums.map(num => {
+                                            const saved = p.pallets.find(pl => pl.pallet_number === num);
+                                            const isCurrent = num === nextNum;
+                                            let cls = '';
+                                            let icon = '';
+                                            if (saved) {
+                                                if (saved.result === 'APPROVED')    { cls = 'bg-emerald-500 border-emerald-500 text-white'; icon = 'check'; }
+                                                else if (saved.result === 'RESTRICTED') { cls = 'bg-amber-400 border-amber-400 text-white'; icon = 'warning'; }
+                                                else                                { cls = 'bg-rose-500 border-rose-500 text-white'; icon = 'close'; }
+                                            } else if (isCurrent) {
+                                                cls = 'bg-indigo-600 border-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-700 ring-offset-1 animate-pulse';
+                                            } else {
+                                                cls = 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400';
+                                            }
+                                            return (
+                                                <div key={num} title={saved ? `#${num}: ${saved.result === 'APPROVED' ? 'Aprovado' : saved.result === 'RESTRICTED' ? 'Restrição' : 'Reprovado'}` : isCurrent ? `#${num}: em andamento` : `#${num}: pendente`}
+                                                    className={`flex flex-col items-center justify-center w-10 h-10 rounded-xl border-2 select-none transition-all ${cls}`}>
+                                                    <span className="text-[9px] font-black leading-none">#{num}</span>
+                                                    {icon && <span className="material-symbols-outlined text-[11px] leading-none mt-0.5">{icon}</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {/* Legenda compacta */}
+                                    <div className="flex flex-wrap gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                        {p.aprovados > 0  && <span className="text-[10px] font-bold text-emerald-600">✓ {p.aprovados} aprov.</span>}
+                                        {p.restritos > 0  && <span className="text-[10px] font-bold text-amber-500">⚠ {p.restritos} restr.</span>}
+                                        {p.reprovados > 0 && <span className="text-[10px] font-bold text-rose-500">✗ {p.reprovados} reprov.</span>}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
