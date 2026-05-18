@@ -189,7 +189,7 @@ const AcabamentoColagemView: React.FC = () => {
       qty_revisadas: qtyRodadas,
       qty_aprovadas: Math.max(0, qtyRodadas - qtyEscolha - qtyRefugo),
       qty_reprovadas: qtyEscolha,
-      defects: Object.keys(defectsPayload).length > 0 ? defectsPayload : null,
+      defects: Object.keys(defectsPayload).length > 0 ? defectsPayload : {},
       notes: notes.trim() || null,
     });
     setSaving(false);
