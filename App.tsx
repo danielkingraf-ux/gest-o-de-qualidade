@@ -108,11 +108,11 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
     {
       label: 'Fluxo da OP',
       items: [
-        { path: '/inspections', label: 'Processo Inicial', icon: 'assignment_turned_in', roles: ['administrador', 'analista_qualidade'] },
-        { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'content_cut', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
-        { path: '/acabamento-colagem', label: 'Colagem', icon: 'precision_manufacturing', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
-        { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'table_chart', roles: ['administrador', 'analista_qualidade'] },
-        { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'verified', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/inspections', label: 'Processo Inicial', icon: 'print', roles: ['administrador', 'analista_qualidade'] },
+        { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'border_style', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/acabamento-colagem', label: 'Colagem', icon: 'join_inner', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'inventory_2', roles: ['administrador', 'analista_qualidade'] },
+        { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
       ],
     },
     {
