@@ -356,7 +356,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         supabase.from('orders').select('qtd_total').eq('op', trimmed).maybeSingle(),
         supabase.from('inspections').select('observations, machine_id').eq('op', trimmed),
         supabase.from('acabamento_registros')
-          .select('qty_revisadas, qty_reprovadas')
+          .select('qty_revisadas, qty_reprovadas, operator_ids, machine_id')
           .eq('op', trimmed)
           .eq('modulo', 'corte_vinco'),
         supabase.from('acabamento_registros')
@@ -394,6 +394,12 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
       const escolhaCorteVinco = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
+
+      // Coleta operadores e máquinas do Corte e Vinco
+      for (const row of (cvRes.data ?? []) as Array<{ operator_ids: string[] | null; machine_id: string | null }>) {
+        if (Array.isArray(row.operator_ids)) row.operator_ids.forEach((id: string) => id && opIds.add(id));
+        if (row.machine_id) machineIds.add(row.machine_id);
+      }
 
       const rodadasColagem = (colRes.data ?? [])
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
