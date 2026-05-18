@@ -125,7 +125,7 @@ export default function QualityPanelView() {
                     .limit(500),
                 supabase.from('machines').select('id, name'),
                 supabase.from('pallet_inspections')
-                    .select('op, pallet_number, result, created_at, units_per_box, boxes_per_pallet')
+                    .select('op, pallet_number, result, completed_at, units_per_box, boxes_per_pallet')
                     .is('archived_at', null)
                     .order('pallet_number', { ascending: true })
                     .limit(1000),
@@ -278,7 +278,7 @@ export default function QualityPanelView() {
             else cur.restritos++;
             cur.currentPallet = Math.max(cur.currentPallet, r.pallet_number);
             cur.palletLotSize = (r.units_per_box || 0) * (r.boxes_per_pallet || 0);
-            if (!cur.latestDate || r.created_at > cur.latestDate) cur.latestDate = r.created_at;
+            if (!cur.latestDate || r.completed_at > cur.latestDate) cur.latestDate = r.completed_at;
             map.set(op, cur);
         });
         return Array.from(map.values()).map(p => {

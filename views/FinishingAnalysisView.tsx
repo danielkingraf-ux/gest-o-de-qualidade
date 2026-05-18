@@ -62,7 +62,7 @@ type SavedPallet = {
     defects_critical: number;
     defects_major: number;
     defects_minor: number;
-    created_at: string;
+    completed_at: string;
     analyst_name: string | null;
 };
 
@@ -226,7 +226,7 @@ export default function FinishingAnalysisView() {
         const load = async () => {
             setLoadingSavedPallets(true);
             const { data } = await supabase.from('pallet_inspections')
-                .select('id,pallet_number,result,defects_critical,defects_major,defects_minor,created_at,analyst_name')
+                .select('id,pallet_number,result,defects_critical,defects_major,defects_minor,completed_at,analyst_name')
                 .eq('op', order.op.toUpperCase()).is('archived_at', null).order('pallet_number');
             setSavedPallets(data || []);
             setLoadingSavedPallets(false);
@@ -324,7 +324,7 @@ export default function FinishingAnalysisView() {
             setPalletObs(''); setPalletResult('APPROVED');
             // Recarrega lista (só pallets ativos)
             const { data: fresh } = await supabase.from('pallet_inspections')
-                .select('id,pallet_number,result,defects_critical,defects_major,defects_minor,created_at,analyst_name')
+                .select('id,pallet_number,result,defects_critical,defects_major,defects_minor,completed_at,analyst_name')
                 .eq('op', selectedOrder.op.toUpperCase()).is('archived_at', null).order('pallet_number');
             setSavedPallets(fresh || []);
         } catch (err: any) { showToast(`Erro ao salvar pallet: ${err.message}`, 'error'); }
