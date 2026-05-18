@@ -52,6 +52,7 @@ type RodadaSummary = {
     aprovadas: number;
     em_escolha: number;
     reprovadas: number;
+    operatorIds: string[];
 };
 
 type SavedPallet = {
@@ -208,7 +209,7 @@ export default function FinishingAnalysisView() {
                 let obs: any = {};
                 try { obs = JSON.parse(row.observations || '{}'); } catch { /* */ }
                 if (obs.process_area !== 'producao_inicial') continue;
-                summaries.push({ id: row.id, numero: obs.numero_rodada ?? summaries.length + 1, date: row.created_at, status: obs.status_final ?? 'APPROVED', qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0, aprovadas: obs.saldo_unidades?.aprovadas ?? 0, em_escolha: obs.saldo_unidades?.em_escolha ?? 0, reprovadas: obs.saldo_unidades?.reprovadas ?? 0 });
+                summaries.push({ id: row.id, numero: obs.numero_rodada ?? summaries.length + 1, date: row.created_at, status: obs.status_final ?? 'APPROVED', qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0, aprovadas: obs.saldo_unidades?.aprovadas ?? 0, em_escolha: obs.saldo_unidades?.em_escolha ?? 0, reprovadas: obs.saldo_unidades?.reprovadas ?? 0, operatorIds: Array.isArray(obs.all_operator_ids) ? obs.all_operator_ids : [] });
             }
             setRodadas(summaries);
             const totalEmEscolha = summaries.reduce((s, r) => s + r.em_escolha, 0);
@@ -524,14 +525,17 @@ export default function FinishingAnalysisView() {
                                 <div className="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-x-auto">
                                     <table className="w-full min-w-[480px] text-xs">
                                         <thead><tr className="border-b border-slate-100 dark:border-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-slate-800/50">
-                                            <th className="px-4 py-2">Rod.</th><th className="px-4 py-2">Data</th><th className="px-4 py-2">Status</th>
+                                            <th className="px-4 py-2">Rod.</th><th className="px-4 py-2">Data</th><th className="px-4 py-2">Operadores</th><th className="px-4 py-2">Status</th>
                                             <th className="px-4 py-2 text-right text-emerald-600">Aprov.</th><th className="px-4 py-2 text-right text-amber-600">Escolha</th><th className="px-4 py-2 text-right text-rose-600">Reprov.</th>
                                         </tr></thead>
                                         <tbody>
-                                            {rodadas.map(r => { const m = RESULT_META[r.status] ?? RESULT_META.APPROVED; return (
+                                            {rodadas.map(r => { const m = RESULT_META[r.status] ?? RESULT_META.APPROVED;
+                                            const opNames = r.operatorIds.map(id => operators.find(o => o.id === id)?.name).filter(Boolean).join(', ') || '—';
+                                            return (
                                                 <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0 font-bold text-slate-700 dark:text-slate-200">
                                                     <td className="px-4 py-2 font-black">{r.numero}ª</td>
                                                     <td className="px-4 py-2 text-slate-500">{new Date(r.date).toLocaleDateString('pt-BR')}</td>
+                                                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300 max-w-[140px] truncate" title={opNames}>{opNames}</td>
                                                     <td className="px-4 py-2"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase bg-${m.color}-100 text-${m.color}-700`}><span className={`size-1.5 rounded-full ${m.dot}`}/>{m.label}</span></td>
                                                     <td className="px-4 py-2 text-right text-emerald-600">{fmt(r.aprovadas)}</td>
                                                     <td className="px-4 py-2 text-right text-amber-600">{fmt(r.em_escolha)}</td>
