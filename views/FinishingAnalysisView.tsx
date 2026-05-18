@@ -127,7 +127,7 @@ export default function FinishingAnalysisView() {
     const [palletResult, setPalletResult]               = useState<'APPROVED'|'REJECTED'|'RESTRICTED'>('APPROVED');
     const [palletObs, setPalletObs]                     = useState('');
     const [isSavingPallet, setIsSavingPallet]           = useState(false);
-    const [completedPalletId, setCompletedPalletId]     = useState<string | null>(null);
+    const [lastSavedPallet, setLastSavedPallet] = useState<{ id: string; number: number; result: 'APPROVED'|'REJECTED'|'RESTRICTED' } | null>(null);
 
     // Step 3 — Conclusão
     const [qtyProduzida, setQtyProduzida] = useState(0);
@@ -136,6 +136,8 @@ export default function FinishingAnalysisView() {
     const [observacoes, setObservacoes]   = useState('');
     const [destinoFinal, setDestinoFinal] = useState<'expedicao'|'revisao_final'|''>('');
     const [status, setStatus]             = useState<InspectionStatus>(InspectionStatus.APPROVED);
+    const [justificativaFechamento, setJustificativaFechamento] = useState('');
+    const [showFinalizeModal, setShowFinalizeModal] = useState(false);
 
     const [activeStep, setActiveStep] = useState(1);
 
@@ -281,6 +283,12 @@ export default function FinishingAnalysisView() {
         return { critOk, majOk, minOk, overall: critOk && majOk && minOk };
     }, [palletSamplingPlan, palletDefects]);
 
+    const totalExpectedPallets = palletLotSize > 0 && qtyProduzida > 0
+        ? Math.ceil(qtyProduzida / palletLotSize) : null;
+    const palletsRemaining = totalExpectedPallets !== null
+        ? Math.max(0, totalExpectedPallets - savedPallets.length) : null;
+    const allPalletsInspected = palletsRemaining === 0;
+
     // ─── Salvar pallet ────────────────────────────────────────────────────
     const handleSavePallet = async () => {
         const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
@@ -309,7 +317,7 @@ export default function FinishingAnalysisView() {
             }]).select('id').single();
             if (error) throw error;
             await supabase.from('shift_logs').insert([{ type: 'alert', content: `🏷️ Pallet #${nextNum} — OP ${selectedOrder.op} ${palletResult === 'APPROVED' ? 'APROVADO ✅' : palletResult === 'REJECTED' ? 'REPROVADO ❌' : 'com RESTRIÇÃO ⚠️'}. Analista: ${analystObj?.name ?? '—'}.`, created_by_user_id: profile?.user_id ?? null }]);
-            setCompletedPalletId(saved.id);
+            setLastSavedPallet({ id: saved.id, number: nextNum, result: palletResult });
             showToast(`Pallet #${nextNum} registrado!`, 'success');
             setPalletDefects({ critical: 0, major: 0, minor: 0 });
             setPalletDefectsDetail({ ...EMPTY_DEFECTS });
@@ -333,6 +341,9 @@ export default function FinishingAnalysisView() {
         if (!laudoNumero) { showToast('Informe o Nº do Laudo', 'warning'); return; }
         const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
         if (!selectedOrder?.id || Number(selectedOrder.qtd_total) <= 0) { showToast('OP inválida ou sem quantidade total', 'error'); return; }
+        if (palletsRemaining !== null && palletsRemaining > 0 && !justificativaFechamento.trim()) {
+            showToast(`Faltam ${palletsRemaining} pallet(s) — informe a justificativa para fechar`, 'warning'); return;
+        }
         setIsSaving(true);
         try {
             const operatorNames = selectedOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id).join(', ');
@@ -366,6 +377,8 @@ export default function FinishingAnalysisView() {
                     pallets_aprovados:  savedPallets.filter(p => p.result === 'APPROVED').length,
                     pallets_restritos:  savedPallets.filter(p => p.result === 'RESTRICTED').length,
                     pallets_reprovados: savedPallets.filter(p => p.result === 'REJECTED').length,
+                    pallets_esperados: totalExpectedPallets ?? null,
+                    justificativa_fechamento: justificativaFechamento.trim() || null,
                 }),
             }]);
             showToast('Análise salva com sucesso!', 'success');
@@ -392,6 +405,10 @@ export default function FinishingAnalysisView() {
             const msg = validateStep(step);
             if (msg) { showToast(msg, 'warning'); setActiveStep(step); return; }
         }
+        if (target === 3 && savedPallets.length > 0 && palletsRemaining !== null && palletsRemaining > 0) {
+            setShowFinalizeModal(true);
+            return;
+        }
         setActiveStep(target);
     };
 
@@ -402,6 +419,7 @@ export default function FinishingAnalysisView() {
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
         setPalletDefects({ critical: 0, major: 0, minor: 0 }); setPalletDefectsDetail({ ...EMPTY_DEFECTS });
         setPalletObs(''); setPalletResult('APPROVED'); setSavedPallets([]); setDestinoFinal('');
+        setJustificativaFechamento(''); setShowFinalizeModal(false); setLastSavedPallet(null);
         setActiveStep(1);
     };
 
@@ -980,6 +998,33 @@ export default function FinishingAnalysisView() {
                         </div>
                     )}
 
+                    {/* Aviso pallets pendentes */}
+                    {!allPalletsInspected && palletsRemaining !== null && palletsRemaining > 0 && (
+                        <div className="rounded-3xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/20 p-5 space-y-3">
+                            <div className="flex items-center gap-3">
+                                <span className="material-symbols-outlined text-2xl text-amber-500">pending_actions</span>
+                                <div>
+                                    <p className="text-sm font-black text-amber-800 dark:text-amber-300">
+                                        Faltam {palletsRemaining} pallet{palletsRemaining !== 1 ? 's' : ''} para análise
+                                    </p>
+                                    <p className="text-[10px] text-amber-600">
+                                        {savedPallets.length} de {totalExpectedPallets} inspecionados — a OP ficará em aberto
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-amber-600">Justificativa para fechar agora <span className="text-rose-400">*</span></label>
+                                <textarea
+                                    value={justificativaFechamento}
+                                    onChange={e => setJustificativaFechamento(e.target.value)}
+                                    rows={2}
+                                    className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-amber-500/20"
+                                    placeholder="Ex: pallets restantes aguardam chegada do turno seguinte..."
+                                />
+                            </div>
+                        </div>
+                    )}
+
                     {/* Quantidades */}
                     <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
@@ -1082,29 +1127,125 @@ export default function FinishingAnalysisView() {
                 </>}
 
                 {/* ── Modal QR pallet ──────────────────────────────────── */}
-                {completedPalletId && createPortal(
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setCompletedPalletId(null)}>
-                        <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-8 space-y-5 animate-slide-in" onClick={e => e.stopPropagation()}>
-                            <button onClick={() => setCompletedPalletId(null)} className="absolute top-4 right-4 size-9 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><span className="material-symbols-outlined text-sm">close</span></button>
-                            <div className="text-center space-y-1">
-                                <span className="material-symbols-outlined text-5xl text-emerald-500">verified</span>
-                                <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase">Pallet Registrado!</h2>
-                                <p className="text-xs text-slate-400">Escaneie o QR para auditoria da supervisão</p>
-                            </div>
+                {lastSavedPallet && createPortal(
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setLastSavedPallet(null)}>
+                        <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-6 space-y-4 animate-slide-in" onClick={e => e.stopPropagation()}>
+                            <button onClick={() => setLastSavedPallet(null)} className="absolute top-4 right-4 size-9 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><span className="material-symbols-outlined text-sm">close</span></button>
+
+                            {/* Resultado */}
+                            {(() => {
+                                const m = RESULT_META[lastSavedPallet.result];
+                                const colorMap = { APPROVED: 'emerald', RESTRICTED: 'amber', REJECTED: 'rose' } as const;
+                                const c = colorMap[lastSavedPallet.result];
+                                const destino = lastSavedPallet.result === 'REJECTED' ? 'Revisão Final' : 'Expedição';
+                                const destinoIcon = lastSavedPallet.result === 'REJECTED' ? 'manage_search' : 'local_shipping';
+                                return (
+                                    <>
+                                        <div className={`flex flex-col items-center gap-1 p-4 rounded-2xl bg-${c}-50 dark:bg-${c}-950/20 border border-${c}-200 dark:border-${c}-800`}>
+                                            <span className={`material-symbols-outlined text-4xl text-${c}-500`}>{m.icon}</span>
+                                            <p className={`text-lg font-black uppercase text-${c}-700 dark:text-${c}-300`}>Pallet #{lastSavedPallet.number} — {m.label}</p>
+                                            <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-${c}-600`}>
+                                                <span className="material-symbols-outlined text-xs">{destinoIcon}</span>
+                                                Destino: {destino}
+                                            </div>
+                                        </div>
+
+                                        {/* Progresso */}
+                                        {totalExpectedPallets !== null && (
+                                            <div className={`flex items-center gap-3 p-3 rounded-2xl border ${
+                                                allPalletsInspected
+                                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                                                    : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                                            }`}>
+                                                <span className={`material-symbols-outlined text-2xl ${allPalletsInspected ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                                    {allPalletsInspected ? 'task_alt' : 'pending_actions'}
+                                                </span>
+                                                <div>
+                                                    {allPalletsInspected ? (
+                                                        <p className="text-sm font-black text-emerald-700 dark:text-emerald-300">Todos os pallets inspecionados!</p>
+                                                    ) : (
+                                                        <>
+                                                            <p className="text-sm font-black text-amber-700 dark:text-amber-300">
+                                                                Faltam {palletsRemaining} pallet{palletsRemaining !== 1 ? 's' : ''}
+                                                            </p>
+                                                            <p className="text-[10px] text-amber-600">{savedPallets.length} de {totalExpectedPallets} concluídos</p>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
+
+                            {/* QR */}
                             <div className="flex flex-col items-center gap-2">
                                 <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm">
-                                    <QRCodeSVG value={`${window.location.origin}${window.location.pathname}#/pallet/${completedPalletId}`} size={180} bgColor="#ffffff" fgColor="#0f172a" level="M" />
+                                    <QRCodeSVG value={`${window.location.origin}${window.location.pathname}#/pallet/${lastSavedPallet.id}`} size={160} bgColor="#ffffff" fgColor="#0f172a" level="M" />
                                 </div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cole na caixa ou escaneie</p>
                             </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <button onClick={() => window.print()} className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-all">
                                     <span className="material-symbols-outlined text-sm">print</span>Imprimir
                                 </button>
-                                <Link to={`/pallet/${completedPalletId}`} onClick={() => setCompletedPalletId(null)}
-                                    className="h-10 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all">
-                                    <span className="material-symbols-outlined text-sm">open_in_new</span>Ver Auditoria
-                                </Link>
+                                {allPalletsInspected ? (
+                                    <button onClick={() => { setLastSavedPallet(null); goToStep(3); }}
+                                        className="h-10 rounded-xl bg-emerald-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all">
+                                        <span className="material-symbols-outlined text-sm">fact_check</span>Concluir
+                                    </button>
+                                ) : (
+                                    <Link to={`/pallet/${lastSavedPallet.id}`} onClick={() => setLastSavedPallet(null)}
+                                        className="h-10 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all">
+                                        <span className="material-symbols-outlined text-sm">open_in_new</span>Ver Auditoria
+                                    </Link>
+                                )}
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+
+                {/* ── Modal de fechamento antecipado ───────────────────── */}
+                {showFinalizeModal && createPortal(
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-6 space-y-4 animate-slide-in">
+                            <div className="flex items-center gap-3">
+                                <span className="material-symbols-outlined text-3xl text-amber-500">pending_actions</span>
+                                <div>
+                                    <h2 className="text-base font-black text-slate-900 dark:text-white">Pallets pendentes</h2>
+                                    {palletsRemaining !== null && totalExpectedPallets !== null && (
+                                        <p className="text-xs text-slate-500">
+                                            {savedPallets.length} de {totalExpectedPallets} inspecionados — faltam <strong className="text-amber-600">{palletsRemaining}</strong>
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                                A quantidade total ainda não foi coberta pela inspeção de pallets. Para fechar a análise agora, informe a justificativa.
+                            </p>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Justificativa <span className="text-rose-400">*</span></label>
+                                <textarea
+                                    value={justificativaFechamento}
+                                    onChange={e => setJustificativaFechamento(e.target.value)}
+                                    rows={3}
+                                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-amber-500/20"
+                                    placeholder="Ex: pallets restantes aguardam chegada do turno seguinte..."
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button type="button" onClick={() => setShowFinalizeModal(false)}
+                                    className="h-11 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-[10px] uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                                    Voltar e inspecionar
+                                </button>
+                                <button type="button"
+                                    disabled={!justificativaFechamento.trim()}
+                                    onClick={() => { setShowFinalizeModal(false); setActiveStep(3); }}
+                                    className="h-11 rounded-xl bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-40">
+                                    Fechar mesmo assim
+                                </button>
                             </div>
                         </div>
                     </div>,
