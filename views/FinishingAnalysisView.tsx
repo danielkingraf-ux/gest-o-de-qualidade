@@ -298,8 +298,7 @@ export default function FinishingAnalysisView() {
         }
         setIsSavingPallet(true);
         try {
-            const { count } = await supabase.from('pallet_inspections').select('id', { count: 'exact', head: true }).eq('op', selectedOrder.op.toUpperCase());
-            const nextNum = (count ?? 0) + 1;
+            const nextNum = savedPallets.length + 1;
             const analystObj = analysts.find(a => a.id === selectedAnalystIds[0]);
             const machineObj = machines.find(m => m.id === selectedMachineId);
             const profileObj = nqaProfiles.find(p => p.id === nqaProfileId);
