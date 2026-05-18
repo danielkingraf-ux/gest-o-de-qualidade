@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git commit *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "PowerShell(cd \"C:\\\\Users\\\\Gustavo Oliveira\\\\Desktop\\\\Projetos\\\\gestão de qualidade\"; $r = npx tsc --noEmit 2>&1; $r | Select-Object -First 60; Write-Host \"EXIT: $LASTEXITCODE\")"
     ]
   }
 }

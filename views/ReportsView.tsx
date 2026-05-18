@@ -63,6 +63,29 @@ type OpTraceSummary = {
   latest: string;
 };
 
+type AcabamentoReg = {
+  id: string;
+  op: string;
+  modulo: string;
+  timestamp: string;
+  qty_revisadas: number;
+  qty_aprovadas: number;
+  qty_reprovadas: number;
+  defects: Record<string, number> | null;
+  operator_ids: string[] | null;
+  machine_id: string | null;
+};
+
+type OpFlowSummary = {
+  op: string;
+  latest: string;
+  impressao:  { rodadas: number; escolha: number; desvios: number };
+  corteVinco: { rodadas: number; escolha: number; desvios: number };
+  colagem:    { rodadas: number; escolha: number; desvios: number };
+  prodAcabado:{ pallets: number; aprovados: number; reprovados: number };
+  revisaoFinal:{ qtyBoa: number; qtyRefugo: number; status: string };
+};
+
 const asNumber = (value: any) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -187,6 +210,7 @@ const ReportsView = () => {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<InspectionRecord[]>([]);
+  const [abRecs, setAbRecs] = useState<AcabamentoReg[]>([]);
   const [operators, setOperators] = useState<Array<{ id: string; name: string }>>([]);
   const [opFilter, setOpFilter] = useState('');
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('ALL');
@@ -198,20 +222,21 @@ const ReportsView = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: inspections, error } = await supabase
-        .from('inspections')
-        .select('*, orders!inner(id, op), machines(name), operators(name), analysts(name)')
-        .order('created_at', { ascending: true });
+      const [insRes, opRes, abRes] = await Promise.all([
+        supabase.from('inspections')
+          .select('*, orders!inner(id, op), machines(name), operators(name), analysts(name)')
+          .order('created_at', { ascending: true }),
+        supabase.from('operators').select('id, name'),
+        supabase.from('acabamento_registros')
+          .select('id, op, modulo, timestamp, qty_revisadas, qty_aprovadas, qty_reprovadas, defects, operator_ids, machine_id')
+          .in('modulo', ['corte_vinco', 'colagem', 'revisao_final'])
+          .order('timestamp', { ascending: true }),
+      ]);
 
-      if (error) throw error;
+      if (insRes.error) throw insRes.error;
+      if (opRes.error) throw opRes.error;
 
-      const { data: operatorsData, error: operatorsError } = await supabase
-        .from('operators')
-        .select('id, name');
-
-      if (operatorsError) throw operatorsError;
-
-      setRecords((inspections || [])
+      setRecords((insRes.data || [])
         .filter((record: any) => {
           const order = getJoinedOrder(record.orders);
           return (
@@ -222,7 +247,8 @@ const ReportsView = () => {
           );
         })
         .map((record: any) => ({ ...record, op: getJoinedOrder(record.orders)?.op || record.op })));
-      setOperators(operatorsData || []);
+      setOperators(opRes.data || []);
+      setAbRecs((abRes.data || []) as AcabamentoReg[]);
     } catch (err) {
       showToast('Erro ao carregar relatórios', 'error');
     } finally {
@@ -407,6 +433,111 @@ const ReportsView = () => {
       .slice(0, 80);
   }, [reportData.filtered]);
 
+  // Fluxo completo por OP: cruza inspections + acabamento_registros
+  const opFlowRows = useMemo<OpFlowSummary[]>(() => {
+    const now = new Date();
+    const minDate = periodPreset === 'ALL' ? null : (() => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - Number(periodPreset));
+      return d;
+    })();
+
+    const opFilter_ = opFilter.trim().toLowerCase();
+    const byOp = new Map<string, OpFlowSummary>();
+
+    const getOrCreate = (op: string): OpFlowSummary => {
+      if (!byOp.has(op)) byOp.set(op, {
+        op, latest: '',
+        impressao:   { rodadas: 0, escolha: 0, desvios: 0 },
+        corteVinco:  { rodadas: 0, escolha: 0, desvios: 0 },
+        colagem:     { rodadas: 0, escolha: 0, desvios: 0 },
+        prodAcabado: { pallets: 0, aprovados: 0, reprovados: 0 },
+        revisaoFinal:{ qtyBoa: 0, qtyRefugo: 0, status: '' },
+      });
+      return byOp.get(op)!;
+    };
+
+    const updateLatest = (row: OpFlowSummary, ts: string) => {
+      if (!row.latest || ts > row.latest) row.latest = ts;
+    };
+
+    // Impressão e Produto Acabado — de inspections
+    for (const rec of normalizedRecords) {
+      if (opFilter_ && !rec.op.toLowerCase().includes(opFilter_)) continue;
+      if (minDate && new Date(rec.created_at) < minDate) continue;
+      const obs = parseObservations(rec.observations);
+      const row = getOrCreate(rec.op);
+      updateLatest(row, rec.created_at);
+      if (rec.area === 'initial') {
+        row.impressao.rodadas += asNumber(obs.saldo_unidades?.rodadas);
+        row.impressao.escolha += asNumber(obs.saldo_unidades?.em_escolha);
+        row.impressao.desvios += rec.total_defects;
+      } else {
+        // Produto Acabado — conta pallets de pallet_inspections via obs
+        row.prodAcabado.reprovados += rec.total_defects;
+      }
+    }
+
+    // Corte/Vinco, Colagem, Revisão Final — de acabamento_registros
+    for (const ab of abRecs) {
+      const op = String(ab.op || '').trim().toUpperCase();
+      if (!op) continue;
+      if (opFilter_ && !op.toLowerCase().includes(opFilter_)) continue;
+      if (minDate && new Date(ab.timestamp) < minDate) continue;
+      const row = getOrCreate(op);
+      updateLatest(row, ab.timestamp);
+      const defTotal = ab.defects
+        ? Object.entries(ab.defects)
+            .filter(([k]) => k !== 'qty_refugo')
+            .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0)
+        : 0;
+      if (ab.modulo === 'corte_vinco') {
+        row.corteVinco.rodadas += ab.qty_revisadas;
+        row.corteVinco.escolha += ab.qty_reprovadas;
+        row.corteVinco.desvios += defTotal;
+      } else if (ab.modulo === 'colagem') {
+        row.colagem.rodadas += ab.qty_revisadas;
+        row.colagem.escolha += ab.qty_reprovadas;
+        row.colagem.desvios += defTotal;
+      } else if (ab.modulo === 'revisao_final' && ab.defects) {
+        const def = ab.defects as Record<string, any>;
+        if (def.resultado) {
+          row.revisaoFinal.qtyBoa    += asNumber(def.resultado.qty_boa);
+          row.revisaoFinal.qtyRefugo += asNumber(def.resultado.qty_refugada);
+        }
+        if (def.status_final && !row.revisaoFinal.status) row.revisaoFinal.status = String(def.status_final);
+      }
+    }
+
+    return Array.from(byOp.values())
+      .filter(r => r.latest)
+      .sort((a, b) => b.latest.localeCompare(a.latest))
+      .slice(0, 100);
+  }, [normalizedRecords, abRecs, opFilter, periodPreset]);
+
+  // Defeitos do acabamento para o ranking global
+  const abDefectRanking = useMemo(() => {
+    const map = new Map<string, number>();
+    const minDate = periodPreset === 'ALL' ? null : (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - Number(periodPreset));
+      return d;
+    })();
+    for (const ab of abRecs) {
+      if (minDate && new Date(ab.timestamp) < minDate) continue;
+      if (!ab.defects) continue;
+      for (const [k, v] of Object.entries(ab.defects)) {
+        if (k === 'qty_refugo' || typeof v !== 'number' || v <= 0) continue;
+        const label = `[${ab.modulo === 'corte_vinco' ? 'CV' : 'Col'}] ${k.replace(/_/g, ' ')}`;
+        map.set(label, (map.get(label) || 0) + v);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [abRecs, periodPreset]);
+
   const pdfPayload = () => ({
     title: 'RELATÓRIO DE QUALIDADE',
     generatedAt: new Date().toLocaleString('pt-BR'),
@@ -575,43 +706,136 @@ const ReportsView = () => {
             />
           </div>
 
+          {/* Fluxo completo por OP */}
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
               <div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Rastreabilidade por OP</h3>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Fluxo Completo por OP</h3>
                 <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  Mesma OP, visualizações separadas por etapa
+                  Impressão → Corte/Vinco → Colagem → Produto Acabado → Revisão Final
                 </p>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{opTraceRows.length} OPs</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{opFlowRows.length} OPs</span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left">
+              <table className="w-full min-w-[900px] text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
-                    <th className="py-3">OP</th>
-                    <th className="py-3 text-right">Início</th>
-                    <th className="py-3 text-right">Desvios início</th>
-                    <th className="py-3 text-right">Acabado</th>
-                    <th className="py-3 text-right">Desvios acabado</th>
-                    <th className="py-3 text-right">Último registro</th>
+                  <tr className="border-b border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800">
+                    <th className="py-2 pr-3">OP</th>
+                    <th className="py-2 text-center border-l border-slate-100 dark:border-slate-800 px-2" colSpan={2}>
+                      <span className="flex items-center justify-center gap-1"><span className="material-symbols-outlined text-[11px]">print</span>Impressão</span>
+                    </th>
+                    <th className="py-2 text-center border-l border-slate-100 dark:border-slate-800 px-2" colSpan={2}>
+                      <span className="flex items-center justify-center gap-1"><span className="material-symbols-outlined text-[11px]">content_cut</span>Corte/Vinco</span>
+                    </th>
+                    <th className="py-2 text-center border-l border-slate-100 dark:border-slate-800 px-2" colSpan={2}>
+                      <span className="flex items-center justify-center gap-1"><span className="material-symbols-outlined text-[11px]">precision_manufacturing</span>Colagem</span>
+                    </th>
+                    <th className="py-2 text-center border-l border-slate-100 dark:border-slate-800 px-2" colSpan={2}>
+                      <span className="flex items-center justify-center gap-1"><span className="material-symbols-outlined text-[11px]">inventory_2</span>Prod. Acabado</span>
+                    </th>
+                    <th className="py-2 text-center border-l border-slate-100 dark:border-slate-800 px-2" colSpan={2}>
+                      <span className="flex items-center justify-center gap-1"><span className="material-symbols-outlined text-[11px]">verified</span>Rev. Final</span>
+                    </th>
+                    <th className="py-2 text-right border-l border-slate-100 dark:border-slate-800 pl-2">Data</th>
+                  </tr>
+                  <tr className="border-b border-slate-100 text-[8px] font-black uppercase tracking-widest text-slate-300 dark:border-slate-800 dark:text-slate-600">
+                    <th className="pb-1" />
+                    <th className="pb-1 text-right px-2 border-l border-slate-100 dark:border-slate-800">Rod.</th>
+                    <th className="pb-1 text-right px-1 text-amber-400">Esc.</th>
+                    <th className="pb-1 text-right px-2 border-l border-slate-100 dark:border-slate-800">Rod.</th>
+                    <th className="pb-1 text-right px-1 text-amber-400">Esc.</th>
+                    <th className="pb-1 text-right px-2 border-l border-slate-100 dark:border-slate-800">Rod.</th>
+                    <th className="pb-1 text-right px-1 text-amber-400">Esc.</th>
+                    <th className="pb-1 text-right px-2 border-l border-slate-100 dark:border-slate-800">Pallets</th>
+                    <th className="pb-1 text-right px-1 text-rose-400">Rep.</th>
+                    <th className="pb-1 text-right px-2 border-l border-slate-100 dark:border-slate-800">Boa</th>
+                    <th className="pb-1 text-right px-1 text-rose-400">Ref.</th>
+                    <th className="pb-1 border-l border-slate-100 dark:border-slate-800" />
                   </tr>
                 </thead>
                 <tbody>
-                  {opTraceRows.map((row) => (
-                    <tr key={row.op} className="border-b border-slate-50 text-sm font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200">
-                      <td className="py-3 font-black">{row.op}</td>
-                      <td className="py-3 text-right">{formatNumber(row.initial)}</td>
-                      <td className="py-3 text-right text-rose-500">{formatNumber(row.initialDefects)}</td>
-                      <td className="py-3 text-right">{formatNumber(row.final)}</td>
-                      <td className="py-3 text-right text-rose-500">{formatNumber(row.finalDefects)}</td>
-                      <td className="py-3 text-right">{new Date(row.latest).toLocaleDateString('pt-BR')}</td>
-                    </tr>
-                  ))}
+                  {opFlowRows.map((row) => {
+                    const statusLabel: Record<string, string> = {
+                      deu_pedido: '✅', faltou_quantidade: '⚠️', aguardando_complemento: '🕐', reprovado: '❌',
+                    };
+                    return (
+                      <tr key={row.op} className="border-b border-slate-50 font-bold text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="py-2 pr-3 font-black text-slate-900 dark:text-white">{row.op}</td>
+                        {/* Impressão */}
+                        <td className="py-2 text-right px-2 border-l border-slate-100 dark:border-slate-800">
+                          {row.impressao.rodadas > 0 ? formatNumber(row.impressao.rodadas) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2 text-right px-1 text-amber-600">
+                          {row.impressao.escolha > 0 ? formatNumber(row.impressao.escolha) : <span className="text-slate-300">—</span>}
+                        </td>
+                        {/* Corte/Vinco */}
+                        <td className="py-2 text-right px-2 border-l border-slate-100 dark:border-slate-800">
+                          {row.corteVinco.rodadas > 0 ? formatNumber(row.corteVinco.rodadas) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2 text-right px-1 text-amber-600">
+                          {row.corteVinco.escolha > 0 ? formatNumber(row.corteVinco.escolha) : <span className="text-slate-300">—</span>}
+                        </td>
+                        {/* Colagem */}
+                        <td className="py-2 text-right px-2 border-l border-slate-100 dark:border-slate-800">
+                          {row.colagem.rodadas > 0 ? formatNumber(row.colagem.rodadas) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2 text-right px-1 text-amber-600">
+                          {row.colagem.escolha > 0 ? formatNumber(row.colagem.escolha) : <span className="text-slate-300">—</span>}
+                        </td>
+                        {/* Produto Acabado */}
+                        <td className="py-2 text-right px-2 border-l border-slate-100 dark:border-slate-800">
+                          {row.prodAcabado.pallets > 0 ? `${formatNumber(row.prodAcabado.pallets)} plt` : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2 text-right px-1 text-rose-500">
+                          {row.prodAcabado.reprovados > 0 ? formatNumber(row.prodAcabado.reprovados) : <span className="text-slate-300">—</span>}
+                        </td>
+                        {/* Revisão Final */}
+                        <td className="py-2 text-right px-2 border-l border-slate-100 dark:border-slate-800">
+                          {row.revisaoFinal.qtyBoa > 0 ? formatNumber(row.revisaoFinal.qtyBoa) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2 text-right px-1 text-rose-500">
+                          {row.revisaoFinal.qtyRefugo > 0 ? formatNumber(row.revisaoFinal.qtyRefugo) : '—'}
+                          {row.revisaoFinal.status ? ` ${statusLabel[row.revisaoFinal.status] || ''}` : ''}
+                        </td>
+                        <td className="py-2 text-right text-slate-400 pl-2 border-l border-slate-100 dark:border-slate-800 whitespace-nowrap">
+                          {new Date(row.latest).toLocaleDateString('pt-BR')}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
+
+          {/* Defeitos do acabamento (Corte/Vinco + Colagem) */}
+          {abDefectRanking.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <h3 className="mb-4 text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">
+                Principais desvios — Corte/Vinco e Colagem
+              </h3>
+              <div className="space-y-2">
+                {abDefectRanking.map((d, i) => (
+                  <div key={d.name} className="flex items-center gap-3">
+                    <span className="w-5 text-[9px] font-black text-slate-400 text-right">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{d.name}</span>
+                        <span className="text-xs font-black text-rose-600 ml-2 shrink-0">{formatNumber(d.count)}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-rose-500"
+                          style={{ width: `${Math.round((d.count / (abDefectRanking[0]?.count || 1)) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartPanel title="Principais desvios">
