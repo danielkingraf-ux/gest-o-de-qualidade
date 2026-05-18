@@ -227,7 +227,7 @@ export default function FinishingAnalysisView() {
             setLoadingSavedPallets(true);
             const { data } = await supabase.from('pallet_inspections')
                 .select('id,pallet_number,result,defects_critical,defects_major,defects_minor,created_at,analyst_name')
-                .eq('op', order.op.toUpperCase()).order('pallet_number');
+                .eq('op', order.op.toUpperCase()).is('archived_at', null).order('pallet_number');
             setSavedPallets(data || []);
             setLoadingSavedPallets(false);
         };
@@ -323,10 +323,10 @@ export default function FinishingAnalysisView() {
             setPalletDefects({ critical: 0, major: 0, minor: 0 });
             setPalletDefectsDetail({ ...EMPTY_DEFECTS });
             setPalletObs(''); setPalletResult('APPROVED');
-            // Recarrega lista
+            // Recarrega lista (só pallets ativos)
             const { data: fresh } = await supabase.from('pallet_inspections')
                 .select('id,pallet_number,result,defects_critical,defects_major,defects_minor,created_at,analyst_name')
-                .eq('op', selectedOrder.op.toUpperCase()).order('pallet_number');
+                .eq('op', selectedOrder.op.toUpperCase()).is('archived_at', null).order('pallet_number');
             setSavedPallets(fresh || []);
         } catch (err: any) { showToast(`Erro ao salvar pallet: ${err.message}`, 'error'); }
         finally { setIsSavingPallet(false); }
@@ -382,6 +382,10 @@ export default function FinishingAnalysisView() {
                     justificativa_fechamento: justificativaFechamento.trim() || null,
                 }),
             }]);
+            await supabase.from('pallet_inspections')
+                .update({ archived_at: new Date().toISOString() })
+                .eq('op', selectedOrder.op.toUpperCase())
+                .is('archived_at', null);
             showToast('Análise salva com sucesso!', 'success');
             clearForm(); fetchData();
         } catch (err: any) { showToast(`Erro ao salvar: ${err.message}`, 'error'); }
