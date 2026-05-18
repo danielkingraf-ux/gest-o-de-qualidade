@@ -183,7 +183,7 @@ export default function FinishingAnalysisView() {
                 supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado','ambos']).order('name'),
                 supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado','ambos']).order('name'),
                 supabase.from('analysts').select('*').eq('active', true).in('tipo', ['acabamento','ambos']).order('name'),
-                supabase.from('orders').select('*').gt('qtd_total', 0).order('created_at', { ascending: false }),
+                supabase.from('orders').select('*').order('created_at', { ascending: false }),
                 supabase.from('nqa_profiles').select('*').eq('active', true).order('name'),
             ]);
             if (mRes.data) { setMachines(mRes.data); if (!selectedMachineId && mRes.data.length > 0) setSelectedMachineId(mRes.data[0].id); }
@@ -432,7 +432,7 @@ export default function FinishingAnalysisView() {
     const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n);
     const filteredOrders = orders.filter(o => {
         const term = orderFilter.trim().toLowerCase();
-        if (!term) return o.status === 'em_producao' || o.fromInitialInspection;
+        if (!term) return true;
         return String(o.op || '').toLowerCase().includes(term);
     });
     const selectedOrder  = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
