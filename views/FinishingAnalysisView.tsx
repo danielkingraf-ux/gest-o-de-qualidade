@@ -6,6 +6,8 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { ProcessType, InspectionStatus, Order, Machine, Operator, Analyst } from '../types';
 import { useUser } from '../contexts/UserContext';
+import DefectPhotoUpload from '../components/DefectPhotoUpload';
+import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 import { getSamplingPlan, getBoxesToOpen, distributeSample, AQL_OPTIONS } from '../utils/nbr5426';
 
 // ─── Defeitos de produto acabado ─────────────────────────────────────────────
@@ -76,6 +78,13 @@ const FINISHING_STEPS = [
 
 
 // ─── Chip de pessoa ───────────────────────────────────────────────────────────
+const getShift = () => {
+    const hour = new Date().getHours();
+    if (hour >= 6 && hour < 14) return '1';
+    if (hour >= 14 && hour < 22) return '2';
+    return '3';
+};
+
 const PersonChip = ({ name, onRemove }: { key?: React.Key; name: string; onRemove: () => void }) => (
     <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200 text-xs font-bold border border-indigo-200 dark:border-indigo-800">
         {name}
@@ -104,6 +113,7 @@ export default function FinishingAnalysisView() {
     const [orderFilter, setOrderFilter]         = useState('');
     const [rodadas, setRodadas]                 = useState<RodadaSummary[]>([]);
     const [showRodadas, setShowRodadas]         = useState(false);
+    const [saldoRecebidoPA, setSaldoRecebidoPA] = useState(0);
 
     // Pallets salvos
     const [savedPallets, setSavedPallets]               = useState<SavedPallet[]>([]);
@@ -114,6 +124,8 @@ export default function FinishingAnalysisView() {
     const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
     const [selectedAnalystIds, setSelectedAnalystIds]   = useState<string[]>([]);
     const [laudoNumero, setLaudoNumero]                 = useState('');
+    const [recordDate, setRecordDate]                   = useState(() => new Date().toISOString().slice(0, 10));
+    const [shift, setShift]                             = useState(getShift);
     const [selectedMonth, setSelectedMonth]             = useState(new Date().getMonth());
     const [selectedYear, setSelectedYear]               = useState(new Date().getFullYear());
     const [nqaProfileId, setNqaProfileId]               = useState('');
@@ -139,6 +151,7 @@ export default function FinishingAnalysisView() {
     const [status, setStatus]             = useState<InspectionStatus>(InspectionStatus.APPROVED);
     const [justificativaFechamento, setJustificativaFechamento] = useState('');
     const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+    const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
 
     const [activeStep, setActiveStep] = useState(1);
 
@@ -199,11 +212,14 @@ export default function FinishingAnalysisView() {
 
     // ─── Rodadas de impressão da OP ───────────────────────────────────────
     useEffect(() => {
-        if (!selectedOrderId) { setRodadas([]); setQtyProduzida(0); return; }
+        if (!selectedOrderId) { setRodadas([]); setSaldoRecebidoPA(0); setQtyProduzida(0); return; }
         const order = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
-        if (!order) { setRodadas([]); setQtyProduzida(0); return; }
+        if (!order) { setRodadas([]); setSaldoRecebidoPA(0); setQtyProduzida(0); return; }
         const load = async () => {
-            const { data } = await supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true });
+            const [{ data }, { data: colagemRows }] = await Promise.all([
+                supabase.from('inspections').select('id, created_at, observations').eq('order_id', order.id).order('created_at', { ascending: true }),
+                supabase.from('acabamento_registros').select('qty_aprovadas').eq('op', order.op.toUpperCase()).eq('modulo', 'colagem'),
+            ]);
             const summaries: RodadaSummary[] = [];
             for (const row of data || []) {
                 let obs: any = {};
@@ -212,8 +228,11 @@ export default function FinishingAnalysisView() {
                 summaries.push({ id: row.id, numero: obs.numero_rodada ?? summaries.length + 1, date: row.created_at, status: obs.status_final ?? 'APPROVED', qty_produzida: obs.producao?.quantidade_rodada_unidades ?? 0, aprovadas: obs.saldo_unidades?.aprovadas ?? 0, em_escolha: obs.saldo_unidades?.em_escolha ?? 0, reprovadas: obs.saldo_unidades?.reprovadas ?? 0, operatorIds: Array.isArray(obs.all_operator_ids) ? obs.all_operator_ids : [] });
             }
             setRodadas(summaries);
+            const saldoColagem = (colagemRows || []).reduce((sum, row) => sum + (Number(row.qty_aprovadas) || 0), 0);
+            setSaldoRecebidoPA(saldoColagem);
             const totalEmEscolha = summaries.reduce((s, r) => s + r.em_escolha, 0);
-            if (totalEmEscolha > 0) setQtyProduzida(totalEmEscolha);
+            if (saldoColagem > 0) setQtyProduzida(prev => prev > 0 ? Math.min(prev, saldoColagem) : saldoColagem);
+            else if (totalEmEscolha > 0) setQtyProduzida(prev => prev > 0 ? prev : totalEmEscolha);
         };
         load();
     }, [selectedOrderId, orders]);
@@ -338,9 +357,18 @@ export default function FinishingAnalysisView() {
         if (!selectedMachineId) { showToast('Selecione a máquina', 'warning'); return; }
         if (selectedOperatorIds.length === 0) { showToast('Adicione ao menos um operador', 'warning'); return; }
         if (selectedAnalystIds.length === 0)  { showToast('Adicione ao menos um analista', 'warning'); return; }
+        if (!recordDate || !shift) { showToast('Informe data e turno', 'warning'); return; }
         if (!laudoNumero) { showToast('Informe o Nº do Laudo', 'warning'); return; }
         const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase()) || null;
         if (!selectedOrder?.id || Number(selectedOrder.qtd_total) <= 0) { showToast('OP inválida ou sem quantidade total', 'error'); return; }
+        if (saldoRecebidoPA > 0 && qtyProduzida > saldoRecebidoPA) {
+            showToast(`Quantidade rodada no Produto Acabado (${fmt(qtyProduzida)} un.) nao pode passar do saldo recebido da Colagem (${fmt(saldoRecebidoPA)} un.).`, 'error');
+            return;
+        }
+        if (qtyEscolha + qtyRefugo > qtyProduzida) {
+            showToast('Escolha + refugo nao pode ser maior que a quantidade rodada nesta etapa.', 'error');
+            return;
+        }
         if (palletsRemaining !== null && palletsRemaining > 0 && !justificativaFechamento.trim()) {
             showToast(`Faltam ${palletsRemaining} pallet(s) — informe a justificativa para fechar`, 'warning'); return;
         }
@@ -350,7 +378,7 @@ export default function FinishingAnalysisView() {
             const analystNames  = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
             const effectiveDestino = destinoFinal || autoDestino;
             const effectiveStatus  = status;
-            await supabase.from('inspections').insert([{
+            const { data: inserted, error: insertError } = await supabase.from('inspections').insert([{
                 op: selectedOrder.op, order_id: selectedOrder.id,
                 machine_id: selectedMachineId, operator_id: selectedOperatorIds[0], analyst_id: selectedAnalystIds[0],
                 status: effectiveStatus, samples_count: 0,
@@ -361,6 +389,8 @@ export default function FinishingAnalysisView() {
                     process_area: 'produto_acabado',
                     laudo_numero: laudoNumero,
                     status: effectiveStatus,
+                    data_registro: recordDate,
+                    turno: shift,
                     observacoes: observacoes.trim(),
                     defects: { ...EMPTY_DEFECTS },
                     producao: { qty_produzida: qtyProduzida, qty_escolha: qtyEscolha, qty_refugo: qtyRefugo },
@@ -380,7 +410,25 @@ export default function FinishingAnalysisView() {
                     pallets_esperados: totalExpectedPallets ?? null,
                     justificativa_fechamento: justificativaFechamento.trim() || null,
                 }),
-            }]);
+            }]).select('id').single();
+            if (insertError) throw insertError;
+
+            // Upload de fotos de defeito (se houver)
+            if (inserted && pendingPhotos.length > 0) {
+                try {
+                    await defectPhotoService.uploadMany({
+                        inspectionId: inserted.id,
+                        photos: pendingPhotos,
+                        userId: profile?.user_id ?? undefined,
+                    });
+                    pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+                    setPendingPhotos([]);
+                } catch (photoErr) {
+                    console.error('Erro ao enviar fotos:', photoErr);
+                    showToast('Analise salva, mas houve erro ao enviar algumas fotos.', 'warning');
+                }
+            }
+
             await supabase.from('pallet_inspections')
                 .update({ archived_at: new Date().toISOString() })
                 .eq('op', selectedOrder.op.toUpperCase())
@@ -418,12 +466,15 @@ export default function FinishingAnalysisView() {
 
     const clearForm = () => {
         localStorage.removeItem(SESSION_KEY);
-        setSelectedOrderId(''); setOrderFilter('');
+        setSelectedOrderId(''); setOrderFilter(''); setSaldoRecebidoPA(0);
         setSelectedOperatorIds([]); setSelectedAnalystIds([]); setLaudoNumero('');
+        setRecordDate(new Date().toISOString().slice(0, 10)); setShift(getShift());
         setObservacoes(''); setQtyProduzida(0); setQtyEscolha(0); setQtyRefugo(0);
         setPalletDefects({ critical: 0, major: 0, minor: 0 }); setPalletDefectsDetail({ ...EMPTY_DEFECTS });
         setPalletObs(''); setPalletResult('APPROVED'); setSavedPallets([]); setDestinoFinal('');
         setJustificativaFechamento(''); setShowFinalizeModal(false); setLastSavedPallet(null);
+        pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+        setPendingPhotos([]);
         setActiveStep(1);
     };
 
@@ -438,6 +489,11 @@ export default function FinishingAnalysisView() {
     const selectedMachine = machines.find(m => m.id === selectedMachineId);
     const operatorNamesDisplay = selectedOperatorIds.map(id => operators.find(o => o.id === id)?.name ?? id).join(', ');
     const analystNamesDisplay  = selectedAnalystIds.map(id => analysts.find(a => a.id === id)?.name ?? id).join(', ');
+    const saldoBomPA = Math.max(0, qtyProduzida - qtyEscolha - qtyRefugo);
+    const excedeSaldoPA = saldoRecebidoPA > 0 && qtyProduzida > saldoRecebidoPA;
+    const composicaoInvalidaPA = qtyEscolha + qtyRefugo > qtyProduzida;
+    const totalPalletDefectsDetail = (Object.values(palletDefectsDetail) as number[]).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const nqaStatusLabel = palletResult === 'REJECTED' ? 'Reprovado - enviar para Revisao Final' : palletResult === 'RESTRICTED' ? 'Aprovado com restricao' : 'Aprovado';
 
     const RESULT_META = {
         APPROVED:   { label: 'Aprovado',   icon: 'check_circle', color: 'emerald', dot: 'bg-emerald-500' },
@@ -492,6 +548,65 @@ export default function FinishingAnalysisView() {
             </header>
 
             <form onSubmit={handleSave} id="finishing-form" className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 max-w-5xl mx-auto w-full pb-28">
+                <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {[
+                                ['Numero da OP', selectedOrderId || '-'],
+                                ['Quantidade solicitada', selectedOrder ? `${fmt(Number(selectedOrder.qtd_total) || 0)} un.` : '-'],
+                                ['Processo atual', 'Produto Acabado'],
+                                ['Status da OP', selectedOrder?.status || 'Em andamento'],
+                            ].map(([label, value]) => (
+                                <div key={label} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white truncate">{value}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="p-5 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                            <div className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/20 p-4">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Saldo recebido da etapa anterior</p>
+                                <p className="mt-2 text-3xl font-black text-indigo-700 dark:text-indigo-200">{fmt(saldoRecebidoPA)}</p>
+                                <p className="text-[10px] font-bold text-indigo-500">Colagem - somente leitura</p>
+                            </div>
+                            <div className={`rounded-2xl border p-4 ${excedeSaldoPA ? 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'}`}>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rodado nesta etapa</p>
+                                <p className={`mt-2 text-3xl font-black ${excedeSaldoPA ? 'text-rose-700 dark:text-rose-300' : 'text-slate-800 dark:text-slate-100'}`}>{fmt(qtyProduzida)}</p>
+                                <p className="text-[10px] font-bold text-slate-400">Limite: saldo recebido</p>
+                            </div>
+                            <div className={`rounded-2xl border p-4 ${composicaoInvalidaPA ? 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20' : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20'}`}>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Em escolha</p>
+                                <p className="mt-2 text-3xl font-black text-amber-700 dark:text-amber-200">{fmt(qtyEscolha)}</p>
+                                <p className="text-[10px] font-bold text-amber-600">Somado ao refugo</p>
+                            </div>
+                            <div className={`rounded-2xl border p-4 ${composicaoInvalidaPA ? 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20' : 'border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20'}`}>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-rose-600">Refugo</p>
+                                <p className="mt-2 text-3xl font-black text-rose-700 dark:text-rose-200">{fmt(qtyRefugo)}</p>
+                                <p className="text-[10px] font-bold text-rose-600">Perda da etapa</p>
+                            </div>
+                            <div className="rounded-2xl border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 p-4">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Saldo bom para proxima etapa</p>
+                                <p className="mt-2 text-3xl font-black text-emerald-700 dark:text-emerald-200">{fmt(saldoBomPA)}</p>
+                                <p className="text-[10px] font-bold text-emerald-600">Rodado - escolha - refugo</p>
+                            </div>
+                        </div>
+                        {(excedeSaldoPA || composicaoInvalidaPA || savedPallets.some(p => p.result === 'REJECTED')) && (
+                            <div className="flex items-start gap-3 rounded-2xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 p-4">
+                                <span className="material-symbols-outlined text-rose-500">priority_high</span>
+                                <div>
+                                    <p className="text-sm font-black text-rose-800 dark:text-rose-200">Risco de nao fechar OP</p>
+                                    <p className="text-xs font-bold text-rose-600 dark:text-rose-300">
+                                        {excedeSaldoPA ? 'Quantidade rodada acima do saldo recebido. ' : ''}
+                                        {composicaoInvalidaPA ? 'Escolha + refugo maior que o rodado. ' : ''}
+                                        {savedPallets.some(p => p.result === 'REJECTED') ? 'Ha pallet reprovado e o destino deve ser Revisao Final.' : ''}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </section>
 
                 {/* ══════════════════════════════════════════════════════════
                     ETAPA 1 — Identificação
@@ -604,6 +719,20 @@ export default function FinishingAnalysisView() {
                             <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Dados do Laudo</h2>
                         </div>
                         <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Data <span className="text-rose-400">*</span></label>
+                                <input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)}
+                                    className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Turno <span className="text-rose-400">*</span></label>
+                                <select value={shift} onChange={e => setShift(e.target.value)}
+                                    className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm">
+                                    <option value="1">1 turno</option>
+                                    <option value="2">2 turno</option>
+                                    <option value="3">3 turno</option>
+                                </select>
+                            </div>
                             <div className="space-y-1 col-span-2 md:col-span-1">
                                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Máquina <span className="text-rose-400">*</span></label>
                                 <select value={selectedMachineId} onChange={e => setSelectedMachineId(e.target.value)}
@@ -721,6 +850,50 @@ export default function FinishingAnalysisView() {
                     ETAPA 2 — Inspeção de Pallets
                 ══════════════════════════════════════════════════════════ */}
                 {activeStep === 2 && <>
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                            <span className="material-symbols-outlined text-indigo-500">fact_check</span>
+                            <div>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Bloco de NQA</h2>
+                                <p className="text-[10px] text-slate-400 font-bold">Pallet atual e decisao de envio</p>
+                            </div>
+                        </div>
+                        <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {[
+                                ['Pallet analisado', `#${savedPallets.length + 1}`],
+                                ['Quantidade analisada', `${fmt(palletBoxData.sampleSize)} un.`],
+                                ['Defeito encontrado', totalPalletDefectsDetail > 0 ? `${fmt(totalPalletDefectsDetail)} ocorrencias` : 'Sem defeito'],
+                                ['Resultado do NQA', nqaStatusLabel],
+                            ].map(([label, value]) => (
+                                <div key={label} className={`rounded-2xl border p-3 ${
+                                    label === 'Resultado do NQA' && palletResult === 'REJECTED'
+                                        ? 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20'
+                                        : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'
+                                }`}>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{value}</p>
+                                </div>
+                            ))}
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20 p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-rose-600">Defeitos criticos</p>
+                                <p className="mt-1 text-2xl font-black text-rose-700 dark:text-rose-200">{fmt(palletDefects.critical)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Defeitos maiores</p>
+                                <p className="mt-1 text-2xl font-black text-amber-700 dark:text-amber-200">{fmt(palletDefects.major)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Defeitos menores</p>
+                                <p className="mt-1 text-2xl font-black text-slate-800 dark:text-slate-100">{fmt(palletDefects.minor)}</p>
+                            </div>
+                            {palletResult === 'REJECTED' && (
+                                <div className="rounded-2xl border border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/20 p-3">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-rose-600">Encaminhamento</p>
+                                    <p className="mt-1 text-sm font-black text-rose-700 dark:text-rose-200">Enviar pallet para Revisao Final</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
                     {/* ── Tracker visual de andamento dos pallets ── */}
                     {(() => {
@@ -1041,7 +1214,7 @@ export default function FinishingAnalysisView() {
                         </div>
                         <div className="p-5 grid grid-cols-3 gap-4">
                             {[
-                                { label: 'Qtd. Produzida', value: qtyProduzida, set: setQtyProduzida, color: 'slate',  icon: 'inventory_2' },
+                                { label: 'Rodado nesta etapa', value: qtyProduzida, set: setQtyProduzida, color: 'slate',  icon: 'inventory_2' },
                                 { label: 'Em Escolha',     value: qtyEscolha,   set: setQtyEscolha,   color: 'amber',  icon: 'rule' },
                                 { label: 'Refugo',         value: qtyRefugo,    set: setQtyRefugo,    color: 'rose',   icon: 'delete_sweep' },
                             ].map(({ label, value, set, color, icon }) => (
@@ -1130,6 +1303,12 @@ export default function FinishingAnalysisView() {
                                     className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-indigo-500/20"
                                     placeholder="Observações gerais sobre o lote..." />
                             </div>
+                            {/* Fotos de Defeito */}
+                            <DefectPhotoUpload
+                                pendingPhotos={pendingPhotos}
+                                onPendingChange={setPendingPhotos}
+                                disabled={isSaving}
+                            />
                         </div>
                     </div>
                 </>}
@@ -1286,7 +1465,7 @@ export default function FinishingAnalysisView() {
                             <span className="material-symbols-outlined text-sm">arrow_forward</span>
                         </button>
                     ) : (
-                        <button type="submit" form="finishing-form" disabled={isSaving}
+                        <button type="submit" form="finishing-form" disabled={isSaving || excedeSaldoPA || composicaoInvalidaPA}
                             className="h-10 px-8 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2 disabled:opacity-50">
                             {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : <span className="material-symbols-outlined text-sm">add_task</span>}
                             Salvar Análise

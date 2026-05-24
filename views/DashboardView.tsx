@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
+import { toDefectEntry } from '../utils/defects';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -594,8 +595,9 @@ export default function DashboardView() {
         const defAcc: Record<string, number> = {};
 
         const addDef = (name: string, count: number) => {
-            const key = name.replace(/_/g, ' ').trim().toLowerCase();
-            defAcc[key] = (defAcc[key] ?? 0) + count;
+            const entry = toDefectEntry(name, count);
+            if (!entry) return;
+            defAcc[entry.name] = (defAcc[entry.name] ?? 0) + entry.count;
         };
 
         // producao_inicial → defeitos.por_unidade
@@ -639,7 +641,7 @@ export default function DashboardView() {
 
         const byDefeito = Object.entries(defAcc)
             .map(([nome, count]) => ({
-                nome: nome.charAt(0).toUpperCase() + nome.slice(1),
+                nome,
                 count,
             }))
             .filter((d) => d.count > 0)
@@ -694,6 +696,134 @@ export default function DashboardView() {
 
     const { bySetor, byOperador, byDefeito, byMaquina } = rankings;
     const maxDefCount = byDefeito.length > 0 ? byDefeito[0].count : 1;
+    const revisaoPeriodo = acabamentos.filter((r) => r.modulo === 'revisao_final' && inRange(r.timestamp));
+    const opsFecharam = new Set(revisaoPeriodo.filter((r) => {
+        const d = (r.defects ?? {}) as Record<string, unknown>;
+        return d.status_final === 'fechou' || d.status_final === 'aprovado_com_restricao' || asN(d.falta_para_fechar_pedido) === 0;
+    }).map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size;
+    const opsNaoFecharam = new Set(revisaoPeriodo.filter((r) => {
+        const d = (r.defects ?? {}) as Record<string, unknown>;
+        return d.status_final === 'nao_fechou' || d.status_final === 'precisa_reimpressao' || asN(d.falta_para_fechar_pedido) > 0;
+    }).map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size;
+    const reimpressoes = revisaoPeriodo.filter((r) => ((r.defects ?? {}) as Record<string, unknown>).status_final === 'precisa_reimpressao').length;
+    const custoRevisao = revisaoPeriodo.reduce((s, r) => s + asN(((r.defects ?? {}) as Record<string, unknown>).custo_revisao), 0);
+    const perdasTotais = summary.escolha + summary.reprovadas;
+    const percentualPerda = summary.rodadas > 0 ? (perdasTotais / summary.rodadas) * 100 : 0;
+    const topProcessosPerda = bySetor.filter((p) => p.total > 0).slice(0, 3);
+    const principaisCausas = byDefeito.slice(0, 6);
+    const tendenciaMensal = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - (5 - i), 1);
+        const label = d.toLocaleDateString('pt-BR', { month: 'short' });
+        const month = d.getMonth();
+        const year = d.getFullYear();
+        let perdas = 0;
+        inspections.forEach((r) => {
+            const dt = new Date(r.created_at);
+            if (dt.getMonth() !== month || dt.getFullYear() !== year) return;
+            const obs = parseObs(r.observations);
+            perdas += asN(obs.saldo_unidades?.em_escolha) + asN(obs.saldo_unidades?.reprovadas) + asN(obs.producao?.qty_escolha) + asN(obs.producao?.qty_refugo);
+        });
+        acabamentos.forEach((r) => {
+            const dt = new Date(r.timestamp);
+            if (dt.getMonth() !== month || dt.getFullYear() !== year) return;
+            perdas += asN(r.qty_reprovadas);
+        });
+        return { label, perdas };
+    });
+    const maxTendencia = Math.max(1, ...tendenciaMensal.map((m) => m.perdas));
+
+    if (!loading) {
+        return (
+            <div className="mx-auto w-full max-w-7xl animate-fade-in space-y-5 p-4 pb-20 md:p-6">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">Painel da Direção</h1>
+                            <p className="mt-0.5 text-xs font-bold text-slate-400">Onde está o maior prejuízo?</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                                {PERIOD_TABS.map((tab) => (
+                                    <button key={tab.value} type="button" onClick={() => setPeriod(tab.value)}
+                                        className={`rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${period === tab.value ? 'bg-white text-slate-900 shadow dark:bg-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <button type="button" onClick={fetchData} disabled={loading} className="flex h-9 items-center gap-2 rounded-lg bg-slate-100 px-3 text-[10px] font-black uppercase tracking-widest text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                <span className="material-symbols-outlined text-base">refresh</span>Atualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                        <button type="button" onClick={handlePrev} className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900"><span className="material-symbols-outlined text-base">chevron_left</span></button>
+                        <span className="min-w-[200px] text-center text-xs font-black text-slate-700 dark:text-slate-200">{periodLabel(period, anchor)}</span>
+                        <button type="button" onClick={handleNext} className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900"><span className="material-symbols-outlined text-base">chevron_right</span></button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <StatCard label="Total de OPs no período" value={String(summary.totalOps)} />
+                    <StatCard label="OPs que fecharam quantidade" value={String(opsFecharam)} />
+                    <StatCard label="OPs que não fecharam" value={String(opsNaoFecharam)} tone={opsNaoFecharam > 0 ? 'rose' : 'slate'} />
+                    <StatCard label="Número de reimpressões" value={String(reimpressoes)} tone={reimpressoes > 0 ? 'rose' : 'slate'} />
+                    <StatCard label="Percentual de perda total" value={`${percentualPerda.toFixed(1)}%`} tone={percentualPerda > 3 ? 'rose' : percentualPerda > 1 ? 'amber' : 'slate'} />
+                    <StatCard label="Custo estimado de revisão" value={custoRevisao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} tone={custoRevisao > 0 ? 'amber' : 'slate'} />
+                    <StatCard label="Unidades em perda/escolha" value={fmt(perdasTotais)} tone={perdasTotais > 0 ? 'amber' : 'slate'} />
+                    <StatCard label="Base rodada" value={fmt(summary.rodadas)} />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Top 3 processos com mais perda</p>
+                        </div>
+                        <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                            {topProcessosPerda.length === 0 ? <p className="px-5 py-4 text-xs text-slate-400">Sem perdas no período</p> : topProcessosPerda.map((item, i) => (
+                                <div key={item.nome} className="flex items-center gap-3 px-5 py-3">
+                                    <span className="w-4 text-[11px] font-black text-slate-400">{i + 1}</span>
+                                    <span className="flex-1 text-xs font-bold text-slate-700 dark:text-slate-200">{item.nome}</span>
+                                    <span className="text-[11px] font-black text-red-600">{fmt(item.total)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tendência mensal de perdas</p>
+                        </div>
+                        <div className="flex h-48 items-end gap-3 px-5 py-4">
+                            {tendenciaMensal.map((m) => (
+                                <div key={m.label} className="flex flex-1 flex-col items-center gap-2">
+                                    <div className="flex h-32 w-full items-end rounded bg-slate-100 dark:bg-slate-800">
+                                        <div className="w-full rounded bg-red-400" style={{ height: `${Math.max(4, (m.perdas / maxTendencia) * 100)}%` }} />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase text-slate-400">{m.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Principais causas de perda</p>
+                        </div>
+                        <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                            {principaisCausas.length === 0 ? <p className="px-5 py-4 text-xs text-slate-400">Sem defeitos reais no período</p> : principaisCausas.map((item, i) => (
+                                <div key={item.nome} className="flex items-center gap-3 px-5 py-3">
+                                    <span className="w-4 text-[11px] font-black text-slate-400">{i + 1}</span>
+                                    <span className="flex-1 truncate text-xs font-bold text-slate-700 dark:text-slate-200">{item.nome}</span>
+                                    <span className="text-[11px] font-black text-slate-500">{fmt(item.count)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // ── Render ────────────────────────────────────────────────────────────────
 

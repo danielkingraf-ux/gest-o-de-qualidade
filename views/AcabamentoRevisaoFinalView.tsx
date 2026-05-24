@@ -19,24 +19,24 @@ const DEFEITOS_LISTA = [
 
 const STATUS_OPCOES = [
   {
-    value: 'deu_pedido' as const, label: 'Deu o pedido',
+    value: 'fechou' as const, label: 'Fechou',
     on: 'bg-emerald-600 border-emerald-600 text-white',
     off: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-400',
   },
   {
-    value: 'faltou_quantidade' as const, label: 'Faltou quantidade',
+    value: 'nao_fechou' as const, label: 'Não fechou',
     on: 'bg-rose-600 border-rose-600 text-white',
     off: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-rose-400',
   },
   {
-    value: 'aguardando_complemento' as const, label: 'Aguardando complemento',
+    value: 'precisa_reimpressao' as const, label: 'Precisa reimpressão',
     on: 'bg-amber-500 border-amber-500 text-white',
     off: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-amber-400',
   },
   {
-    value: 'reprovado' as const, label: 'Reprovado',
-    on: 'bg-slate-700 border-slate-700 text-white',
-    off: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-500',
+    value: 'aprovado_com_restricao' as const, label: 'Aprovado com restrição',
+    on: 'bg-indigo-600 border-indigo-600 text-white',
+    off: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400',
   },
 ] as const;
 type StatusFinal = typeof STATUS_OPCOES[number]['value'] | '';
@@ -55,10 +55,16 @@ type Problema = {
 
 type Periodo = {
   id: string;
-  inicio: string;   // datetime-local "YYYY-MM-DDTHH:mm"
-  fim: string;
-  pessoas: string;
+  inicio?: string;
+  fim?: string;
+  pessoas?: string;
+  data: string;
+  hora_inicio: string;
+  hora_fim: string;
   qty_pessoas: number;
+  revisores: string;
+  setor: string;
+  valor_hora: string;
   observacao: string;
 };
 
@@ -66,6 +72,7 @@ type Resultado = {
   qty_solicitada: string;
   qty_revisada: string;
   qty_boa: string;
+  qty_recuperada: string;
   qty_refugada: string;
 };
 
@@ -90,13 +97,18 @@ function localNow(): string {
   return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`;
 }
 
+const today = () => new Date().toISOString().slice(0, 10);
+const currentTime = () => new Date().toTimeString().slice(0, 5);
+
 const mkProblema = (): Problema => ({ id: newId(), setor: '', operador_id: '', problema: '', qty_afetada: '', observacao: '' });
-const mkPeriodo = (): Periodo => ({ id: newId(), inicio: localNow(), fim: localNow(), pessoas: '', qty_pessoas: 1, observacao: '' });
-const mkResultado = (): Resultado => ({ qty_solicitada: '', qty_revisada: '', qty_boa: '', qty_refugada: '' });
+const mkPeriodo = (): Periodo => ({ id: newId(), data: today(), hora_inicio: currentTime(), hora_fim: currentTime(), qty_pessoas: 1, revisores: '', setor: '', valor_hora: '', observacao: '' });
+const mkResultado = (): Resultado => ({ qty_solicitada: '', qty_revisada: '', qty_boa: '', qty_recuperada: '', qty_refugada: '' });
 
 function periodoMinutos(p: Periodo): number {
-  if (!p.inicio || !p.fim) return 0;
-  return Math.max(0, Math.floor((new Date(p.fim).getTime() - new Date(p.inicio).getTime()) / 60_000));
+  const inicio = `${p.data}T${p.hora_inicio}`;
+  const fim = `${p.data}T${p.hora_fim}`;
+  if (!p.data || !p.hora_inicio || !p.hora_fim) return 0;
+  return Math.max(0, Math.floor((new Date(fim).getTime() - new Date(inicio).getTime()) / 60_000));
 }
 
 function fmtDuracao(min: number): string {
@@ -106,7 +118,9 @@ function fmtDuracao(min: number): string {
 }
 
 const toInt = (s: string) => parseInt(s, 10) || 0;
+const toMoney = (s: string) => Number(String(s || '0').replace(',', '.')) || 0;
 const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmtMoney = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function elapsed(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -280,6 +294,69 @@ const PeriodoCard: React.FC<{
 };
 
 // ── Main Component ─────────────────────────────────────────────────────────────
+const PeriodoTecnicoCard: React.FC<{
+  periodo: Periodo;
+  index: number;
+  onChange: (p: Periodo) => void;
+  onRemove: () => void;
+}> = ({ periodo, index, onChange, onRemove }) => {
+  const set = <K extends keyof Periodo>(k: K, v: Periodo[K]) => onChange({ ...periodo, [k]: v });
+  const min = periodoMinutos(periodo);
+  const horas = min / 60;
+  const homemHora = horas * periodo.qty_pessoas;
+  const custo = homemHora * toMoney(periodo.valor_hora);
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Período {index + 1}</span>
+          {min > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 font-black">
+              {fmtDuracao(min)} · {homemHora.toFixed(1).replace('.', ',')} HH · {fmtMoney(custo)}
+            </span>
+          )}
+        </div>
+        <button type="button" onClick={onRemove} className="size-6 rounded-lg flex items-center justify-center text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
+          <span className="material-symbols-outlined text-sm">close</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <Field label="Data"><input type="date" value={periodo.data} onChange={e => set('data', e.target.value)} className={inputCls} /></Field>
+        <Field label="Hora início"><input type="time" value={periodo.hora_inicio} onChange={e => set('hora_inicio', e.target.value)} className={inputCls} /></Field>
+        <Field label="Hora fim"><input type="time" value={periodo.hora_fim} onChange={e => set('hora_fim', e.target.value)} className={inputCls} /></Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <Field label="Nome ou matrícula dos revisores"><input type="text" placeholder="Ex: Ana, 1234, Maria" value={periodo.revisores} onChange={e => set('revisores', e.target.value)} className={inputCls} /></Field>
+        <Field label="Setor dos revisores"><input type="text" placeholder="Ex: Revisão, Qualidade" value={periodo.setor} onChange={e => set('setor', e.target.value)} className={inputCls} /></Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <Field label="Quantidade de pessoas"><input type="number" min="1" value={periodo.qty_pessoas} onChange={e => set('qty_pessoas', Math.max(1, parseInt(e.target.value) || 1))} className={inputCls} /></Field>
+        <Field label="Valor hora por pessoa"><input type="number" min="0" step="0.01" placeholder="opcional" value={periodo.valor_hora} onChange={e => set('valor_hora', e.target.value)} className={inputCls} /></Field>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mb-2">
+        {[
+          ['Total minutos', fmt(min)],
+          ['Total horas', horas.toFixed(2).replace('.', ',')],
+          ['Homem-hora', homemHora.toFixed(2).replace('.', ',')],
+          ['Custo', fmtMoney(custo)],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg bg-white dark:bg-slate-900 p-2">
+            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+            <p className="text-xs font-black text-slate-700 dark:text-slate-200">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <Field label="Observação"><input type="text" placeholder="opcional..." value={periodo.observacao} onChange={e => set('observacao', e.target.value)} className={inputCls} /></Field>
+    </div>
+  );
+};
+
 const AcabamentoRevisaoFinalView: React.FC = () => {
   const { showToast } = useToast();
   const { profile } = useUser();
@@ -304,17 +381,29 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     // Impressão
     rodadasImpressao: number;
     escolhaImpressao: number;
+    refugoImpressao?: number;
     // Corte e Vinco
     rodadasCorteVinco: number;
     escolhaCorteVinco: number;
+    refugoCorteVinco?: number;
+    aprovadoCorteVinco?: number;
     // Colagem
     rodadasColagem: number;
     escolhaColagem: number;
+    refugoColagem?: number;
+    aprovadoColagem?: number;
     // Produto Acabado
     rodadasProdutoAcabado: number;
     escolhaProdutoAcabado: number;
+    refugoProdutoAcabado?: number;
+    palletsReprovados?: number;
+    qtdPalletsReprovados?: number;
+    problemasAnaliseFinal?: number;
+    boaAntesRevisao?: number;
     // Total escolha para revisão
     totalEscolha: number;
+    totalRefugoAntesRevisao?: number;
+    origemRevisao?: Array<{ etapa: string; quantidade: number; detalhe: string }>;
     operadoresNomes: string[];
     maquinasNomes: string[];
   };
@@ -439,11 +528,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       });
 
       // Pré-preenche qty_solicitada e qty_revisada
-      if (qtdSolicitada > 0) {
-        setResultado(prev => prev.qty_solicitada === '' ? { ...prev, qty_solicitada: String(qtdSolicitada) } : prev);
-      }
       if (totalEscolha > 0) {
-        setResultado(prev => prev.qty_revisada === '' ? { ...prev, qty_revisada: String(totalEscolha) } : prev);
+        setResultado(prev => prev.qty_recuperada === '' ? { ...prev, qty_recuperada: String(totalEscolha) } : prev);
       }
     }, 600);
 
@@ -452,16 +538,26 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   }, [op]);
 
   // ── Computed ────────────────────────────────────────────────────────────────
-  const qtySolicitada = toInt(resultado.qty_solicitada);
-  const qtyBoa = toInt(resultado.qty_boa);
-  const saldo = qtyBoa - qtySolicitada;
-  const hasSaldoCalc = resultado.qty_solicitada !== '' && resultado.qty_boa !== '';
+  const qtySolicitada = saldoOp?.qtdSolicitada ?? 0;
+  const qtyRodadaInicial = saldoOp?.rodadasImpressao ?? 0;
+  const qtyBoaAntesRevisao = saldoOp?.boaAntesRevisao ?? Math.max(0, (saldoOp?.rodadasColagem || saldoOp?.rodadasProdutoAcabado || saldoOp?.rodadasImpressao || 0) - (saldoOp?.totalEscolha || 0));
+  const qtyEnviadaRevisao = saldoOp?.totalEscolha ?? 0;
+  const qtyRecuperada = toInt(resultado.qty_recuperada);
+  const qtyRefugadaFinal = toInt(resultado.qty_refugada);
+  const qtyFinalAprovada = qtyBoaAntesRevisao + qtyRecuperada;
+  const qtyBoa = qtyFinalAprovada;
+  const faltaFechar = Math.max(0, qtySolicitada - qtyFinalAprovada);
+  const sobraFinal = Math.max(0, qtyFinalAprovada - qtySolicitada);
+  const saldo = sobraFinal - faltaFechar;
+  const perdasTotais = (saldoOp?.totalRefugoAntesRevisao ?? 0) + qtyRefugadaFinal;
+  const hasSaldoCalc = qtySolicitada > 0;
 
   const totalMinutos = periodos.reduce((s, p) => s + periodoMinutos(p), 0);
   const totalHomemHora = periodos.reduce((s, p) => s + (periodoMinutos(p) / 60) * p.qty_pessoas, 0);
   const totalPessoas = periodos.reduce((s, p) => s + p.qty_pessoas, 0);
+  const custoRevisao = periodos.reduce((s, p) => s + (periodoMinutos(p) / 60) * p.qty_pessoas * toMoney(p.valor_hora), 0);
 
-  const hasData = problemas.length > 0 || toInt(resultado.qty_revisada) > 0 || periodos.length > 0;
+  const hasData = problemas.length > 0 || qtyEnviadaRevisao > 0 || qtyRecuperada > 0 || periodos.length > 0;
 
   // ── Session management ─────────────────────────────────────────────────────
   const handleClear = () => {
@@ -493,8 +589,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     if (!user) { showToast('Sessão expirada. Faça login novamente.', 'error'); return; }
 
     const opName = op.trim().toUpperCase();
-    const qtyRevisada = toInt(resultado.qty_revisada);
-    const qtyBoa_ = toInt(resultado.qty_boa);
+    const qtyRevisada = qtyEnviadaRevisao;
+    const qtyBoa_ = qtyFinalAprovada;
     const qtyRefugada = toInt(resultado.qty_refugada);
 
     const setoresEnvolvidos = [...new Set(problemas.map(p => p.setor).filter(Boolean))];
@@ -520,15 +616,26 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       // Resultado
       resultado: { ...resultado },
       qty_solicitada: qtySolicitada,
-      saldo,
+      quantidade_rodada_inicial: qtyRodadaInicial,
+      quantidade_boa_antes_revisao: qtyBoaAntesRevisao,
+      quantidade_enviada_revisao: qtyEnviadaRevisao,
+      quantidade_recuperada_revisao: qtyRecuperada,
+      quantidade_refugada_revisao: qtyRefugadaFinal,
+      quantidade_final_aprovada: qtyFinalAprovada,
+      falta_para_fechar_pedido: faltaFechar,
+      sobra_final: sobraFinal,
+      perdas_totais: perdasTotais,
+      saldo: sobraFinal - faltaFechar,
+      consolidado_automatico: saldoOp,
       // Periodos
       periodos,
       total_minutos: totalMinutos,
       total_horas: parseFloat((totalMinutos / 60).toFixed(2)),
       total_pessoas: totalPessoas,
       homem_hora_total: parseFloat(totalHomemHora.toFixed(2)),
+      custo_revisao: parseFloat(custoRevisao.toFixed(2)),
       // Status
-      status_final: statusFinal,
+      status_final: statusSugerido,
       // Data do registro
       data_revisao: new Date().toISOString().slice(0, 10),
     };
@@ -579,6 +686,11 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     setResultado(prev => ({ ...prev, [k]: v }));
 
   const isEditing = !!editingId;
+  const statusSugerido: StatusFinal = statusFinal || (
+    faltaFechar > 0 ? 'precisa_reimpressao' :
+    problemas.length > 0 || (saldoOp?.palletsReprovados ?? 0) > 0 ? 'aprovado_com_restricao' :
+    qtySolicitada > 0 ? 'fechou' : ''
+  );
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -675,6 +787,34 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
         {/* Rastreio da OP */}
         <OpTraceBanner op={op} moduloAtual="revisao_final" />
+
+        <section className="mb-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
+          <SectionTitle icon="inventory" title="Fechamento técnico da OP" subtitle="Pedido, produção inicial, perdas, recuperação e decisão final" />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              ['Pedido', fmt(qtySolicitada)],
+              ['Produzido inicial', fmt(qtyRodadaInicial)],
+              ['Perdas totais', fmt(perdasTotais)],
+              ['Recuperado na revisão', fmt(qtyRecuperada)],
+              ['Refugo final', fmt(qtyRefugadaFinal)],
+              ['Aprovado final', fmt(qtyFinalAprovada)],
+              ['Falta', fmt(faltaFechar)],
+              ['Sobra final', fmt(sobraFinal)],
+              ['Custo revisão', fmtMoney(custoRevisao)],
+              ['Status', STATUS_OPCOES.find(s => s.value === statusSugerido)?.label || '-'],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-teal-100 dark:border-teal-900/50 bg-white dark:bg-slate-900 p-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                <p className="mt-1 text-lg font-black text-slate-800 dark:text-slate-100">{value}</p>
+              </div>
+            ))}
+          </div>
+          {faltaFechar > 0 && (
+            <div className="mt-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 p-3">
+              <p className="text-sm font-black text-rose-700 dark:text-rose-300">A revisão não resolveu a OP. Faltam {fmt(faltaFechar)} unidades para fechar o pedido; precisa reimpressão.</p>
+            </div>
+          )}
+        </section>
 
         {/* ── Saldo consolidado da OP ───────────────────────────────────────── */}
         {saldoOp && (saldoOp.rodadasImpressao > 0 || saldoOp.rodadasCorteVinco > 0 || saldoOp.rodadasColagem > 0 || saldoOp.rodadasProdutoAcabado > 0) && (
@@ -808,18 +948,14 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3 mb-4">
             {([
-              { k: 'qty_solicitada', label: 'Qtd Solicitada no Pedido', color: 'slate' },
-              { k: 'qty_revisada',   label: 'Qtd Revisada',             color: 'blue' },
-              { k: 'qty_boa',        label: 'Qtd Boa Final',            color: 'emerald' },
-              { k: 'qty_refugada',   label: 'Qtd Refugada',             color: 'rose' },
+              { k: 'qty_recuperada', label: 'Qtd Recuperada na Revisão', color: 'emerald' },
+              { k: 'qty_refugada',   label: 'Qtd Refugada na Revisão',   color: 'rose' },
             ] as const).map(({ k, label, color }) => (
               <Field key={k} label={label}>
                 <input type="number" min="0" placeholder="0"
                   value={resultado[k]}
                   onChange={e => setResultadoField(k, e.target.value)}
                   className={`w-full h-10 rounded-xl border text-center text-sm font-black outline-none focus:ring-2 focus:ring-${color}-500/20 ${
-                    color === 'slate' ? 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200' :
-                    color === 'blue'  ? 'border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300' :
                     color === 'emerald' ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300' :
                     'border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-600'
                   }`}
@@ -876,7 +1012,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
           <div className="flex flex-col gap-3">
             {periodos.map((p, i) => (
-              <PeriodoCard key={p.id} periodo={p} index={i}
+              <PeriodoTecnicoCard key={p.id} periodo={p} index={i}
                 onChange={updated => setPeriodos(prev => prev.map(x => x.id === updated.id ? updated : x))}
                 onRemove={() => setPeriodos(prev => prev.filter(x => x.id !== p.id))} />
             ))}
@@ -914,7 +1050,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
               <button key={s.value} type="button"
                 onClick={() => setStatusFinal(statusFinal === s.value ? '' : s.value)}
                 className={`h-10 rounded-xl border-2 text-xs font-black transition-colors ${
-                  statusFinal === s.value ? s.on : s.off
+                  statusSugerido === s.value ? s.on : s.off
                 }`}>
                 {s.label}
               </button>

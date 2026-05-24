@@ -49,6 +49,70 @@ const getNames = (
     return ids.map(id => list.find(item => item.id === id)?.name ?? 'Desconhecido').join(', ');
 };
 
+// Tipos para o Relatorio Gerencial
+export interface ManagementReportSummary {
+    totalOps: number;
+    totalUnidadesPedidas: number;
+    totalUnidadesEntregues: number;
+    totalUnidadesPerdidas: number;
+    totalReimpressoes: number;
+    opsComEscolha: number;
+    opsAprovadas: number;
+    opsReprovadas: number;
+}
+
+export interface ManagementOpDetail {
+    op: string;
+    cliente: string;
+    pedido: number;
+    entregue: number;
+    perda: number;
+    status: string;
+}
+
+export interface ManagementOperatorProblem {
+    operador: string;
+    maquina: string;
+    ops: number;
+    defeitoPrincipal: string;
+    taxaMedia: string;
+}
+
+export interface ManagementMachineProblem {
+    maquina: string;
+    operadores: number;
+    ops: number;
+    defeitoRecorrente: string;
+    taxa: string;
+}
+
+export interface ManagementReimpressao {
+    op: string;
+    rodada: number;
+    motivo: string;
+    solicitante: string;
+    quantidade: number;
+}
+
+export interface ManagementKPIs {
+    eficienciaProducao: string;
+    taxaMediaDefeitos: string;
+    taxaEscolha: string;
+    taxaReimpressao: string;
+    aprovacaoSemRestricao: string;
+}
+
+export interface ManagementReportData {
+    periodLabel: string;
+    generatedAt: string;
+    summary: ManagementReportSummary;
+    opDetails: ManagementOpDetail[];
+    operatorProblems: ManagementOperatorProblem[];
+    machineProblems: ManagementMachineProblem[];
+    reimpressoes: ManagementReimpressao[];
+    kpis: ManagementKPIs;
+}
+
 export const reportService = {
     generateFinishingPDF(record: PdfRecord, operatorsList: PersonList = [], analystsList: PersonList = []) {
         try {
@@ -441,6 +505,211 @@ export const reportService = {
         }
         return blob;
     },
+    // ─── Relatorio Gerencial (Direcao) ─────────────────────────────────
+    generateManagementReportPDF(
+        report: ManagementReportData,
+        options: { save?: boolean; filename?: string; returnBlob?: boolean } = {},
+    ): Blob | null {
+        const { save = true, filename = 'RELATORIO_GERENCIAL.pdf', returnBlob = false } = options;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const pw = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
+
+        const checkPage = (needed: number) => {
+            if (y > ph - needed) { doc.addPage(); y = 40; }
+        };
+
+        // Header
+        doc.setFillColor(...COLOR_HEADER_BG);
+        doc.rect(0, 0, pw, 60, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('KINGRAF — RELATORIO GERENCIAL DE PRODUCAO', 20, 28);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Periodo: ${report.periodLabel}`, 20, 45);
+        doc.text(`Gerado em: ${report.generatedAt}`, pw - 20, 45, { align: 'right' });
+
+        let y = 80;
+        doc.setTextColor(31, 41, 55);
+
+        // 1. Resumo Executivo
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('1. RESUMO EXECUTIVO', 20, y);
+        y += 10;
+
+        const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n);
+        const pct = (v: number, total: number) => total > 0 ? ((v / total) * 100).toFixed(1) + '%' : '—';
+
+        autoTable(doc, {
+            startY: y,
+            body: [
+                ['OPs no periodo', String(report.summary.totalOps), 'Unidades pedidas', fmt(report.summary.totalUnidadesPedidas)],
+                ['Unidades entregues', `${fmt(report.summary.totalUnidadesEntregues)} (${pct(report.summary.totalUnidadesEntregues, report.summary.totalUnidadesPedidas)})`, 'Unidades perdidas', `${fmt(report.summary.totalUnidadesPerdidas)} (${pct(report.summary.totalUnidadesPerdidas, report.summary.totalUnidadesPedidas)})`],
+                ['Reimpressoes', String(report.summary.totalReimpressoes), 'OPs com escolha', String(report.summary.opsComEscolha)],
+                ['OPs aprovadas', String(report.summary.opsAprovadas), 'OPs reprovadas', String(report.summary.opsReprovadas)],
+            ],
+            theme: 'plain',
+            styles: { fontSize: 9, cellPadding: 3 },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 110 }, 2: { fontStyle: 'bold', cellWidth: 110 } },
+            margin: { left: 20, right: 20 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 16;
+
+        // 2. Detalhamento por OP
+        checkPage(100);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('2. DETALHAMENTO POR OP', 20, y);
+        y += 10;
+
+        if (report.opDetails.length > 0) {
+            autoTable(doc, {
+                startY: y,
+                head: [['OP', 'Cliente', 'Pedido', 'Entregue', 'Perda', 'Status']],
+                body: report.opDetails.map(op => [
+                    op.op,
+                    (op.cliente || '—').substring(0, 20),
+                    fmt(op.pedido),
+                    fmt(op.entregue),
+                    fmt(op.perda),
+                    op.status,
+                ]),
+                theme: 'grid',
+                styles: { fontSize: 7, halign: 'center', cellPadding: 2 },
+                headStyles: { fillColor: COLOR_PRIMARY, textColor: 255, fontSize: 7 },
+                columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' } },
+                margin: { left: 20, right: 20 },
+            });
+            y = (doc as any).lastAutoTable.finalY + 16;
+        }
+
+        // 3. Problemas por Operador
+        checkPage(100);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('3. PROBLEMAS POR OPERADOR', 20, y);
+        y += 10;
+
+        if (report.operatorProblems.length > 0) {
+            autoTable(doc, {
+                startY: y,
+                head: [['Operador', 'Maquina', 'OPs', 'Defeito Principal', 'Taxa Media']],
+                body: report.operatorProblems.map(op => [
+                    op.operador,
+                    op.maquina,
+                    String(op.ops),
+                    op.defeitoPrincipal,
+                    op.taxaMedia,
+                ]),
+                theme: 'grid',
+                styles: { fontSize: 7, halign: 'center', cellPadding: 2 },
+                headStyles: { fillColor: COLOR_TEAL, textColor: 255, fontSize: 7 },
+                columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 3: { halign: 'left' } },
+                margin: { left: 20, right: 20 },
+            });
+            y = (doc as any).lastAutoTable.finalY + 16;
+        }
+
+        // 4. Problemas por Maquina
+        checkPage(100);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('4. PROBLEMAS POR MAQUINA', 20, y);
+        y += 10;
+
+        if (report.machineProblems.length > 0) {
+            autoTable(doc, {
+                startY: y,
+                head: [['Maquina', 'Operadores', 'OPs', 'Defeito Recorrente', 'Taxa']],
+                body: report.machineProblems.map(mp => [
+                    mp.maquina,
+                    String(mp.operadores),
+                    String(mp.ops),
+                    mp.defeitoRecorrente,
+                    mp.taxa,
+                ]),
+                theme: 'grid',
+                styles: { fontSize: 7, halign: 'center', cellPadding: 2 },
+                headStyles: { fillColor: COLOR_INDIGO, textColor: 255, fontSize: 7 },
+                columnStyles: { 0: { halign: 'left' }, 3: { halign: 'left' } },
+                margin: { left: 20, right: 20 },
+            });
+            y = (doc as any).lastAutoTable.finalY + 16;
+        }
+
+        // 5. Reimpressoes
+        checkPage(100);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('5. REIMPRESSOES REALIZADAS', 20, y);
+        y += 10;
+
+        if (report.reimpressoes.length > 0) {
+            autoTable(doc, {
+                startY: y,
+                head: [['OP', 'Rodada', 'Motivo', 'Solicitante', 'Qtd.']],
+                body: report.reimpressoes.map(r => [
+                    r.op,
+                    String(r.rodada),
+                    (r.motivo || '').substring(0, 30),
+                    r.solicitante,
+                    fmt(r.quantidade),
+                ]),
+                theme: 'grid',
+                styles: { fontSize: 7, halign: 'center', cellPadding: 2 },
+                headStyles: { fillColor: [220, 38, 38], textColor: 255, fontSize: 7 },
+                columnStyles: { 2: { halign: 'left' }, 3: { halign: 'left' } },
+                margin: { left: 20, right: 20 },
+            });
+            y = (doc as any).lastAutoTable.finalY + 16;
+        } else {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.text('Nenhuma reimpressao no periodo.', 20, y);
+            y += 16;
+        }
+
+        // 6. Indicadores Consolidados
+        checkPage(80);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('6. INDICADORES CONSOLIDADOS', 20, y);
+        y += 10;
+
+        autoTable(doc, {
+            startY: y,
+            body: [
+                ['Eficiencia de producao', report.kpis.eficienciaProducao],
+                ['Taxa media de defeitos', report.kpis.taxaMediaDefeitos],
+                ['Taxa de escolha', report.kpis.taxaEscolha],
+                ['Taxa de reimpressao', report.kpis.taxaReimpressao],
+                ['Aprovacao sem restricao', report.kpis.aprovacaoSemRestricao],
+            ],
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: 4 },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 200 }, 1: { halign: 'right' } },
+            margin: { left: 20, right: 20 },
+        });
+
+        // Rodape
+        const totalPages = (doc as any).internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(150);
+            doc.text(`KINGRAF — Relatorio Gerencial — Pagina ${i}/${totalPages}`, pw / 2, ph - 15, { align: 'center' });
+        }
+
+        let blob: Blob | null = null;
+        if (returnBlob) blob = doc.output('blob');
+        if (save) doc.save(filename);
+        return blob;
+    },
+
     async sendReportEmail(payload: { to: string; subject: string; filename: string; pdfBlob: Blob }) {
         const base64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();

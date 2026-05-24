@@ -4,6 +4,7 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { reportService } from '../services/reportService';
 import ConfirmModal from '../components/ConfirmModal';
+import { defectPhotoService, type DefectPhoto } from '../services/defectPhotoService';
 import { ProcessType } from '../types';
 import { useUser } from '../contexts/UserContext';
 
@@ -203,6 +204,9 @@ export default function RecordsView() {
   // View Details State
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [viewingRecord, setViewingRecord] = useState<any>(null);
+  const [detailPhotos, setDetailPhotos] = useState<DefectPhoto[]>([]);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -278,9 +282,19 @@ export default function RecordsView() {
     // user identity comes from UserContext
   }, []);
 
-  const handleViewDetails = (record: any) => {
+  const handleViewDetails = async (record: any) => {
     setViewingRecord(record);
     setIsDetailsModalOpen(true);
+    setDetailPhotos([]);
+    setLoadingPhotos(true);
+    try {
+      const photos = await defectPhotoService.listByInspection(record.id);
+      setDetailPhotos(photos);
+    } catch {
+      // Silencioso — fotos sao opcionais
+    } finally {
+      setLoadingPhotos(false);
+    }
   };
 
   // Helper to get names from IDs (supports multi-select format)
@@ -940,9 +954,57 @@ export default function RecordsView() {
                 </div>
               </div>
             )}
+
+            {/* Fotos de Defeito */}
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="material-symbols-outlined text-sm text-slate-400">photo_camera</span>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Fotos de Defeito</p>
+                {detailPhotos.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-black">{detailPhotos.length}</span>
+                )}
+              </div>
+              {loadingPhotos ? (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="size-4 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+                  Carregando fotos...
+                </div>
+              ) : detailPhotos.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {detailPhotos.map(photo => (
+                    <div key={photo.id} className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all"
+                      onClick={() => setPreviewPhotoUrl(photo.signedUrl || null)}>
+                      <img src={photo.signedUrl || ''} alt={photo.caption || photo.file_name}
+                        className="w-full aspect-square object-cover" />
+                      {photo.caption && (
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                          <p className="text-[9px] text-white font-medium truncate">{photo.caption}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs italic text-slate-400">Nenhuma foto registrada.</p>
+              )}
+            </div>
           </div>
         )}
       </Modal>
+
+      {/* Preview ampliado de foto */}
+      {previewPhotoUrl && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setPreviewPhotoUrl(null)}>
+          <div className="relative max-w-4xl max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <img src={previewPhotoUrl} alt="Preview" className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" />
+            <button type="button" onClick={() => setPreviewPhotoUrl(null)}
+              className="absolute -top-3 -right-3 size-10 rounded-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shadow-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         isOpen={isDeleteModalOpen}

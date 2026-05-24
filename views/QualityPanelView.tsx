@@ -4,6 +4,7 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabase';
+import { normalizeDefectLabel, toDefectEntry } from '../utils/defects';
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 type Period = 'week' | 'month' | 'quarter' | 'all';
@@ -13,6 +14,8 @@ interface NormalizedRecord {
     op: string;
     date: Date;
     area: 'inicial' | 'acabado';
+    process: string;
+    turno: string;
     status: string;
     machineName: string;
     machineId: string;
@@ -40,17 +43,26 @@ function normalize(raw: any[]): NormalizedRecord[] {
         // Defeitos: processo inicial usa obs.defeitos.por_unidade, acabado usa obs.defects
         const defMap: Record<string, number> = {};
         if (isAcabado && obs.defects && typeof obs.defects === 'object') {
-            Object.entries(obs.defects).forEach(([k, v]) => { const n = asN(v); if (n > 0) defMap[k] = n; });
+            Object.entries(obs.defects).forEach(([k, v]) => {
+                const entry = toDefectEntry(k, v);
+                if (entry) defMap[entry.name] = entry.count;
+            });
         } else if (obs.defeitos?.por_unidade) {
             Object.entries(obs.defeitos.por_unidade).forEach(([k, v]: [string, any]) => {
-                const n = asN(typeof v === 'object' ? v?.count : v);
-                if (n > 0) defMap[k.replace(/_/g, ' ')] = n;
+                const entry = toDefectEntry(k, v);
+                if (entry) defMap[entry.name] = entry.count;
             });
             // UV e HS
             if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos)
-                Object.entries(obs.verniz_uv.defeitos).forEach(([k, v]: [string, any]) => { const n = asN(v?.count ?? v); if (n > 0) defMap[`UV: ${k}`] = n; });
+                Object.entries(obs.verniz_uv.defeitos).forEach(([k, v]: [string, any]) => {
+                    const entry = toDefectEntry(k, v);
+                    if (entry) defMap[`UV: ${entry.name}`] = entry.count;
+                });
             if (obs.hot_stamping?.aplicavel && obs.hot_stamping?.defeitos)
-                Object.entries(obs.hot_stamping.defeitos).forEach(([k, v]: [string, any]) => { const n = asN(v?.count ?? v); if (n > 0) defMap[`HS: ${k}`] = n; });
+                Object.entries(obs.hot_stamping.defeitos).forEach(([k, v]: [string, any]) => {
+                    const entry = toDefectEntry(k, v);
+                    if (entry) defMap[`HS: ${entry.name}`] = entry.count;
+                });
         }
 
         // Quantidades
@@ -75,6 +87,8 @@ function normalize(raw: any[]): NormalizedRecord[] {
             op: String(r.op || '—'),
             date: new Date(r.created_at),
             area: isAcabado ? 'acabado' as const : 'inicial' as const,
+            process: isAcabado ? 'Produto Acabado' : 'Impressão',
+            turno: String(obs.turno || obs.shift || 'Sem turno'),
             status: String(r.status || ''),
             machineName: r.machines?.name || '—',
             machineId: String(r.machine_id || ''),
@@ -120,7 +134,7 @@ export default function QualityPanelView() {
                 supabase.from('operators').select('id, name'),
                 supabase.from('acabamento_registros')
                     .select('id, op, timestamp, machine_id, operator_ids, qty_revisadas, qty_reprovadas, defects')
-                    .eq('modulo', 'colagem')
+                    .in('modulo', ['corte_vinco', 'colagem', 'revisao_final'])
                     .order('timestamp', { ascending: false })
                     .limit(500),
                 supabase.from('machines').select('id, name'),
@@ -147,7 +161,8 @@ export default function QualityPanelView() {
                 const defRaw = r.defects || {};
                 const defMap: Record<string, number> = {};
                 Object.entries(defRaw).forEach(([k, v]) => {
-                    if (k !== 'qty_refugo' && typeof v === 'number' && v > 0) defMap[k] = v;
+                    const entry = toDefectEntry(k, v);
+                    if (entry) defMap[entry.name] = entry.count;
                 });
                 const qtyRefugo = asN(defRaw.qty_refugo);
                 return {
@@ -155,6 +170,8 @@ export default function QualityPanelView() {
                     op: String(r.op || '—'),
                     date: new Date(r.timestamp || r.created_at),
                     area: 'acabado' as const,
+                    process: r.modulo === 'corte_vinco' ? 'Corte/Vinco' : r.modulo === 'revisao_final' ? 'Revisão Final' : 'Colagem',
+                    turno: String(defRaw.turno || 'Sem turno'),
                     status: 'APPROVED',
                     machineName: machNames[r.machine_id] || '—',
                     machineId: String(r.machine_id || ''),
@@ -205,7 +222,10 @@ export default function QualityPanelView() {
         const map = new Map<string, number>();
         filtered.forEach(r => {
             (Object.entries(r.defects) as [string, number][])
-                .forEach(([k, v]) => map.set(k, (map.get(k) || 0) + v));
+                .forEach(([k, v]) => {
+                    const name = normalizeDefectLabel(k);
+                    map.set(name, (map.get(name) || 0) + v);
+                });
         });
         return Array.from(map.entries())
             .map(([name, count]) => ({ name, count }))
@@ -256,6 +276,62 @@ export default function QualityPanelView() {
             .sort((a, b) => b.refugo - a.refugo || b.escolha - a.escolha)
             .slice(0, 10);
     }, [filtered]);
+
+    const byProcess = useMemo(() => {
+        const map = new Map<string, { processo: string; defeitos: number; escolha: number; refugo: number }>();
+        filtered.forEach(r => {
+            const cur = map.get(r.process) || { processo: r.process, defeitos: 0, escolha: 0, refugo: 0 };
+            cur.defeitos += Object.values(r.defects).reduce<number>((s, v) => s + asN(v), 0);
+            cur.escolha += r.qtyEscolha;
+            cur.refugo += r.qtyRefugo;
+            map.set(r.process, cur);
+        });
+        return Array.from(map.values()).sort((a, b) => (b.defeitos + b.escolha + b.refugo) - (a.defeitos + a.escolha + a.refugo));
+    }, [filtered]);
+
+    const byTurno = useMemo(() => {
+        const map = new Map<string, { turno: string; defeitos: number; escolha: number; refugo: number }>();
+        filtered.forEach(r => {
+            const cur = map.get(r.turno) || { turno: r.turno, defeitos: 0, escolha: 0, refugo: 0 };
+            cur.defeitos += Object.values(r.defects).reduce<number>((s, v) => s + asN(v), 0);
+            cur.escolha += r.qtyEscolha;
+            cur.refugo += r.qtyRefugo;
+            map.set(r.turno, cur);
+        });
+        return Array.from(map.values()).sort((a, b) => (b.defeitos + b.escolha + b.refugo) - (a.defeitos + a.escolha + a.refugo));
+    }, [filtered]);
+
+    const riskOps = useMemo(() => {
+        const map = new Map<string, { op: string; escolha: number; refugo: number; processos: Set<string>; latest: Date }>();
+        filtered.forEach(r => {
+            if (r.qtyEscolha <= 0 && r.qtyRefugo <= 0) return;
+            const cur = map.get(r.op) || { op: r.op, escolha: 0, refugo: 0, processos: new Set<string>(), latest: r.date };
+            cur.escolha += r.qtyEscolha;
+            cur.refugo += r.qtyRefugo;
+            cur.processos.add(r.process);
+            if (r.date > cur.latest) cur.latest = r.date;
+            map.set(r.op, cur);
+        });
+        return Array.from(map.values()).sort((a, b) => (b.escolha + b.refugo) - (a.escolha + a.refugo)).slice(0, 12);
+    }, [filtered]);
+
+    const rejectedPalletOps = useMemo(() => {
+        const map = new Map<string, { op: string; reprovados: number; restritos: number; latest: string }>();
+        palletRecs.forEach((p: any) => {
+            if (p.result !== 'REJECTED' && p.result !== 'RESTRICTED') return;
+            const op = String(p.op || '').trim().toUpperCase();
+            if (!op) return;
+            const cur = map.get(op) || { op, reprovados: 0, restritos: 0, latest: '' };
+            if (p.result === 'REJECTED') cur.reprovados++;
+            if (p.result === 'RESTRICTED') cur.restritos++;
+            if (!cur.latest || p.completed_at > cur.latest) cur.latest = p.completed_at;
+            map.set(op, cur);
+        });
+        return Array.from(map.values()).sort((a, b) => b.reprovados - a.reprovados || b.latest.localeCompare(a.latest)).slice(0, 10);
+    }, [palletRecs]);
+
+    const pendingReviewQty = riskOps.reduce((s, op) => s + op.escolha, 0);
+    const defectIncreaseAlerts = defectRanking.slice(0, 3).filter(d => d.count > Math.max(10, totals.registros * 2));
 
     // ── Status de pallets por OP ────────────────────────────────────────────
     const palletsByOp = useMemo(() => {
@@ -375,6 +451,91 @@ export default function QualityPanelView() {
                     </p>
                     <p className="text-3xl font-black text-rose-700 dark:text-rose-300">{fmt.format(totals.refugo)}</p>
                     <p className="text-[10px] font-bold text-rose-500">{fmtPct(totals.refugo, totals.produzida)} do total</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-rose-500">priority_high</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">OPs em risco de não fechar</h2>
+                    </div>
+                    {riskOps.length === 0 ? <p className="text-sm text-slate-400 py-6 text-center">Nenhuma OP em risco no filtro</p> : (
+                        <div className="space-y-2">
+                            {riskOps.map(op => (
+                                <div key={op.op} className="rounded-xl border border-rose-100 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-sm font-black text-slate-900 dark:text-white">OP {op.op}</span>
+                                        <span className="text-[10px] font-black text-rose-600">{fmt.format(op.escolha + op.refugo)} un.</span>
+                                    </div>
+                                    <p className="mt-1 text-[10px] font-bold text-rose-500">Escolha {fmt.format(op.escolha)} · Refugo {fmt.format(op.refugo)} · {[...op.processos].join(', ')}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-amber-500">stacks</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Pallets reprovados no NQA</h2>
+                    </div>
+                    {rejectedPalletOps.length === 0 ? <p className="text-sm text-slate-400 py-6 text-center">Sem pallets reprovados/restritos</p> : (
+                        <div className="space-y-2">
+                            {rejectedPalletOps.map(op => (
+                                <div key={op.op} className="flex items-center justify-between rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
+                                    <span className="text-sm font-black text-slate-900 dark:text-white">OP {op.op}</span>
+                                    <span className="text-[10px] font-black text-rose-600">{op.reprovados} reprov. · {op.restritos} restr.</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-amber-500">manage_search</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Aguardando revisão</h2>
+                    </div>
+                    <p className="text-4xl font-black text-amber-700 dark:text-amber-300">{fmt.format(pendingReviewQty)}</p>
+                    <p className="text-xs font-bold text-slate-400">Quantidade em escolha aguardando ação da Revisão Final</p>
+                    {defectIncreaseAlerts.length > 0 && (
+                        <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">Alertas de aumento de defeito</p>
+                            <p className="mt-1 text-xs font-bold text-rose-700 dark:text-rose-300">{defectIncreaseAlerts.map(d => d.name).join(', ')}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-indigo-500">account_tree</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Defeitos reais por processo</h2>
+                    </div>
+                    <div className="space-y-2">
+                        {byProcess.map(p => (
+                            <div key={p.processo} className="flex items-center justify-between rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3">
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{p.processo}</span>
+                                <span className="text-[10px] font-black text-slate-500">Def. {fmt.format(p.defeitos)} · Esc. {fmt.format(p.escolha)} · Ref. {fmt.format(p.refugo)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-indigo-500">schedule</span>
+                        <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Defeitos por turno</h2>
+                    </div>
+                    <div className="space-y-2">
+                        {byTurno.map(t => (
+                            <div key={t.turno} className="flex items-center justify-between rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3">
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{t.turno}</span>
+                                <span className="text-[10px] font-black text-slate-500">Def. {fmt.format(t.defeitos)} · Esc. {fmt.format(t.escolha)} · Ref. {fmt.format(t.refugo)}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 

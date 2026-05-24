@@ -5,6 +5,7 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
+import { toDefectEntry } from '../utils/defects';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const parseObs = (v: any): any => {
@@ -42,8 +43,8 @@ function extractDefects(obs: any): Array<{ name: string; count: number }> {
     const result: Array<{ name: string; count: number }> = [];
 
     const push = (key: string, val: any) => {
-        const n = asN(typeof val === 'object' ? val?.count ?? val : val);
-        if (n > 0) result.push({ name: key.replace(/_/g, ' '), count: n });
+        const entry = toDefectEntry(key, typeof val === 'object' ? val?.count ?? val : val);
+        if (entry) result.push(entry);
     };
 
     // Produto Acabado: obs.defects é Record<string, number>
@@ -57,15 +58,15 @@ function extractDefects(obs: any): Array<{ name: string; count: number }> {
     // UV
     if (obs.verniz_uv?.aplicavel && obs.verniz_uv?.defeitos) {
         Object.entries(obs.verniz_uv.defeitos).forEach(([k, v]: [string, any]) => {
-            const n = asN(v?.count ?? v);
-            if (n > 0) result.push({ name: `UV: ${k.replace(/_/g, ' ')}`, count: n });
+            const entry = toDefectEntry(k, v?.count ?? v);
+            if (entry) result.push({ name: `UV: ${entry.name}`, count: entry.count });
         });
     }
     // Hot Stamping
     if (obs.hot_stamping?.aplicavel && obs.hot_stamping?.defeitos) {
         Object.entries(obs.hot_stamping.defeitos).forEach(([k, v]: [string, any]) => {
-            const n = asN(v?.count ?? v);
-            if (n > 0) result.push({ name: `HS: ${k.replace(/_/g, ' ')}`, count: n });
+            const entry = toDefectEntry(k, v?.count ?? v);
+            if (entry) result.push({ name: `HS: ${entry.name}`, count: entry.count });
         });
     }
 

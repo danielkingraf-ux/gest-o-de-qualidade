@@ -14,7 +14,9 @@ import {
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { reportService } from '../services/reportService';
+import { exportQualityReportXlsx } from '../services/excelExportService';
 import { ProcessType } from '../types';
+import { toDefectEntry } from '../utils/defects';
 
 type AreaFilter = 'ALL' | 'INITIAL' | 'FINAL';
 type PeriodPreset = '30' | '90' | '365' | 'ALL';
@@ -106,22 +108,16 @@ const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
 
   if (Array.isArray(raw)) {
     return raw
-      .map((item) => ({
-        name: String(item?.name || item?.label || 'Outros'),
-        count: asNumber(item?.count ?? item?.value ?? item?.qty),
-      }))
-      .filter((item) => item.count > 0);
+      .map((item) => toDefectEntry(String(item?.name || item?.label || 'Outros'), item?.count ?? item?.value ?? item?.qty))
+      .filter((item): item is { name: string; count: number } => item !== null);
   }
 
   if (typeof raw === 'object') {
     // Formato InspectionView: { por_folha: {...}, por_unidade: { key: { count: N, por_faca: {...} } } }
     if (raw.por_unidade && typeof raw.por_unidade === 'object') {
       return Object.entries(raw.por_unidade)
-        .map(([name, val]: [string, any]) => ({
-          name: name.replace(/_/g, ' '),
-          count: asNumber(typeof val === 'object' ? val?.count : val),
-        }))
-        .filter((item) => item.count > 0);
+        .map(([name, val]: [string, any]) => toDefectEntry(name, typeof val === 'object' ? val?.count : val))
+        .filter((item): item is { name: string; count: number } => item !== null);
     }
 
     // Formato FinishingView: { critical: {...}, major: {...}, minor: {...} }
@@ -130,17 +126,14 @@ const normalizeDefects = (raw: any): Array<{ name: string; count: number }> => {
     if (hasGroups) {
       return groups
         .flatMap((group) =>
-          Object.entries(raw[group] || {}).map(([name, count]) => ({
-            name: name.replace(/_/g, ' '),
-            count: asNumber(count),
-          }))
+          Object.entries(raw[group] || {}).map(([name, count]) => toDefectEntry(name, count))
         )
-        .filter((item) => item.count > 0);
+        .filter((item): item is { name: string; count: number } => item !== null);
     }
 
     return Object.entries(raw)
-      .map(([name, count]) => ({ name: name.replace(/_/g, ' '), count: asNumber(count) }))
-      .filter((item) => item.count > 0);
+      .map(([name, count]) => toDefectEntry(name, count))
+      .filter((item): item is { name: string; count: number } => item !== null);
   }
 
   return [];
@@ -488,8 +481,7 @@ const ReportsView = () => {
       updateLatest(row, ab.timestamp);
       const defTotal = ab.defects
         ? Object.entries(ab.defects)
-            .filter(([k]) => k !== 'qty_refugo')
-            .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0)
+            .reduce((s, [k, v]) => s + (toDefectEntry(k, v)?.count ?? 0), 0)
         : 0;
       if (ab.modulo === 'corte_vinco') {
         row.corteVinco.rodadas += ab.qty_revisadas;
@@ -527,9 +519,10 @@ const ReportsView = () => {
       if (minDate && new Date(ab.timestamp) < minDate) continue;
       if (!ab.defects) continue;
       for (const [k, v] of Object.entries(ab.defects)) {
-        if (k === 'qty_refugo' || typeof v !== 'number' || v <= 0) continue;
-        const label = `[${ab.modulo === 'corte_vinco' ? 'CV' : 'Col'}] ${k.replace(/_/g, ' ')}`;
-        map.set(label, (map.get(label) || 0) + v);
+        const entry = toDefectEntry(k, v);
+        if (!entry) continue;
+        const label = `[${ab.modulo === 'corte_vinco' ? 'CV' : 'Col'}] ${entry.name}`;
+        map.set(label, (map.get(label) || 0) + entry.count);
       }
     }
     return Array.from(map.entries())
@@ -556,6 +549,15 @@ const ReportsView = () => {
       showToast('Relatório gerado com sucesso', 'success');
     } catch (err: any) {
       showToast(`Erro ao gerar PDF: ${err.message}`, 'error');
+    }
+  };
+
+  const handleExportExcel = () => {
+    try {
+      exportQualityReportXlsx(pdfPayload());
+      showToast('Planilha Excel gerada com sucesso', 'success');
+    } catch (err: any) {
+      showToast(`Erro ao gerar Excel: ${err.message}`, 'error');
     }
   };
 
@@ -606,18 +608,25 @@ const ReportsView = () => {
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
+              onClick={handleExportExcel}
+              className="flex h-10 items-center justify-center gap-2 rounded-lg border-2 border-emerald-500 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-600 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+            >
+              <span className="material-symbols-outlined text-base">table_chart</span>
+              Excel
+            </button>
+            <button
               onClick={handleExport}
               className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-primary/90"
             >
               <span className="material-symbols-outlined text-base">download</span>
-              Exportar PDF
+              PDF
             </button>
             <button
               onClick={() => setIsEmailOpen(true)}
               className="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
             >
               <span className="material-symbols-outlined text-base">mail</span>
-              Enviar e-mail
+              E-mail
             </button>
           </div>
         </div>

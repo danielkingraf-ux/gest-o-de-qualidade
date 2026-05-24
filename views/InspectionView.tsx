@@ -5,6 +5,8 @@ import { InspectionStatus, ProcessType, Machine, Operator, Analyst, Order } from
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import DefectCounter from '../components/DefectCounter';
+import DefectPhotoUpload from '../components/DefectPhotoUpload';
+import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 import { escolhaRevisaoService } from '../services/escolhaRevisaoService';
 import type { OrigemProblemaEscolha } from '../types';
 
@@ -377,6 +379,7 @@ export default function InspectionView() {
   const [envioEscolhaRows, setEnvioEscolhaRows] = useState<EnvioEscolhaRow[]>([]);
   const [lastEscolhaOp, setLastEscolhaOp] = useState<string | null>(null);
   const [observacoesAnalista, setObservacoesAnalista] = useState('');
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
 
   // Post-save reimpressão
   const [savedInspectionId, setSavedInspectionId] = useState<string | null>(null);
@@ -603,6 +606,8 @@ export default function InspectionView() {
     setUnidadesPorFolha(1);
     setFolhasPorPilha(500);
     setObservacoesAnalista('');
+    pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+    setPendingPhotos([]);
     setSavedInspectionId(null);
     setShowReimpressaoForm(false);
     setReimpressaoMotivo('');
@@ -798,6 +803,22 @@ export default function InspectionView() {
 
       const { data: inserted, error } = await supabase.from('inspections').insert([dataToSave]).select('id').single();
       if (error) throw error;
+
+      // Upload de fotos de defeito (se houver)
+      if (pendingPhotos.length > 0) {
+        try {
+          await defectPhotoService.uploadMany({
+            inspectionId: inserted.id,
+            photos: pendingPhotos,
+            userId: profile?.user_id ?? undefined,
+          });
+          pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+          setPendingPhotos([]);
+        } catch (photoErr) {
+          console.error('Erro ao enviar fotos:', photoErr);
+          showToast('Registro salvo, mas houve erro ao enviar algumas fotos.', 'warning');
+        }
+      }
 
       const createdEscolhas: Array<{ rowKey: string; id: string }> = [];
       const skippedEscolhas: string[] = [];
@@ -1085,11 +1106,15 @@ export default function InspectionView() {
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Recebido da etapa anterior</p>
+              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">Etapa inicial</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Quantidade da OP</p>
               <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{fmt(quantidadeOpUnidades)}</p>
             </div>
             <div className="rounded-2xl bg-primary/5 p-4 dark:bg-primary/10">
-              <p className="text-[9px] font-black uppercase tracking-widest text-primary">Total rodado</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-primary">Rodado nesta etapa</p>
               <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{fmt(totalRodadoUnidades)}</p>
               {excedenteRodada > 0 && (
                 <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-sky-600">
@@ -1358,19 +1383,19 @@ export default function InspectionView() {
                   subtitle={`= ${fmt(folhasData.pilhas_verificadas * folhasPorPilha)} folhas`}
                 />
                 <MetricInput
-                  label="Aprovadas (saldo)" icon="check_circle" accent disabled
+                  label="Saldo bom p/ proxima" icon="check_circle" accent disabled
                   value={folhasData.unidades_aprovadas}
                   onChange={(v) => setFolhasData(prev => ({ ...prev, unidades_aprovadas: v }))}
                   subtitle={`Total rodado - escolha - reprovadas`}
                 />
                 <MetricInput
-                  label="P/ Escolha (unid.)" icon="filter_list"
+                  label="Em escolha" icon="filter_list"
                   value={folhasData.unidades_escolha}
                   onChange={(v) => setFolhasData(prev => ({ ...prev, unidades_escolha: v }))}
                   subtitle={`~ ${fmt(Math.ceil(folhasData.unidades_escolha / Math.max(1, unidadesPorFolha)))} folhas`}
                 />
                 <MetricInput
-                  label="Reprovadas (unid.)" icon="cancel"
+                  label="Refugo" icon="cancel"
                   value={folhasData.unidades_reprovadas}
                   onChange={(v) => setFolhasData(prev => ({ ...prev, unidades_reprovadas: v }))}
                   subtitle={`~ ${fmt(Math.ceil(folhasData.unidades_reprovadas / Math.max(1, unidadesPorFolha)))} folhas`}
@@ -1527,6 +1552,15 @@ export default function InspectionView() {
                 onChange={(e) => setObservacoesAnalista(e.target.value)}
                 placeholder="Notas sobre o lote, restrições ou ocorrências..."
                 className="mt-2 w-full h-20 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-primary/20 resize-none"
+              />
+            </div>
+
+            {/* Fotos de Defeito */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <DefectPhotoUpload
+                pendingPhotos={pendingPhotos}
+                onPendingChange={setPendingPhotos}
+                disabled={isSaving}
               />
             </div>
         </div>
