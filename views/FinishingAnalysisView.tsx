@@ -164,7 +164,8 @@ export default function FinishingAnalysisView() {
             const raw = localStorage.getItem(SESSION_KEY);
             if (!raw) return;
             const s = JSON.parse(raw);
-            if (s.selectedOrderId) { setSelectedOrderId(s.selectedOrderId); setOrderFilter(s.selectedOrderId); }
+            // NÃO restaurar orderFilter — evita filtro "fantasma" que esconde as OPs
+            if (s.selectedOrderId) setSelectedOrderId(s.selectedOrderId);
             if (s.selectedMachineId) setSelectedMachineId(s.selectedMachineId);
             if (Array.isArray(s.selectedOperatorIds) && s.selectedOperatorIds.length) setSelectedOperatorIds(s.selectedOperatorIds);
             if (Array.isArray(s.selectedAnalystIds) && s.selectedAnalystIds.length) setSelectedAnalystIds(s.selectedAnalystIds);
@@ -192,6 +193,7 @@ export default function FinishingAnalysisView() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
+            // Busca dados em paralelo — cada resultado tratado individualmente
             const [mRes, oRes, aRes, ordRes, nqaRes] = await Promise.all([
                 supabase.from('machines').select('*').eq('active', true).in('area', ['produto_acabado','ambos']).order('name'),
                 supabase.from('operators').select('*').eq('active', true).in('area', ['produto_acabado','ambos']).order('name'),
@@ -203,8 +205,27 @@ export default function FinishingAnalysisView() {
             if (oRes.data) setOperators(oRes.data);
             if (aRes.data) setAnalysts(aRes.data);
             if (nqaRes.data) setNqaProfiles(nqaRes.data);
-            if (ordRes.data) setOrders((ordRes.data as Order[]).map(o => ({ ...o, op: String(o.op || '').trim().toUpperCase() })));
-        } catch { showToast('Erro ao carregar dados', 'error'); }
+
+            // Carrega OPs — se a query principal falhar, tenta buscar apenas as colunas essenciais
+            if (ordRes.data && ordRes.data.length > 0) {
+                setOrders((ordRes.data as Order[]).map(o => ({ ...o, op: String(o.op || '').trim().toUpperCase() })));
+            } else if (ordRes.error) {
+                console.warn('[PA] Erro ao buscar orders com select(*), tentando fallback:', ordRes.error.message);
+                // Fallback: busca apenas colunas essenciais (como o Corte/Vinco faz)
+                const { data: fallback, error: fbErr } = await supabase
+                    .from('orders')
+                    .select('id, op, cliente, produto, qtd_total, status, unidades_por_folha, folhas_por_pilha, rodadas_realizadas, created_at, updated_at')
+                    .order('created_at', { ascending: false });
+                if (fallback && fallback.length > 0) {
+                    setOrders((fallback as Order[]).map(o => ({ ...o, op: String(o.op || '').trim().toUpperCase() })));
+                } else {
+                    showToast(`Erro ao carregar OPs: ${fbErr?.message || ordRes.error.message}`, 'error');
+                }
+            }
+        } catch (err) {
+            console.error('[PA] Erro na carga inicial:', err);
+            showToast('Erro ao carregar dados', 'error');
+        }
         finally { setIsLoading(false); }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -624,12 +645,26 @@ export default function FinishingAnalysisView() {
                             </div>
                         </div>
                         <div className="p-5 space-y-3">
-                            <input value={orderFilter} onChange={e => setOrderFilter(e.target.value)}
-                                className="w-full h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs"
-                                placeholder="Filtrar OP..." />
+                            <div className="relative">
+                                <input value={orderFilter} onChange={e => setOrderFilter(e.target.value)}
+                                    className="w-full h-9 px-3 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-xs"
+                                    placeholder="Filtrar OP..." />
+                                {orderFilter && (
+                                    <button type="button" onClick={() => setOrderFilter('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 size-5 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
+                                        <span className="material-symbols-outlined text-xs">close</span>
+                                    </button>
+                                )}
+                            </div>
+                            {orders.length === 0 && (
+                                <p className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded-xl px-3 py-2">
+                                    <span className="material-symbols-outlined text-sm align-middle mr-1">warning</span>
+                                    Nenhuma OP cadastrada encontrada. Verifique se existem OPs registradas no sistema.
+                                </p>
+                            )}
                             <select value={selectedOrderId} onChange={e => { setSelectedOrderId(e.target.value); }}
                                 className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm">
-                                <option value="">Selecionar OP...</option>
+                                <option value="">Selecionar OP... ({filteredOrders.length} disponíveis)</option>
                                 {filteredOrders.map(o => <option key={`${o.id}:${o.op}`} value={o.op}>{o.op}{o.qtd_total ? ` — ${fmt(Number(o.qtd_total))} un.` : ''}</option>)}
                             </select>
                             {rodadas.length > 0 && (
