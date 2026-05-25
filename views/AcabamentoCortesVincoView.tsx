@@ -319,7 +319,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [opInfo, setOpInfo] = useState<OrderInfo | null>(null);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
-  const [saldoInspecao, setSaldoInspecao] = useState<{ recebido: number; rodadas: number } | null>(null);
+  const [saldoInspecao, setSaldoInspecao] = useState<{ recebido: number; rodadas: number; boas: number; escolha: number } | null>(null);
   const [opHistory, setOpHistory] = useState<any[]>([]);
 
   // Carrega lista de OPs, operadores e máquinas de Corte e Vinco
@@ -362,7 +362,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
         }
       });
 
-    // Saldo líquido = em_escolha das inspeções − o que já foi registrado neste módulo
+    // Saldo líquido = aprovadas + em_escolha da impressão − o que já foi registrado neste módulo
+    // Escolhas da impressão também vão para o acabamento; a Revisão Final decide o que sai bom.
     Promise.all([
       supabase
         .from('inspections')
@@ -378,6 +379,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
         .order('timestamp', { ascending: true }),
     ]).then(([inspRes, cvRes]) => {
       let boasImpressao = 0;
+      let escolhaImpressao = 0;
       let rodadas = 0;
       for (const row of (inspRes.data ?? [])) {
         try {
@@ -385,16 +387,18 @@ const AcabamentoCortesVincoView: React.FC = () => {
           const obs = JSON.parse(row.observations);
           if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
             boasImpressao += Number(obs.saldo_unidades.aprovadas) || 0;
+            escolhaImpressao += Number(obs.saldo_unidades.em_escolha) || 0;
             rodadas += Number(obs.saldo_unidades.rodadas) || 0;
           }
         } catch { /* ignora registro malformado */ }
       }
+      const totalDisponivel = boasImpressao + escolhaImpressao;
       const jaProcessado = (cvRes.data ?? []).reduce(
         (s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0
       );
-      const liquido = Math.max(0, boasImpressao - jaProcessado);
-      if (boasImpressao > 0 || rodadas > 0) {
-        setSaldoInspecao({ recebido: liquido, rodadas });
+      const liquido = Math.max(0, totalDisponivel - jaProcessado);
+      if (totalDisponivel > 0 || rodadas > 0) {
+        setSaldoInspecao({ recebido: liquido, rodadas, boas: boasImpressao, escolha: escolhaImpressao });
         setQtyRevisadas(prev => prev === 0 ? liquido : prev);
       } else {
         setSaldoInspecao(null);
@@ -845,16 +849,22 @@ const AcabamentoCortesVincoView: React.FC = () => {
             <span className="material-symbols-outlined text-indigo-500 text-sm mt-0.5">assignment_turned_in</span>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                Recebido da etapa anterior
+                Recebido da impressão (aprovadas + escolhas)
               </p>
               <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
-                {fmt(saldoInspecao.recebido)} unidades boas da impressao disponiveis
+                {fmt(saldoInspecao.recebido)} unidades disponiveis
                 {saldoInspecao.rodadas > 0 && (
                   <span className="font-normal text-indigo-500">
                     {' '}de {fmt(saldoInspecao.rodadas)} rodadas
                   </span>
                 )}
               </p>
+              {saldoInspecao.escolha > 0 && (
+                <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">info</span>
+                  {fmt(saldoInspecao.boas)} aprovadas + {fmt(saldoInspecao.escolha)} em escolha — tudo segue para acabamento
+                </p>
+              )}
             </div>
           </div>
         )}

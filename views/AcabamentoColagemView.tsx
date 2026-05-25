@@ -128,9 +128,11 @@ const AcabamentoColagemView: React.FC = () => {
         setOpInfo((data as OrderInfo | null) ?? null);
       });
 
+    // Saldo recebido do Corte/Vinco: aprovadas + escolha (tudo que rodou)
+    // Tudo segue para colagem; a Revisão Final decide o que é bom.
     Promise.all([
       supabase.from('acabamento_registros')
-        .select('qty_aprovadas')
+        .select('qty_revisadas')
         .eq('op', opUpper)
         .eq('modulo', 'corte_vinco'),
       supabase.from('acabamento_registros')
@@ -139,12 +141,12 @@ const AcabamentoColagemView: React.FC = () => {
         .eq('modulo', 'colagem')
         .order('timestamp', { ascending: true }),
     ]).then(([cvRes, colRes]) => {
-      const totalAprovadosCv = (cvRes.data ?? [])
-        .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
+      const totalRodadoCv = (cvRes.data ?? [])
+        .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
       const jaProcessadoColagem = (colRes.data ?? [])
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
-      if (totalAprovadosCv > 0) {
-        const liquido = Math.max(0, totalAprovadosCv - jaProcessadoColagem);
+      if (totalRodadoCv > 0) {
+        const liquido = Math.max(0, totalRodadoCv - jaProcessadoColagem);
         setSaldoCorteVinco(liquido);
         setQtyRodadas(prev => prev === 0 ? liquido : prev);
       } else {
@@ -518,10 +520,10 @@ const AcabamentoColagemView: React.FC = () => {
             <span className="material-symbols-outlined text-indigo-500 text-sm mt-0.5">content_cut</span>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                Recebido da etapa anterior
+                Recebido do Corte/Vinco
               </p>
               <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
-                {fmt(saldoCorteVinco)} unidades boas do Corte e Vinco disponiveis
+                {fmt(saldoCorteVinco)} unidades do Corte e Vinco disponiveis para colagem
               </p>
             </div>
           </div>
