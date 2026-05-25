@@ -1,4 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+    Area,
+    AreaChart,
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Legend,
+    Line,
+    LineChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { toDefectEntry } from '../utils/defects';
@@ -711,27 +725,167 @@ export default function DashboardView() {
     const percentualPerda = summary.rodadas > 0 ? (perdasTotais / summary.rodadas) * 100 : 0;
     const topProcessosPerda = bySetor.filter((p) => p.total > 0).slice(0, 3);
     const principaisCausas = byDefeito.slice(0, 6);
-    const tendenciaMensal = Array.from({ length: 6 }, (_, i) => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - (5 - i), 1);
-        const label = d.toLocaleDateString('pt-BR', { month: 'short' });
-        const month = d.getMonth();
-        const year = d.getFullYear();
-        let perdas = 0;
+    // ── Chart data (12 semanas) ─────────────────────────────────────────────
+    const chartData = useMemo(() => {
+        const WEEKS = 12;
+        const now = new Date();
+        const weekBuckets = Array.from({ length: WEEKS }, (_, i) => {
+            const weekEnd = new Date(now);
+            weekEnd.setDate(now.getDate() - (WEEKS - 1 - i) * 7);
+            weekEnd.setHours(23, 59, 59, 999);
+            const weekStart = new Date(weekEnd);
+            weekStart.setDate(weekEnd.getDate() - 6);
+            weekStart.setHours(0, 0, 0, 0);
+            const label = `${String(weekStart.getDate()).padStart(2, '0')}/${String(weekStart.getMonth() + 1).padStart(2, '0')}`;
+            return { start: weekStart, end: weekEnd, label };
+        });
+
+        const inWeek = (dateStr: string, s: Date, e: Date) => {
+            const d = new Date(dateStr);
+            return d >= s && d <= e;
+        };
+
+        // 1. Perdas por setor (semanal)
+        const perdasPorSetor = weekBuckets.map((w) => {
+            let inicial = 0; let corte = 0; let acabado = 0; let revisao = 0;
+
+            inspections.forEach((r) => {
+                if (!inWeek(r.created_at, w.start, w.end)) return;
+                const obs = parseObs(r.observations);
+                if (obs.process_area === 'producao_inicial') {
+                    inicial += asN(obs.saldo_unidades?.em_escolha) + asN(obs.saldo_unidades?.reprovadas);
+                } else if (obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis === true) {
+                    acabado += asN(obs.producao?.qty_escolha) + asN(obs.producao?.qty_refugo);
+                }
+            });
+
+            acabamentos.forEach((r) => {
+                if (!inWeek(r.timestamp, w.start, w.end)) return;
+                if (r.modulo === 'corte_vinco') corte += asN(r.qty_reprovadas);
+                if (r.modulo === 'revisao_final') revisao += asN(r.qty_reprovadas);
+            });
+
+            return {
+                semana: w.label,
+                'Processo Inicial': inicial,
+                'Corte/Vinco': corte,
+                'Produto Acabado': acabado,
+                'Revisao Final': revisao,
+                total: inicial + corte + acabado + revisao,
+            };
+        });
+
+        // 2. Top 5 defeitos — evolucao semanal
+        // Primeiro, achar os top 5 defeitos globais
+        const globalDefects: Record<string, number> = {};
         inspections.forEach((r) => {
-            const dt = new Date(r.created_at);
-            if (dt.getMonth() !== month || dt.getFullYear() !== year) return;
             const obs = parseObs(r.observations);
-            perdas += asN(obs.saldo_unidades?.em_escolha) + asN(obs.saldo_unidades?.reprovadas) + asN(obs.producao?.qty_escolha) + asN(obs.producao?.qty_refugo);
+            if (obs.process_area === 'producao_inicial') {
+                const porUnidade = obs.defeitos?.por_unidade as Record<string, unknown> | undefined;
+                if (porUnidade) {
+                    for (const [k, v] of Object.entries(porUnidade)) {
+                        const c = typeof v === 'object' && v !== null ? asN((v as Record<string, unknown>).count) : asN(v);
+                        if (c > 0) { const e = toDefectEntry(k, c); if (e) globalDefects[e.name] = (globalDefects[e.name] ?? 0) + e.count; }
+                    }
+                }
+            }
+            if (obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis === true) {
+                const defects = obs.defects as Record<string, number> | undefined;
+                if (defects) for (const [k, v] of Object.entries(defects)) { if (asN(v) > 0) { const e = toDefectEntry(k, asN(v)); if (e) globalDefects[e.name] = (globalDefects[e.name] ?? 0) + e.count; } }
+            }
         });
         acabamentos.forEach((r) => {
-            const dt = new Date(r.timestamp);
-            if (dt.getMonth() !== month || dt.getFullYear() !== year) return;
-            perdas += asN(r.qty_reprovadas);
+            const defects = r.defects as Record<string, number> | null;
+            if (defects) for (const [k, v] of Object.entries(defects)) { if (asN(v) > 0) { const e = toDefectEntry(k, asN(v)); if (e) globalDefects[e.name] = (globalDefects[e.name] ?? 0) + e.count; } }
         });
-        return { label, perdas };
-    });
-    const maxTendencia = Math.max(1, ...tendenciaMensal.map((m) => m.perdas));
+        const top5Defects = Object.entries(globalDefects).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name]) => name);
+
+        const defeitosSemana = weekBuckets.map((w) => {
+            const counts: Record<string, number> = {};
+            top5Defects.forEach((d) => (counts[d] = 0));
+
+            inspections.forEach((r) => {
+                if (!inWeek(r.created_at, w.start, w.end)) return;
+                const obs = parseObs(r.observations);
+                const porUnidade = obs.defeitos?.por_unidade as Record<string, unknown> | undefined;
+                if (porUnidade) {
+                    for (const [k, v] of Object.entries(porUnidade)) {
+                        const c = typeof v === 'object' && v !== null ? asN((v as Record<string, unknown>).count) : asN(v);
+                        if (c > 0) { const e = toDefectEntry(k, c); if (e && counts[e.name] !== undefined) counts[e.name] += e.count; }
+                    }
+                }
+                const defects = obs.defects as Record<string, number> | undefined;
+                if (defects) for (const [k, v] of Object.entries(defects)) { if (asN(v) > 0) { const e = toDefectEntry(k, asN(v)); if (e && counts[e.name] !== undefined) counts[e.name] += e.count; } }
+            });
+
+            acabamentos.forEach((r) => {
+                if (!inWeek(r.timestamp, w.start, w.end)) return;
+                const defects = r.defects as Record<string, number> | null;
+                if (defects) for (const [k, v] of Object.entries(defects)) { if (asN(v) > 0) { const e = toDefectEntry(k, asN(v)); if (e && counts[e.name] !== undefined) counts[e.name] += e.count; } }
+            });
+
+            return { semana: w.label, ...counts };
+        });
+
+        // 3. Taxa de aprovacao semanal (%)
+        const taxaAprovacao = weekBuckets.map((w) => {
+            let totalRodadas = 0; let totalAprovadas = 0;
+
+            inspections.forEach((r) => {
+                if (!inWeek(r.created_at, w.start, w.end)) return;
+                const obs = parseObs(r.observations);
+                if (obs.process_area === 'producao_inicial') {
+                    totalRodadas += asN(obs.saldo_unidades?.rodadas);
+                    totalAprovadas += asN(obs.saldo_unidades?.aprovadas);
+                }
+            });
+
+            acabamentos.forEach((r) => {
+                if (!inWeek(r.timestamp, w.start, w.end)) return;
+                totalRodadas += asN(r.qty_revisadas);
+                totalAprovadas += asN(r.qty_aprovadas);
+            });
+
+            const taxa = totalRodadas > 0 ? (totalAprovadas / totalRodadas) * 100 : null;
+            return { semana: w.label, aprovacao: taxa !== null ? Number(taxa.toFixed(1)) : null, rodadas: totalRodadas };
+        });
+
+        // 4. Perdas por maquina (bar chart)
+        const machAcc: Record<string, { nome: string; escolha: number; reprovadas: number }> = {};
+        inspections.forEach((r) => {
+            if (!r.machine_id) return;
+            const obs = parseObs(r.observations);
+            let esc = 0; let rep = 0;
+            if (obs.process_area === 'producao_inicial') {
+                esc = asN(obs.saldo_unidades?.em_escolha);
+                rep = asN(obs.saldo_unidades?.reprovadas);
+            } else if (obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis === true) {
+                esc = asN(obs.producao?.qty_escolha);
+                rep = asN(obs.producao?.qty_refugo);
+            }
+            if (esc > 0 || rep > 0) {
+                if (!machAcc[r.machine_id]) machAcc[r.machine_id] = { nome: machineNames[r.machine_id] ?? r.machine_id, escolha: 0, reprovadas: 0 };
+                machAcc[r.machine_id].escolha += esc;
+                machAcc[r.machine_id].reprovadas += rep;
+            }
+        });
+        acabamentos.forEach((r) => {
+            if (!r.machine_id) return;
+            const rep = asN(r.qty_reprovadas);
+            if (rep > 0) {
+                if (!machAcc[r.machine_id]) machAcc[r.machine_id] = { nome: machineNames[r.machine_id] ?? r.machine_id, escolha: 0, reprovadas: 0 };
+                machAcc[r.machine_id].reprovadas += rep;
+            }
+        });
+        const maquinasChart = Object.values(machAcc)
+            .map((m) => ({ ...m, total: m.escolha + m.reprovadas }))
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 8);
+
+        return { perdasPorSetor, defeitosSemana, top5Defects, taxaAprovacao, maquinasChart };
+    }, [inspections, acabamentos, machineNames]);
+
+    const CHART_COLORS = ['#6366f1', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899'];
 
     if (!loading) {
         return (
@@ -774,10 +928,146 @@ export default function DashboardView() {
                     <StatCard label="Base rodada" value={fmt(summary.rodadas)} />
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                {/* ── Graficos de Tendencia ─────────────────────────────────── */}
+
+                {/* 1. Tendencia semanal de perdas por setor */}
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-base text-indigo-500">trending_down</span>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tendência de Perdas por Setor — Últimas 12 semanas</p>
+                        </div>
+                    </div>
+                    <div className="p-4" style={{ height: 320 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={chartData.perdasPorSetor} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="gInicial" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                    </linearGradient>
+                                    <linearGradient id="gCorte" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                                    </linearGradient>
+                                    <linearGradient id="gAcabado" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                    </linearGradient>
+                                    <linearGradient id="gRevisao" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="semana" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                <YAxis tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" width={45} />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
+                                    formatter={(value: number, name: string) => [fmt(value), name]}
+                                />
+                                <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 800 }} />
+                                <Area type="monotone" dataKey="Processo Inicial" stroke="#6366f1" fill="url(#gInicial)" strokeWidth={2} />
+                                <Area type="monotone" dataKey="Corte/Vinco" stroke="#f59e0b" fill="url(#gCorte)" strokeWidth={2} />
+                                <Area type="monotone" dataKey="Produto Acabado" stroke="#ef4444" fill="url(#gAcabado)" strokeWidth={2} />
+                                <Area type="monotone" dataKey="Revisao Final" stroke="#10b981" fill="url(#gRevisao)" strokeWidth={2} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    {/* 2. Evolucao dos top defeitos */}
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                         <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Top 3 processos com mais perda</p>
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-base text-rose-500">bug_report</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Evolução dos Top 5 Defeitos</p>
+                            </div>
+                        </div>
+                        <div className="p-4" style={{ height: 280 }}>
+                            {chartData.top5Defects.length === 0 ? (
+                                <div className="flex h-full items-center justify-center text-xs text-slate-400">Sem dados de defeitos</div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData.defeitosSemana} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                        <XAxis dataKey="semana" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                        <YAxis tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" width={40} />
+                                        <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }} />
+                                        <Legend iconType="circle" wrapperStyle={{ fontSize: 9, fontWeight: 800 }} />
+                                        {chartData.top5Defects.map((name, i) => (
+                                            <Line key={name} type="monotone" dataKey={name} stroke={CHART_COLORS[i]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                                        ))}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 3. Taxa de aprovacao semanal */}
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Taxa de Aprovação Semanal (%)</p>
+                            </div>
+                        </div>
+                        <div className="p-4" style={{ height: 280 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={chartData.taxaAprovacao} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="gAprov" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                    <XAxis dataKey="semana" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                    <YAxis domain={[0, 100]} tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" width={40} unit="%" />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
+                                        formatter={(value: number | null) => [value !== null ? `${value}%` : '—', 'Aprovação']}
+                                    />
+                                    <Area type="monotone" dataKey="aprovacao" stroke="#10b981" fill="url(#gAprov)" strokeWidth={2.5} dot={{ r: 3, fill: '#10b981' }} connectNulls name="Aprovação" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4. Maquinas + listas */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    {/* Perdas por maquina */}
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-base text-amber-500">precision_manufacturing</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Perdas por Máquina</p>
+                            </div>
+                        </div>
+                        <div className="p-4" style={{ height: 280 }}>
+                            {chartData.maquinasChart.length === 0 ? (
+                                <div className="flex h-full items-center justify-center text-xs text-slate-400">Sem dados de máquina</div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={chartData.maquinasChart} layout="vertical" margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                                        <XAxis type="number" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                        <YAxis type="category" dataKey="nome" width={90} tick={{ fontSize: 9, fontWeight: 700 }} stroke="#94a3b8" />
+                                        <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }} />
+                                        <Bar dataKey="escolha" stackId="a" fill="#f59e0b" name="Escolha" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="reprovadas" stackId="a" fill="#ef4444" name="Reprovadas" radius={[0, 4, 4, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Top processos com mais perda */}
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Top processos com mais perda</p>
                         </div>
                         <div className="divide-y divide-slate-50 dark:divide-slate-800">
                             {topProcessosPerda.length === 0 ? <p className="px-5 py-4 text-xs text-slate-400">Sem perdas no período</p> : topProcessosPerda.map((item, i) => (
@@ -790,22 +1080,7 @@ export default function DashboardView() {
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tendência mensal de perdas</p>
-                        </div>
-                        <div className="flex h-48 items-end gap-3 px-5 py-4">
-                            {tendenciaMensal.map((m) => (
-                                <div key={m.label} className="flex flex-1 flex-col items-center gap-2">
-                                    <div className="flex h-32 w-full items-end rounded bg-slate-100 dark:bg-slate-800">
-                                        <div className="w-full rounded bg-red-400" style={{ height: `${Math.max(4, (m.perdas / maxTendencia) * 100)}%` }} />
-                                    </div>
-                                    <span className="text-[10px] font-black uppercase text-slate-400">{m.label}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
+                    {/* Principais causas de perda */}
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                         <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Principais causas de perda</p>

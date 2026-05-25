@@ -288,7 +288,7 @@ export default function RecordsView() {
     setDetailPhotos([]);
     setLoadingPhotos(true);
     try {
-      const photos = await defectPhotoService.listByInspection(record.id);
+      const photos = await defectPhotoService.listByRecord(record.id, 'inspections');
       setDetailPhotos(photos);
     } catch {
       // Silencioso — fotos sao opcionais

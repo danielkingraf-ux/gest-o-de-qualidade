@@ -14,7 +14,7 @@ import {
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { reportService } from '../services/reportService';
-import { exportQualityReportXlsx } from '../services/excelExportService';
+// xlsx importado dinamicamente para reduzir bundle inicial
 import { ProcessType } from '../types';
 import { toDefectEntry } from '../utils/defects';
 
@@ -552,8 +552,9 @@ const ReportsView = () => {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
+      const { exportQualityReportXlsx } = await import('../services/excelExportService');
       exportQualityReportXlsx(pdfPayload());
       showToast('Planilha Excel gerada com sucesso', 'success');
     } catch (err: any) {

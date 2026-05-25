@@ -9,7 +9,8 @@ import {
   type ManagementMachineProblem,
   type ManagementReimpressao,
 } from '../services/reportService';
-import { exportManagementReportXlsx } from '../services/excelExportService';
+// Lazy import para reduzir bundle inicial
+// import { exportManagementReportXlsx } from '../services/excelExportService';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n);
@@ -39,6 +40,7 @@ export default function ManagementReportView() {
   const [machines, setMachines] = useState<any[]>([]);
   const [operators, setOperators] = useState<any[]>([]);
   const [reimpressoes, setReimpressoes] = useState<any[]>([]);
+  const [userProfiles, setUserProfiles] = useState<any[]>([]);
 
   // Periodo calculado
   const period = useMemo(() => {
@@ -69,7 +71,7 @@ export default function ManagementReportView() {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const [inspRes, ordRes, machRes, opRes, reimpRes] = await Promise.all([
+        const [inspRes, ordRes, machRes, opRes, reimpRes, profilesRes] = await Promise.all([
           supabase.from('inspections')
             .select('id, op, order_id, status, observations, machine_id, operator_id, created_at')
             .gte('created_at', period.start.toISOString())
@@ -83,6 +85,7 @@ export default function ManagementReportView() {
             .select('id, order_id, inspection_id, numero_rodada, quantidade_unid, motivo, solicitada_por, status, created_at')
             .gte('created_at', period.start.toISOString())
             .lte('created_at', period.end.toISOString()),
+          supabase.from('user_profiles').select('user_id, full_name'),
         ]);
 
         setInspections(inspRes.data || []);
@@ -90,6 +93,7 @@ export default function ManagementReportView() {
         setMachines(machRes.data || []);
         setOperators(opRes.data || []);
         setReimpressoes(reimpRes.data || []);
+        setUserProfiles(profilesRes.data || []);
       } catch (err: any) {
         showToast(`Erro ao carregar dados: ${err.message}`, 'error');
       } finally {
@@ -278,13 +282,14 @@ export default function ManagementReportView() {
       .sort((a, b) => b.ops - a.ops);
 
     // Reimpressoes
+    const profileMap = new Map<string, string>(userProfiles.map((p: any) => [p.user_id, p.full_name ?? '']));
     const reimpressoesData: ManagementReimpressao[] = reimpressoes.map((r: any) => {
       const order = orderMap.get(r.order_id) as any;
       return {
         op: order?.op || '—',
         rodada: r.numero_rodada || 1,
         motivo: r.motivo || '',
-        solicitante: '—', // Poderia resolver user_profiles se necessario
+        solicitante: (r.solicitada_por && profileMap.get(r.solicitada_por)) || '—',
         quantidade: r.quantidade_unid || 0,
       };
     });
@@ -327,7 +332,7 @@ export default function ManagementReportView() {
         aprovacaoSemRestricao: opsNoPeriodo.length > 0 ? ((opsAprovadas / opsNoPeriodo.length) * 100).toFixed(1) + '%' : '—',
       },
     };
-  }, [loading, inspections, orders, machines, operators, reimpressoes, periodLabel]);
+  }, [loading, inspections, orders, machines, operators, reimpressoes, userProfiles, periodLabel]);
 
   // Gerar PDF
   const handleGeneratePDF = useCallback(() => {
@@ -343,10 +348,11 @@ export default function ManagementReportView() {
     }
   }, [reportData, showToast]);
 
-  // Gerar Excel
-  const handleGenerateExcel = useCallback(() => {
+  // Gerar Excel (lazy import)
+  const handleGenerateExcel = useCallback(async () => {
     if (!reportData) return;
     try {
+      const { exportManagementReportXlsx } = await import('../services/excelExportService');
       exportManagementReportXlsx(reportData);
       showToast('Planilha Excel gerada com sucesso', 'success');
     } catch (err: any) {

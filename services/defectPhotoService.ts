@@ -1,8 +1,11 @@
 import { supabase } from './supabase';
 
+export type RecordTable = 'inspections' | 'acabamento_registros' | 'pallet_inspections';
+
 export interface DefectPhoto {
   id: string;
-  inspection_id: string;
+  record_id: string;
+  record_table: RecordTable;
   file_path: string;
   file_name: string;
   file_size: number | null;
@@ -24,10 +27,10 @@ export interface PendingPhoto {
 const BUCKET = 'defect-photos';
 const SIGNED_URL_EXPIRY = 3600; // 1 hora
 
-function buildFilePath(inspectionId: string, fileName: string): string {
+function buildFilePath(recordTable: RecordTable, recordId: string, fileName: string): string {
   const timestamp = Date.now();
   const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return `${inspectionId}/${timestamp}_${sanitized}`;
+  return `${recordTable}/${recordId}/${timestamp}_${sanitized}`;
 }
 
 export const defectPhotoService = {
@@ -35,13 +38,14 @@ export const defectPhotoService = {
    * Faz upload de uma foto e registra os metadados no banco.
    */
   async upload(params: {
-    inspectionId: string;
+    recordId: string;
+    recordTable: RecordTable;
     file: File;
     defectType?: string;
     caption?: string;
     userId?: string;
   }): Promise<DefectPhoto> {
-    const filePath = buildFilePath(params.inspectionId, params.file.name);
+    const filePath = buildFilePath(params.recordTable, params.recordId, params.file.name);
 
     // Upload do arquivo para o storage
     const { error: uploadError } = await supabase.storage
@@ -54,7 +58,8 @@ export const defectPhotoService = {
     const { data, error: insertError } = await supabase
       .from('defect_photos')
       .insert([{
-        inspection_id: params.inspectionId,
+        record_id: params.recordId,
+        record_table: params.recordTable,
         file_path: filePath,
         file_name: params.file.name,
         file_size: params.file.size,
@@ -75,10 +80,11 @@ export const defectPhotoService = {
   },
 
   /**
-   * Faz upload de multiplas fotos de uma vez (apos salvar a inspecao).
+   * Faz upload de multiplas fotos de uma vez (apos salvar o registro).
    */
   async uploadMany(params: {
-    inspectionId: string;
+    recordId: string;
+    recordTable: RecordTable;
     photos: PendingPhoto[];
     userId?: string;
   }): Promise<DefectPhoto[]> {
@@ -86,7 +92,8 @@ export const defectPhotoService = {
 
     for (const photo of params.photos) {
       const uploaded = await defectPhotoService.upload({
-        inspectionId: params.inspectionId,
+        recordId: params.recordId,
+        recordTable: params.recordTable,
         file: photo.file,
         defectType: photo.defectType || undefined,
         caption: photo.caption || undefined,
@@ -99,13 +106,14 @@ export const defectPhotoService = {
   },
 
   /**
-   * Lista fotos de uma inspecao com URLs assinadas temporarias.
+   * Lista fotos de um registro com URLs assinadas temporarias.
    */
-  async listByInspection(inspectionId: string): Promise<DefectPhoto[]> {
+  async listByRecord(recordId: string, recordTable: RecordTable): Promise<DefectPhoto[]> {
     const { data, error } = await supabase
       .from('defect_photos')
       .select('*')
-      .eq('inspection_id', inspectionId)
+      .eq('record_id', recordId)
+      .eq('record_table', recordTable)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -140,13 +148,14 @@ export const defectPhotoService = {
   },
 
   /**
-   * Conta fotos de uma inspecao (para badges/indicadores).
+   * Conta fotos de um registro (para badges/indicadores).
    */
-  async countByInspection(inspectionId: string): Promise<number> {
+  async countByRecord(recordId: string, recordTable: RecordTable): Promise<number> {
     const { count, error } = await supabase
       .from('defect_photos')
       .select('id', { count: 'exact', head: true })
-      .eq('inspection_id', inspectionId);
+      .eq('record_id', recordId)
+      .eq('record_table', recordTable);
 
     if (error) throw error;
     return count ?? 0;

@@ -808,7 +808,8 @@ export default function InspectionView() {
       if (pendingPhotos.length > 0) {
         try {
           await defectPhotoService.uploadMany({
-            inspectionId: inserted.id,
+            recordId: inserted.id,
+            recordTable: 'inspections',
             photos: pendingPhotos,
             userId: profile?.user_id ?? undefined,
           });

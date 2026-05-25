@@ -3,6 +3,8 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import OpTraceBanner from '../components/OpTraceBanner';
+import DefectPhotoUpload from '../components/DefectPhotoUpload';
+import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FacaCount = Record<number, number>;
@@ -306,6 +308,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [manualFacas, setManualFacas] = useState(0);
   const [opFound, setOpFound] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
 
   const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
   const [selectedMachineId, setSelectedMachineId]     = useState('');
@@ -448,6 +451,8 @@ const AcabamentoCortesVincoView: React.FC = () => {
     setOpFound(null);
     setOpInfo(null);
     setSaldoInspecao(null);
+    pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+    setPendingPhotos([]);
   };
 
   const handleSave = async () => {
@@ -517,7 +522,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
     }
 
     setSaving(true);
-    const { error } = await supabase.from('acabamento_registros').insert({
+    const { data: inserted, error } = await supabase.from('acabamento_registros').insert({
       op: op.trim().toUpperCase(),
       modulo: 'corte_vinco',
       auxiliar_user_id: user.id,
@@ -534,15 +539,33 @@ const AcabamentoCortesVincoView: React.FC = () => {
         `Turno: ${shift}`,
         notes.trim(),
       ].filter(Boolean).join('\n') || null,
-    });
-    setSaving(false);
+    }).select('id').single();
 
     if (error) {
+      setSaving(false);
       console.error('Erro ao salvar:', error);
       showToast(error.message || 'Erro ao salvar registro', 'error');
       return;
     }
 
+    // Upload de fotos de defeito (se houver)
+    if (inserted && pendingPhotos.length > 0) {
+      try {
+        await defectPhotoService.uploadMany({
+          recordId: inserted.id,
+          recordTable: 'acabamento_registros',
+          photos: pendingPhotos,
+          userId: user.id,
+        });
+        pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+        setPendingPhotos([]);
+      } catch (photoErr) {
+        console.error('Erro ao enviar fotos:', photoErr);
+        showToast('Registro salvo, mas houve erro ao enviar algumas fotos.', 'warning');
+      }
+    }
+
+    setSaving(false);
     showToast('Registro salvo com sucesso!', 'success');
     handleClear();
     loadRecent();
@@ -656,6 +679,15 @@ const AcabamentoCortesVincoView: React.FC = () => {
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Observacoes do processo..." className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800" />
             </div>
           </div>
+        </section>
+
+        {/* Fotos de Defeito */}
+        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <DefectPhotoUpload
+            pendingPhotos={pendingPhotos}
+            onPendingChange={setPendingPhotos}
+            disabled={saving}
+          />
         </section>
       </div>
 

@@ -3,6 +3,8 @@ import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import OpTraceBanner from '../components/OpTraceBanner';
+import DefectPhotoUpload from '../components/DefectPhotoUpload';
+import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SETORES_ORIGEM = [
@@ -370,6 +372,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const [statusFinal, setStatusFinal] = useState<StatusFinal>('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dataInicio, setDataInicio] = useState<string | null>(null);
   const [openSessions, setOpenSessions] = useState<DbRecord[]>([]);
@@ -564,6 +567,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     setOp(''); setProblemas([]); setResultado(mkResultado());
     setPeriodos([]); setStatusFinal(''); setNotes('');
     setEditingId(null); setDataInicio(null); setSaldoOp(null);
+    pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+    setPendingPhotos([]);
   };
 
   const restoreFromDefects = (def: Record<string, unknown>, record: DbRecord) => {
@@ -653,26 +658,41 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
     setSaving(true);
     let error;
+    let insertedId: string | null = editingId;
     if (editingId) {
       ({ error } = await supabase.from('acabamento_registros').update(row).eq('id', editingId));
     } else {
-      ({ error } = await supabase.from('acabamento_registros').insert(row));
+      const result = await supabase.from('acabamento_registros').insert(row).select('id').single();
+      error = result.error;
+      insertedId = result.data?.id ?? null;
     }
-    setSaving(false);
 
-    if (error) { showToast('Erro ao salvar registro', 'error'); return; }
+    if (error) { setSaving(false); showToast('Erro ao salvar registro', 'error'); return; }
+
+    // Upload de fotos de defeito (se houver)
+    if (insertedId && pendingPhotos.length > 0) {
+      try {
+        await defectPhotoService.uploadMany({
+          recordId: insertedId,
+          recordTable: 'acabamento_registros',
+          photos: pendingPhotos,
+          userId: user.id,
+        });
+        pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+        setPendingPhotos([]);
+      } catch (photoErr) {
+        console.error('Erro ao enviar fotos:', photoErr);
+        showToast('Registro salvo, mas houve erro ao enviar algumas fotos.', 'warning');
+      }
+    }
+
+    setSaving(false);
 
     if (status === 'em_andamento') {
       showToast('Sessão salva — continue quando quiser', 'success');
-      if (!editingId) {
-        const { data } = await supabase
-          .from('acabamento_registros')
-          .select('id, timestamp')
-          .eq('modulo', 'revisao_final')
-          .eq('op', opName)
-          .order('timestamp', { ascending: false })
-          .limit(1);
-        if (data?.[0]) { setEditingId(data[0].id); setDataInicio(data[0].timestamp); }
+      if (!editingId && insertedId) {
+        setEditingId(insertedId);
+        setDataInicio(new Date().toISOString());
       }
       loadRecent();
     } else {
@@ -1119,6 +1139,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
               })}
             </div>
           )}
+        </section>
+
+        {/* Fotos de Defeito */}
+        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <DefectPhotoUpload
+            pendingPhotos={pendingPhotos}
+            onPendingChange={setPendingPhotos}
+            disabled={saving}
+          />
         </section>
       </div>
 

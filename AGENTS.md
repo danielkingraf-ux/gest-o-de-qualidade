@@ -33,7 +33,7 @@ React 19 + TypeScript + Vite SPA. Backend is fully Supabase (Postgres, Auth, Rea
 2. **Flask** (`app.py`) — ODS/spreadsheet file parsing for historical data import. Entirely optional; the frontend degrades gracefully if it's offline.
 
 ### Role system
-Two roles: `analista` and `supervisor`. Roles are stored in `user_profiles.role`. The first user to sign up is automatically promoted to `supervisor`. All route guards and feature toggles derive from `useUser().isSupervisor`.
+Seven roles: `administrador`, `direcao`, `supervisao`, `analista_qualidade`, `revisao_escolha`, `expedicao`, `consulta_auditoria`. Roles are stored in `user_profiles.role`. Legacy values are normalized by `normalizeRole()` in `utils/permissions.ts` (e.g. `supervisor` → `supervisao`, `analista` → `analista_qualidade`). Route guards use `hasPermission()` and `protectedElement()` from the same file. The first user to sign up is automatically promoted to `administrador`.
 
 Provider tree: `ThemeProvider → ToastProvider → UserProvider → AppShell`. `UserProvider` requires an authenticated `userId` so it lives inside the session check in `App`.
 
@@ -73,10 +73,17 @@ The approval rule (percent vs quantity thresholds for RESTRICTED/REJECTED) is pe
 `components/ConfirmModal.tsx` — generic confirmation dialog used across views.
 
 ### PDF generation
-`services/reportService.ts` exports three methods:
+`services/reportService.ts` exports four methods:
 - `generateFinishingPDF` — finishing analysis laudo
 - `generateInspectionPDF` — initial process inspection report
 - `generateSummaryReportPDF` — aggregate report (can return a `Blob` for email attachment)
+- `generateManagementReportPDF` — executive management report with per-OP, operator, machine and KPI data
+
+### Excel export
+`services/excelExportService.ts` exports `exportManagementReportXlsx` and `exportQualityReportXlsx`. Both are lazily imported via dynamic `import()` to keep the initial bundle small.
+
+### Defect photos
+`services/defectPhotoService.ts` handles upload/listing/removal of defect photos. Photos are stored in the `defect-photos` Supabase Storage bucket. The `defect_photos` table uses a generic `record_id` + `record_table` pattern to support photos for `inspections`, `acabamento_registros`, and `pallet_inspections`.
 
 Color palette constants (`COLOR_PRIMARY`, `COLOR_ACCENT`, `COLOR_TEAL`, `COLOR_HEADER_BG`, `COLOR_INDIGO`) are defined at the top of the file.
 
