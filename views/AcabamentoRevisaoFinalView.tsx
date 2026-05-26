@@ -379,34 +379,44 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const [recentRecords, setRecentRecords] = useState<DbRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
 
+  type PalletReprovado = {
+    id: string;
+    pallet_number: number;
+    defects_critical: number;
+    defects_major: number;
+    defects_minor: number;
+    analyst_name: string | null;
+    completed_at: string | null;
+    observations: string | null;
+  };
+
   type SaldoConsolidado = {
     qtdSolicitada: number;
     // Impressão
     rodadasImpressao: number;
     escolhaImpressao: number;
-    refugoImpressao?: number;
+    refugoImpressao: number;
+    boaImpressao: number;
     // Corte e Vinco
     rodadasCorteVinco: number;
     escolhaCorteVinco: number;
-    refugoCorteVinco?: number;
-    aprovadoCorteVinco?: number;
+    refugoCorteVinco: number;
+    aprovadoCorteVinco: number;
     // Colagem
     rodadasColagem: number;
     escolhaColagem: number;
-    refugoColagem?: number;
-    aprovadoColagem?: number;
+    refugoColagem: number;
+    aprovadoColagem: number;
     // Produto Acabado
     rodadasProdutoAcabado: number;
     escolhaProdutoAcabado: number;
-    refugoProdutoAcabado?: number;
-    palletsReprovados?: number;
-    qtdPalletsReprovados?: number;
-    problemasAnaliseFinal?: number;
-    boaAntesRevisao?: number;
+    refugoProdutoAcabado: number;
+    // Pallets
+    palletsReprovados: PalletReprovado[];
+    totalPallets: number;
     // Total escolha para revisão
     totalEscolha: number;
-    totalRefugoAntesRevisao?: number;
-    origemRevisao?: Array<{ etapa: string; quantidade: number; detalhe: string }>;
+    totalRefugoAntes: number;
     operadoresNomes: string[];
     maquinasNomes: string[];
   };
@@ -444,21 +454,28 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     if (trimmed.length < 3) { setSaldoOp(null); return; }
 
     const timer = setTimeout(async () => {
-      const [orderRes, inspRes, cvRes, colRes] = await Promise.all([
+      const [orderRes, inspRes, cvRes, colRes, palletsRes] = await Promise.all([
         supabase.from('orders').select('qtd_total').eq('op', trimmed).maybeSingle(),
         supabase.from('inspections').select('observations, machine_id').eq('op', trimmed),
         supabase.from('acabamento_registros')
-          .select('qty_revisadas, qty_reprovadas, operator_ids, machine_id')
+          .select('qty_revisadas, qty_aprovadas, qty_reprovadas, operator_ids, machine_id')
           .eq('op', trimmed)
           .eq('modulo', 'corte_vinco'),
         supabase.from('acabamento_registros')
-          .select('qty_revisadas, qty_reprovadas, operator_ids, machine_id')
+          .select('qty_revisadas, qty_aprovadas, qty_reprovadas, operator_ids, machine_id')
           .eq('op', trimmed)
           .eq('modulo', 'colagem'),
+        // Pallets reprovados no Produto Acabado
+        supabase.from('pallet_inspections')
+          .select('id, pallet_number, defects_critical, defects_major, defects_minor, analyst_name, completed_at, observations')
+          .eq('op', trimmed)
+          .eq('result', 'REJECTED')
+          .is('archived_at', null)
+          .order('pallet_number'),
       ]);
 
-      let rodadasImpressao = 0, escolhaImpressao = 0;
-      let rodadasProdutoAcabado = 0, escolhaProdutoAcabado = 0;
+      let rodadasImpressao = 0, escolhaImpressao = 0, refugoImpressao = 0, boaImpressao = 0;
+      let rodadasProdutoAcabado = 0, escolhaProdutoAcabado = 0, refugoProdutoAcabado = 0;
       const opIds = new Set<string>();
       const machineIds = new Set<string>();
 
@@ -470,10 +487,13 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
           if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
             rodadasImpressao  += Number(obs.saldo_unidades.rodadas)    || 0;
             escolhaImpressao  += Number(obs.saldo_unidades.em_escolha) || 0;
+            refugoImpressao   += Number(obs.saldo_unidades.reprovadas) || 0;
+            boaImpressao      += Number(obs.saldo_unidades.aprovadas)  || 0;
           }
           if (obs.process_area === 'produto_acabado' && obs.producao) {
             rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
             escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
+            refugoProdutoAcabado  += Number(obs.producao.qty_refugo)    || 0;
           }
           if (Array.isArray(obs.all_operator_ids)) {
             (obs.all_operator_ids as string[]).forEach((id: string) => id && opIds.add(id));
@@ -486,8 +506,10 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
       const escolhaCorteVinco = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
+      const refugoCorteVinco = 0; // C/V não tem refugo separado, reprovadas = escolha
+      const aprovadoCorteVinco = (cvRes.data ?? [])
+        .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
 
-      // Coleta operadores e máquinas do Corte e Vinco
       for (const row of (cvRes.data ?? []) as Array<{ operator_ids: string[] | null; machine_id: string | null }>) {
         if (Array.isArray(row.operator_ids)) row.operator_ids.forEach((id: string) => id && opIds.add(id));
         if (row.machine_id) machineIds.add(row.machine_id);
@@ -497,14 +519,24 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
       const escolhaColagem = (colRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
+      const refugoColagem = 0;
+      const aprovadoColagem = (colRes.data ?? [])
+        .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
 
-      // Coleta operadores e máquinas da colagem
       for (const row of (colRes.data ?? []) as Array<{ operator_ids: string[] | null; machine_id: string | null }>) {
         if (Array.isArray(row.operator_ids)) row.operator_ids.forEach((id: string) => id && opIds.add(id));
         if (row.machine_id) machineIds.add(row.machine_id);
       }
 
       const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaColagem + escolhaProdutoAcabado;
+      const totalRefugoAntes = refugoImpressao + refugoCorteVinco + refugoColagem + refugoProdutoAcabado;
+
+      // Conta total de pallets da OP (todos os resultados)
+      const { count: totalPallets } = await supabase
+        .from('pallet_inspections')
+        .select('id', { count: 'exact', head: true })
+        .eq('op', trimmed)
+        .is('archived_at', null);
 
       // Busca nomes de máquinas e operadores
       const [maqRes, opRes] = await Promise.all([
@@ -522,18 +554,18 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       const qtdSolicitada = orderRes.data?.qtd_total ?? 0;
       setSaldoOp({
         qtdSolicitada,
-        rodadasImpressao, escolhaImpressao,
-        rodadasCorteVinco, escolhaCorteVinco,
-        rodadasColagem, escolhaColagem,
-        rodadasProdutoAcabado, escolhaProdutoAcabado,
+        rodadasImpressao, escolhaImpressao, refugoImpressao, boaImpressao,
+        rodadasCorteVinco, escolhaCorteVinco, refugoCorteVinco, aprovadoCorteVinco,
+        rodadasColagem, escolhaColagem, refugoColagem, aprovadoColagem,
+        rodadasProdutoAcabado, escolhaProdutoAcabado, refugoProdutoAcabado,
+        palletsReprovados: (palletsRes.data ?? []) as PalletReprovado[],
+        totalPallets: totalPallets ?? 0,
         totalEscolha,
+        totalRefugoAntes,
         operadoresNomes, maquinasNomes,
       });
 
-      // Pré-preenche qty_solicitada e qty_revisada
-      if (totalEscolha > 0) {
-        setResultado(prev => prev.qty_recuperada === '' ? { ...prev, qty_recuperada: String(totalEscolha) } : prev);
-      }
+      // NÃO pré-preenche qty_recuperada — o campo real é preenchido pelo revisor
     }, 600);
 
     return () => clearTimeout(timer);
@@ -542,17 +574,22 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const qtySolicitada = saldoOp?.qtdSolicitada ?? 0;
-  const qtyRodadaInicial = saldoOp?.rodadasImpressao ?? 0;
-  const qtyBoaAntesRevisao = saldoOp?.boaAntesRevisao ?? Math.max(0, (saldoOp?.rodadasColagem || saldoOp?.rodadasProdutoAcabado || saldoOp?.rodadasImpressao || 0) - (saldoOp?.totalEscolha || 0));
   const qtyEnviadaRevisao = saldoOp?.totalEscolha ?? 0;
-  const qtyRecuperada = toInt(resultado.qty_recuperada);
-  const qtyRefugadaFinal = toInt(resultado.qty_refugada);
-  const qtyFinalAprovada = qtyBoaAntesRevisao + qtyRecuperada;
-  const qtyBoa = qtyFinalAprovada;
-  const faltaFechar = Math.max(0, qtySolicitada - qtyFinalAprovada);
-  const sobraFinal = Math.max(0, qtyFinalAprovada - qtySolicitada);
-  const saldo = sobraFinal - faltaFechar;
-  const perdasTotais = (saldoOp?.totalRefugoAntesRevisao ?? 0) + qtyRefugadaFinal;
+  const numPalletsReprovados = saldoOp?.palletsReprovados?.length ?? 0;
+  // Campos REAIS preenchidos pelo revisor
+  const qtyRecuperada = toInt(resultado.qty_recuperada);  // saiu BOA da revisão
+  const qtyRefugadaFinal = toInt(resultado.qty_refugada);  // saiu REFUGO da revisão
+  // Refugo acumulado de todas as etapas antes da revisão
+  const totalRefugoAntes = saldoOp?.totalRefugoAntes ?? 0;
+  // Total de perdas = refugo das etapas + refugo da revisão
+  const perdasTotais = totalRefugoAntes + qtyRefugadaFinal;
+  // Aprovado final = o que já saiu bom das etapas + recuperado na revisão
+  // A quantidade "boa" antes da revisão é: o que o PA produziu - escolha - refugo do PA
+  const qtyBoaProdutoAcabado = Math.max(0, (saldoOp?.rodadasProdutoAcabado ?? 0) - (saldoOp?.escolhaProdutoAcabado ?? 0) - (saldoOp?.refugoProdutoAcabado ?? 0));
+  const qtyFinalAprovada = qtyBoaProdutoAcabado + qtyRecuperada;
+  // Fecha o pedido?
+  const saldo = qtyFinalAprovada - qtySolicitada;
+  const fechouPedido = saldo >= 0;
   const hasSaldoCalc = qtySolicitada > 0;
 
   const totalMinutos = periodos.reduce((s, p) => s + periodoMinutos(p), 0);
@@ -621,16 +658,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       // Resultado
       resultado: { ...resultado },
       qty_solicitada: qtySolicitada,
-      quantidade_rodada_inicial: qtyRodadaInicial,
-      quantidade_boa_antes_revisao: qtyBoaAntesRevisao,
       quantidade_enviada_revisao: qtyEnviadaRevisao,
       quantidade_recuperada_revisao: qtyRecuperada,
       quantidade_refugada_revisao: qtyRefugadaFinal,
+      quantidade_boa_produto_acabado: qtyBoaProdutoAcabado,
       quantidade_final_aprovada: qtyFinalAprovada,
-      falta_para_fechar_pedido: faltaFechar,
-      sobra_final: sobraFinal,
       perdas_totais: perdasTotais,
-      saldo: sobraFinal - faltaFechar,
+      saldo,
+      fechou_pedido: fechouPedido,
+      pallets_reprovados: numPalletsReprovados,
       consolidado_automatico: saldoOp,
       // Periodos
       periodos,
@@ -707,8 +743,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   const isEditing = !!editingId;
   const statusSugerido: StatusFinal = statusFinal || (
-    faltaFechar > 0 ? 'precisa_reimpressao' :
-    problemas.length > 0 || (saldoOp?.palletsReprovados ?? 0) > 0 ? 'aprovado_com_restricao' :
+    !fechouPedido && qtySolicitada > 0 ? 'precisa_reimpressao' :
+    problemas.length > 0 || numPalletsReprovados > 0 ? 'aprovado_com_restricao' :
     qtySolicitada > 0 ? 'fechou' : ''
   );
 
@@ -808,41 +844,54 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         {/* Rastreio da OP */}
         <OpTraceBanner op={op} moduloAtual="revisao_final" />
 
-        <section className="mb-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
-          <SectionTitle icon="inventory" title="Fechamento técnico da OP" subtitle="Pedido, produção inicial, perdas, recuperação e decisão final" />
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[
-              ['Pedido', fmt(qtySolicitada)],
-              ['Produzido inicial', fmt(qtyRodadaInicial)],
-              ['Perdas totais', fmt(perdasTotais)],
-              ['Recuperado na revisão', fmt(qtyRecuperada)],
-              ['Refugo final', fmt(qtyRefugadaFinal)],
-              ['Aprovado final', fmt(qtyFinalAprovada)],
-              ['Falta', fmt(faltaFechar)],
-              ['Sobra final', fmt(sobraFinal)],
-              ['Custo revisão', fmtMoney(custoRevisao)],
-              ['Status', STATUS_OPCOES.find(s => s.value === statusSugerido)?.label || '-'],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-teal-100 dark:border-teal-900/50 bg-white dark:bg-slate-900 p-3">
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                <p className="mt-1 text-lg font-black text-slate-800 dark:text-slate-100">{value}</p>
-              </div>
-            ))}
-          </div>
-          {faltaFechar > 0 && (
-            <div className="mt-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 p-3">
-              <p className="text-sm font-black text-rose-700 dark:text-rose-300">A revisão não resolveu a OP. Faltam {fmt(faltaFechar)} unidades para fechar o pedido; precisa reimpressão.</p>
+        {/* ── Pallets Reprovados para Revisão ──────────────────────────────── */}
+        {saldoOp && saldoOp.palletsReprovados.length > 0 && (
+          <section className="mb-4 rounded-2xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-rose-500 text-base">report</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-400">
+                Pallets Reprovados — precisam revisão
+              </span>
+              <span className="ml-auto text-xs font-black text-rose-600 dark:text-rose-300">
+                {saldoOp.palletsReprovados.length} de {saldoOp.totalPallets} pallets
+              </span>
             </div>
-          )}
-        </section>
+            <div className="rounded-xl overflow-hidden border border-rose-100 dark:border-rose-900/50">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-rose-100/60 dark:bg-rose-900/30 text-[9px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-400">
+                    <th className="px-3 py-2 text-left">Pallet</th>
+                    <th className="px-3 py-2 text-center">Críticos</th>
+                    <th className="px-3 py-2 text-center">Maiores</th>
+                    <th className="px-3 py-2 text-center">Menores</th>
+                    <th className="px-3 py-2 text-left">Analista</th>
+                    <th className="px-3 py-2 text-left">Data</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-rose-100 dark:divide-rose-900/30">
+                  {saldoOp.palletsReprovados.map(p => (
+                    <tr key={p.id} className="bg-white dark:bg-slate-900/50">
+                      <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200">#{p.pallet_number}</td>
+                      <td className="px-3 py-2 text-center font-bold text-rose-600">{p.defects_critical}</td>
+                      <td className="px-3 py-2 text-center font-bold text-amber-600">{p.defects_major}</td>
+                      <td className="px-3 py-2 text-center font-bold text-slate-500">{p.defects_minor}</td>
+                      <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{p.analyst_name ?? '—'}</td>
+                      <td className="px-3 py-2 text-slate-400">{p.completed_at ? new Date(p.completed_at).toLocaleDateString('pt-BR') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
-        {/* ── Saldo consolidado da OP ───────────────────────────────────────── */}
+        {/* ── Saldo consolidado da OP — o que veio para revisão ─────────────── */}
         {saldoOp && (saldoOp.rodadasImpressao > 0 || saldoOp.rodadasCorteVinco > 0 || saldoOp.rodadasColagem > 0 || saldoOp.rodadasProdutoAcabado > 0) && (
           <section className="mb-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="material-symbols-outlined text-teal-500 text-base">summarize</span>
               <span className="text-[10px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400">
-                Escolhas por Etapa — OP {op.trim().toUpperCase()}
+                Histórico por Etapa — OP {op.trim().toUpperCase()}
               </span>
               {saldoOp.qtdSolicitada > 0 && (
                 <span className="ml-auto text-[10px] font-black text-teal-600 dark:text-teal-300">
@@ -851,14 +900,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
               )}
             </div>
 
-            {/* Tabela por etapa */}
             <div className="rounded-xl overflow-hidden border border-teal-100 dark:border-teal-900/50 mb-3">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-teal-100/60 dark:bg-teal-900/30 text-[9px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400">
                     <th className="px-3 py-2 text-left">Etapa</th>
-                    <th className="px-3 py-2 text-right">Rodadas</th>
+                    <th className="px-3 py-2 text-right">Produzido</th>
+                    <th className="px-3 py-2 text-right text-emerald-600">Boas</th>
                     <th className="px-3 py-2 text-right text-amber-600">Escolha</th>
+                    <th className="px-3 py-2 text-right text-rose-600">Refugo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-teal-100 dark:divide-teal-900/30">
@@ -868,7 +918,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                         <span className="material-symbols-outlined text-sm text-indigo-400">print</span>Impressão
                       </td>
                       <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasImpressao)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(saldoOp.boaImpressao)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaImpressao)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoImpressao)}</td>
                     </tr>
                   )}
                   {saldoOp.rodadasCorteVinco > 0 && (
@@ -877,7 +929,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                         <span className="material-symbols-outlined text-sm text-indigo-400">content_cut</span>Corte e Vinco
                       </td>
                       <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasCorteVinco)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(saldoOp.aprovadoCorteVinco)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaCorteVinco)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoCorteVinco)}</td>
                     </tr>
                   )}
                   {saldoOp.rodadasColagem > 0 && (
@@ -886,7 +940,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                         <span className="material-symbols-outlined text-sm text-indigo-400">precision_manufacturing</span>Colagem
                       </td>
                       <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasColagem)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(saldoOp.aprovadoColagem)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaColagem)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoColagem)}</td>
                     </tr>
                   )}
                   {saldoOp.rodadasProdutoAcabado > 0 && (
@@ -895,49 +951,19 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                         <span className="material-symbols-outlined text-sm text-indigo-400">inventory_2</span>Produto Acabado
                       </td>
                       <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasProdutoAcabado)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(qtyBoaProdutoAcabado)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaProdutoAcabado)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoProdutoAcabado)}</td>
                     </tr>
                   )}
                   <tr className="bg-amber-50 dark:bg-amber-950/20 font-black">
-                    <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-amber-700 dark:text-amber-400">Total para revisão</td>
-                    <td className="px-3 py-2"></td>
+                    <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-amber-700 dark:text-amber-400" colSpan={3}>Total para revisão</td>
                     <td className="px-3 py-2 text-right text-lg text-amber-700 dark:text-amber-300">{fmt(saldoOp.totalEscolha)}</td>
+                    <td className="px-3 py-2 text-right text-sm text-rose-600">{fmt(saldoOp.totalRefugoAntes)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-
-            {/* Máquinas e operadores */}
-            {(saldoOp.maquinasNomes.length > 0 || saldoOp.operadoresNomes.length > 0) && (
-              <div className="pt-3 border-t border-teal-100 dark:border-teal-900/40 flex flex-col gap-2">
-                {saldoOp.maquinasNomes.length > 0 && (
-                  <div className="flex items-start gap-2">
-                    <span className="material-symbols-outlined text-teal-400 text-sm mt-0.5 shrink-0">precision_manufacturing</span>
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Máquinas</p>
-                      <div className="flex flex-wrap gap-1">
-                        {saldoOp.maquinasNomes.map(m => (
-                          <span key={m} className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 text-[10px] font-black">{m}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {saldoOp.operadoresNomes.length > 0 && (
-                  <div className="flex items-start gap-2">
-                    <span className="material-symbols-outlined text-teal-400 text-sm mt-0.5 shrink-0">group</span>
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Operadores</p>
-                      <div className="flex flex-wrap gap-1">
-                        {saldoOp.operadoresNomes.map(o => (
-                          <span key={o} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold">{o}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </section>
         )}
 
@@ -962,61 +988,108 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
           </button>
         </section>
 
-        {/* ── 3. Resultado Final ────────────────────────────────────────────── */}
+        {/* ── 3. Resultado da Revisão (campos REAIS) ─────────────────────── */}
         <section className="mb-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <SectionTitle icon="summarize" title="Resultado Final da Revisão" />
+          <SectionTitle icon="fact_check" title="Resultado da Revisão" subtitle="Preencha com o que realmente saiu da revisão" />
 
           <div className="grid grid-cols-2 gap-3 mb-4">
-            {([
-              { k: 'qty_recuperada', label: 'Qtd Recuperada na Revisão', color: 'emerald' },
-              { k: 'qty_refugada',   label: 'Qtd Refugada na Revisão',   color: 'rose' },
-            ] as const).map(({ k, label, color }) => (
-              <Field key={k} label={label}>
-                <input type="number" min="0" placeholder="0"
-                  value={resultado[k]}
-                  onChange={e => setResultadoField(k, e.target.value)}
-                  className={`w-full h-10 rounded-xl border text-center text-sm font-black outline-none focus:ring-2 focus:ring-${color}-500/20 ${
-                    color === 'emerald' ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300' :
-                    'border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-600'
-                  }`}
-                />
-              </Field>
+            <Field label="Quantidade BOA (recuperada na revisão)">
+              <input type="number" min="0" placeholder="Quantas peças saíram boas?"
+                value={resultado.qty_recuperada}
+                onChange={e => setResultadoField('qty_recuperada', e.target.value)}
+                className="w-full h-12 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 text-center text-lg font-black text-emerald-700 dark:text-emerald-300 outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
+            </Field>
+            <Field label="Quantidade REFUGO (descartada na revisão)">
+              <input type="number" min="0" placeholder="Quantas peças foram refugadas?"
+                value={resultado.qty_refugada}
+                onChange={e => setResultadoField('qty_refugada', e.target.value)}
+                className="w-full h-12 rounded-xl border-2 border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 text-center text-lg font-black text-rose-600 dark:text-rose-300 outline-none focus:ring-2 focus:ring-rose-500/20"
+              />
+            </Field>
+          </div>
+
+          {/* Info: o que veio para revisão */}
+          {qtyEnviadaRevisao > 0 && (
+            <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+              <span className="material-symbols-outlined text-amber-500 text-sm">info</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                Vieram {fmt(qtyEnviadaRevisao)} un. de escolha para revisão
+                {numPalletsReprovados > 0 && ` + ${numPalletsReprovados} pallet(s) reprovado(s)`}
+              </span>
+              {(qtyRecuperada + qtyRefugadaFinal > 0) && (qtyRecuperada + qtyRefugadaFinal) !== qtyEnviadaRevisao && (
+                <span className="ml-auto text-[10px] font-black text-amber-600">
+                  Revisado: {fmt(qtyRecuperada + qtyRefugadaFinal)} de {fmt(qtyEnviadaRevisao)}
+                </span>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ── 3b. Fechamento Final da OP ───────────────────────────────────── */}
+        <section className="mb-4 rounded-2xl border-2 border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/20 p-4">
+          <SectionTitle icon="inventory" title="Fechamento Final da OP" subtitle="Soma automática — a OP fecha o pedido?" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {[
+              { label: 'Pedido', value: fmt(qtySolicitada), color: 'slate' },
+              { label: 'Boa (Prod. Acabado)', value: fmt(qtyBoaProdutoAcabado), color: 'emerald' },
+              { label: 'Recuperada (Revisão)', value: fmt(qtyRecuperada), color: 'emerald' },
+              { label: 'Total aprovado', value: fmt(qtyFinalAprovada), color: 'indigo' },
+              { label: 'Refugo revisão', value: fmt(qtyRefugadaFinal), color: 'rose' },
+              { label: 'Refugo total (todas etapas)', value: fmt(perdasTotais), color: 'rose' },
+              { label: 'Custo revisão', value: fmtMoney(custoRevisao), color: 'slate' },
+              { label: 'Status', value: STATUS_OPCOES.find(s => s.value === statusSugerido)?.label || '—', color: 'slate' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className={`rounded-xl border p-3 ${
+                color === 'emerald' ? 'border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-slate-900' :
+                color === 'rose' ? 'border-rose-200 dark:border-rose-900/50 bg-white dark:bg-slate-900' :
+                color === 'indigo' ? 'border-indigo-200 dark:border-indigo-900/50 bg-indigo-50 dark:bg-indigo-950/20' :
+                'border-teal-100 dark:border-teal-900/50 bg-white dark:bg-slate-900'
+              }`}>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                <p className={`mt-1 text-lg font-black ${
+                  color === 'emerald' ? 'text-emerald-700 dark:text-emerald-300' :
+                  color === 'rose' ? 'text-rose-600 dark:text-rose-300' :
+                  color === 'indigo' ? 'text-indigo-700 dark:text-indigo-300' :
+                  'text-slate-800 dark:text-slate-100'
+                }`}>{value}</p>
+              </div>
             ))}
           </div>
 
-          {/* Saldo */}
+          {/* Resultado: fechou ou não */}
           {hasSaldoCalc && (
-            <div className={`rounded-xl p-3 border-2 ${
-              saldo >= 0
+            <div className={`rounded-xl p-4 border-2 ${
+              fechouPedido
                 ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/20'
                 : 'border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/20'
             }`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className={`material-symbols-outlined text-lg ${saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {saldo >= 0 ? 'check_circle' : 'cancel'}
+                  <span className={`material-symbols-outlined text-2xl ${fechouPedido ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {fechouPedido ? 'check_circle' : 'cancel'}
                   </span>
-                  <span className={`text-sm font-black ${saldo >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
-                    {saldo >= 0 ? 'Deu o pedido' : 'Faltou quantidade'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${saldo >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {saldo >= 0 ? `Sobrou ${fmt(saldo)} peças` : `Faltou ${fmt(Math.abs(saldo))} peças`}
-                  </span>
+                  <div>
+                    <span className={`text-sm font-black ${fechouPedido ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
+                      {fechouPedido ? 'DEU O PEDIDO' : 'NÃO FECHOU O PEDIDO'}
+                    </span>
+                    <p className={`text-[11px] mt-0.5 ${fechouPedido ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      Pedido: {fmt(qtySolicitada)} · Aprovado: {fmt(qtyFinalAprovada)}
+                      {saldo > 0 ? ` · Sobra: ${fmt(saldo)}` : saldo < 0 ? ` · Falta: ${fmt(Math.abs(saldo))}` : ''}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Alerta de reimpressão */}
-              {saldo < 0 && (
+              {!fechouPedido && (
                 <div className="mt-3 pt-3 border-t border-rose-200 dark:border-rose-800 flex items-start gap-3">
                   <span className="material-symbols-outlined text-rose-500 text-base mt-0.5 shrink-0">print</span>
                   <div>
                     <p className="text-xs font-black text-rose-700 dark:text-rose-300 uppercase tracking-wide">
-                      Reimprimir {fmt(Math.abs(saldo))} unidades
+                      Precisa reimprimir {fmt(Math.abs(saldo))} unidades
                     </p>
                     <p className="text-[11px] text-rose-500 dark:text-rose-400 mt-0.5">
-                      O pedido exige {fmt(qtySolicitada)} un. · foram entregues {fmt(qtyBoa)} un. · faltam {fmt(Math.abs(saldo))} un. para completar o lote.
+                      O pedido exige {fmt(qtySolicitada)} un. · aprovadas: {fmt(qtyFinalAprovada)} un. · faltam {fmt(Math.abs(saldo))} un.
                     </p>
                   </div>
                 </div>
