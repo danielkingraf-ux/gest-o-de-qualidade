@@ -14,6 +14,7 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n);
+const fmtMoney = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
 const pct = (v: number, total: number) => total > 0 ? ((v / total) * 100).toFixed(1) + '%' : '—';
 
 const parseObs = (observations: string | null): Record<string, any> => {
@@ -22,6 +23,34 @@ const parseObs = (observations: string | null): Record<string, any> => {
 };
 
 type PeriodPreset = '7' | '30' | '90' | 'custom';
+
+// Veredito final consolidado por OP (Revisão Final + fluxo completo)
+interface VereditoOp {
+  op: string;
+  cliente: string;
+  pedido: number;
+  aprovadoDireto: number;       // boas que passaram limpas (sem revisão)
+  recuperado: number;           // recuperado na revisão
+  refugadoRevisao: number;      // refugado na revisão
+  entregueFinal: number;        // aprovadoDireto + recuperado
+  saldo: number;                // entregueFinal − pedido
+  fechou: boolean | null;       // null = sem revisão ainda
+  statusFinal: string;
+  custoRevisao: number;
+  pessoas: number;
+  horas: number;
+  palletsReprovados: number;
+  temRevisao: boolean;
+}
+
+// Causador apontado (setor / operador / máquina) na Revisão Final
+interface Causador {
+  tipo: 'setor' | 'operador' | 'maquina';
+  nome: string;
+  ocorrencias: number;
+  qtdAfetada: number;
+  ops: Set<string>;
+}
 
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function ManagementReportView() {
@@ -41,6 +70,8 @@ export default function ManagementReportView() {
   const [operators, setOperators] = useState<any[]>([]);
   const [reimpressoes, setReimpressoes] = useState<any[]>([]);
   const [userProfiles, setUserProfiles] = useState<any[]>([]);
+  const [acabamentoRegs, setAcabamentoRegs] = useState<any[]>([]);
+  const [palletInsps, setPalletInsps] = useState<any[]>([]);
 
   // Periodo calculado
   const period = useMemo(() => {
@@ -88,12 +119,32 @@ export default function ManagementReportView() {
           supabase.from('user_profiles').select('user_id, full_name'),
         ]);
 
-        setInspections(inspRes.data || []);
+        const insps = inspRes.data || [];
+        setInspections(insps);
         setOrders(ordRes.data || []);
         setMachines(machRes.data || []);
         setOperators(opRes.data || []);
         setReimpressoes(reimpRes.data || []);
         setUserProfiles(profilesRes.data || []);
+
+        // Fase 2 — fluxo completo (acabamento + pallets) das OPs do período
+        const opsPeriodo = [...new Set(insps.map((i: any) => i.op).filter(Boolean))] as string[];
+        if (opsPeriodo.length > 0) {
+          const [acabRes, palletRes] = await Promise.all([
+            supabase.from('acabamento_registros')
+              .select('id, op, modulo, qty_revisadas, qty_aprovadas, qty_reprovadas, operator_ids, machine_id, defects, timestamp')
+              .in('op', opsPeriodo),
+            supabase.from('pallet_inspections')
+              .select('id, op, result, defects_critical, defects_major, defects_minor, units_per_box, boxes_per_pallet')
+              .in('op', opsPeriodo)
+              .is('archived_at', null),
+          ]);
+          setAcabamentoRegs(acabRes.data || []);
+          setPalletInsps(palletRes.data || []);
+        } else {
+          setAcabamentoRegs([]);
+          setPalletInsps([]);
+        }
       } catch (err: any) {
         showToast(`Erro ao carregar dados: ${err.message}`, 'error');
       } finally {
@@ -104,7 +155,7 @@ export default function ManagementReportView() {
   }, [period, showToast]);
 
   // ─── Processamento dos dados ──────────────────────────────────────────────
-  const reportData = useMemo((): ManagementReportData | null => {
+  const reportData = useMemo((): (ManagementReportData & { vereditos: VereditoOp[]; causadores: Causador[] }) | null => {
     if (loading || inspections.length === 0) return null;
 
     const orderMap = new Map(orders.map((o: any) => [o.id, o]));
@@ -134,18 +185,46 @@ export default function ManagementReportView() {
 
     const opDetailsMap = new Map<string, ManagementOpDetail>();
 
+    // Agrupa registros de acabamento e pallets por OP (fluxo completo)
+    const acabByOp = new Map<string, any[]>();
+    for (const r of acabamentoRegs) {
+      const arr = acabByOp.get(r.op) ?? [];
+      arr.push(r);
+      acabByOp.set(r.op, arr);
+    }
+    const palletsByOp = new Map<string, any[]>();
+    for (const p of palletInsps) {
+      const arr = palletsByOp.get(p.op) ?? [];
+      arr.push(p);
+      palletsByOp.set(p.op, arr);
+    }
+
+    const vereditos: VereditoOp[] = [];
+    // Causadores apontados na Revisão Final (setor / operador / máquina)
+    const causadorMap = new Map<string, Causador>();
+    const addCausador = (tipo: Causador['tipo'], nome: string, qtd: number, op: string) => {
+      const key = `${tipo}|${nome.toLowerCase()}`;
+      if (!causadorMap.has(key)) causadorMap.set(key, { tipo, nome, ocorrencias: 0, qtdAfetada: 0, ops: new Set() });
+      const c = causadorMap.get(key)!;
+      c.ocorrencias += 1;
+      c.qtdAfetada += qtd;
+      c.ops.add(op);
+    };
+
     for (const op of opsNoPeriodo) {
       const opInsps = enriched.filter(i => i.op === op);
       const order = opInsps[0]?.order;
       const pedido = Number(order?.qtd_total) || 0;
       totalPedidas += pedido;
 
-      // Agregar saldos da producao inicial
+      // Agregar saldos da producao inicial (impressão)
       let aprovadas = 0;
       let emEscolha = 0;
       let reprovadas = 0;
       let hasEscolha = false;
       let worstStatus = 'APPROVED';
+      // Produto Acabado (boas que chegaram ao final)
+      let boasPA = 0;
 
       for (const insp of opInsps) {
         const saldo = insp.obs.saldo_unidades;
@@ -154,6 +233,9 @@ export default function ManagementReportView() {
           emEscolha += Number(saldo.em_escolha) || 0;
           reprovadas += Number(saldo.reprovadas) || 0;
         }
+        if (insp.obs.process_area === 'produto_acabado' && insp.obs.producao) {
+          boasPA += Math.max(0, (Number(insp.obs.producao.qty_produzida) || 0) - (Number(insp.obs.producao.qty_escolha) || 0) - (Number(insp.obs.producao.qty_refugo) || 0));
+        }
         if (emEscolha > 0 || (insp.obs.envio_escolha && insp.obs.envio_escolha.length > 0)) {
           hasEscolha = true;
         }
@@ -161,26 +243,97 @@ export default function ManagementReportView() {
         else if (insp.status === 'RESTRICTED' && worstStatus !== 'REJECTED') worstStatus = 'RESTRICTED';
       }
 
-      const entregue = aprovadas;
-      const perda = Math.max(0, pedido - entregue);
-      totalEntregues += entregue;
+      // Etapas de acabamento (corte/vinco, colagem) + revisão final
+      const acabRecs = acabByOp.get(op) ?? [];
+      const cvAprov = acabRecs.filter(r => r.modulo === 'corte_vinco').reduce((s, r) => s + (Number(r.qty_aprovadas) || 0), 0);
+      const colAprov = acabRecs.filter(r => r.modulo === 'colagem').reduce((s, r) => s + (Number(r.qty_aprovadas) || 0), 0);
+      if (acabRecs.some(r => (r.modulo === 'corte_vinco' || r.modulo === 'colagem') && (Number(r.qty_reprovadas) || 0) > 0)) hasEscolha = true;
 
+      // Revisão Final: usa o veredito salvo (latest)
+      const revRec = acabRecs
+        .filter(r => r.modulo === 'revisao_final')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      const revDef = revRec?.defects ?? null;
+      const palletsReprovados = (palletsByOp.get(op) ?? []).filter(p => p.result === 'REJECTED').length;
+
+      let entregueFinal: number;
+      let aprovadoDireto: number;
+      let recuperado = 0, refugadoRevisao = 0, custoRevisao = 0, pessoas = 0, horas = 0;
+      let fechou: boolean | null = null;
+      let statusFinal = '';
+      const temRevisao = !!revDef && (revDef.tipo === 'revisao_final_v2' || revDef.quantidade_final_aprovada != null);
+
+      if (temRevisao) {
+        recuperado = Number(revDef.quantidade_recuperada_revisao) || 0;
+        refugadoRevisao = Number(revDef.quantidade_refugada_revisao) || 0;
+        aprovadoDireto = Number(revDef.quantidade_aprovado_direto ?? revDef.quantidade_boa_produto_acabado) || 0;
+        entregueFinal = Number(revDef.quantidade_final_aprovada);
+        if (!Number.isFinite(entregueFinal)) entregueFinal = aprovadoDireto + recuperado;
+        custoRevisao = Number(revDef.custo_revisao) || 0;
+        pessoas = Number(revDef.total_pessoas) || 0;
+        horas = Number(revDef.total_horas) || 0;
+        fechou = typeof revDef.fechou_pedido === 'boolean' ? revDef.fechou_pedido : entregueFinal >= pedido;
+        statusFinal = revDef.status_final || (fechou ? 'fechou' : 'nao_fechou');
+
+        // Causadores apontados na revisão
+        const problemas = Array.isArray(revDef.problemas) ? revDef.problemas : [];
+        for (const p of problemas) {
+          const qtd = Number(p.qty_afetada) || 0;
+          if (p.setor) addCausador('setor', String(p.setor), qtd, op);
+          const opNome = p.operador_nome || operatorMap.get(p.operador_id) || '';
+          if (opNome) addCausador('operador', opNome, qtd, op);
+          if (p.maquina_nome || p.maquina) addCausador('maquina', String(p.maquina_nome || p.maquina), qtd, op);
+        }
+      } else {
+        // Sem revisão ainda: usa as boas da etapa mais avançada concluída
+        aprovadoDireto = boasPA > 0 ? boasPA : colAprov > 0 ? colAprov : cvAprov > 0 ? cvAprov : aprovadas;
+        entregueFinal = aprovadoDireto;
+      }
+
+      const perda = Math.max(0, pedido - entregueFinal);
+      totalEntregues += entregueFinal;
       if (hasEscolha) opsComEscolha++;
-      if (worstStatus === 'APPROVED') opsAprovadas++;
-      if (worstStatus === 'REJECTED') opsReprovadas++;
 
-      const statusLabel = worstStatus === 'APPROVED' ? 'Aprovada' :
-        worstStatus === 'REJECTED' ? 'Reprovada' : 'Restricao';
+      // Status final: prioriza o veredito da revisão
+      let statusLabel: string;
+      if (temRevisao) {
+        statusLabel = fechou ? 'Aprovada' : 'Reprovada';
+      } else {
+        statusLabel = worstStatus === 'APPROVED' ? 'Aprovada' : worstStatus === 'REJECTED' ? 'Reprovada' : 'Restricao';
+      }
+      if (statusLabel === 'Aprovada') opsAprovadas++;
+      else if (statusLabel === 'Reprovada') opsReprovadas++;
 
       opDetailsMap.set(op, {
         op,
         cliente: order?.cliente || order?.produto || '—',
         pedido,
-        entregue,
+        entregue: entregueFinal,
         perda,
         status: statusLabel,
       });
+
+      vereditos.push({
+        op,
+        cliente: order?.cliente || order?.produto || '—',
+        pedido,
+        aprovadoDireto,
+        recuperado,
+        refugadoRevisao,
+        entregueFinal,
+        saldo: entregueFinal - pedido,
+        fechou,
+        statusFinal,
+        custoRevisao,
+        pessoas,
+        horas,
+        palletsReprovados,
+        temRevisao,
+      });
     }
+
+    const causadores: Causador[] = Array.from(causadorMap.values())
+      .sort((a, b) => b.qtdAfetada - a.qtdAfetada || b.ocorrencias - a.ocorrencias);
 
     const totalPerdidas = Math.max(0, totalPedidas - totalEntregues);
 
@@ -331,8 +484,10 @@ export default function ManagementReportView() {
         taxaReimpressao: opsNoPeriodo.length > 0 ? ((reimpressoes.length / opsNoPeriodo.length) * 100).toFixed(1) + '%' : '—',
         aprovacaoSemRestricao: opsNoPeriodo.length > 0 ? ((opsAprovadas / opsNoPeriodo.length) * 100).toFixed(1) + '%' : '—',
       },
+      vereditos,
+      causadores,
     };
-  }, [loading, inspections, orders, machines, operators, reimpressoes, userProfiles, periodLabel]);
+  }, [loading, inspections, orders, machines, operators, reimpressoes, userProfiles, acabamentoRegs, palletInsps, periodLabel]);
 
   // Gerar PDF
   const handleGeneratePDF = useCallback(() => {
@@ -463,7 +618,7 @@ export default function ManagementReportView() {
               <table className="w-full text-left text-[11px]">
                 <thead className="bg-slate-50 dark:bg-slate-800/50">
                   <tr>
-                    {['OP', 'Cliente', 'Pedido', 'Entregue', 'Perda', 'Status'].map(h => (
+                    {['OP', 'Cliente', 'Pedido', 'Entregue final', 'Perda', 'Status'].map(h => (
                       <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
                     ))}
                   </tr>
@@ -489,6 +644,92 @@ export default function ManagementReportView() {
               </table>
             </div>
           </div>
+
+          {/* 2b. Veredito Final por OP (Revisão Final) */}
+          {reportData.vereditos.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-primary/30 p-5 shadow-sm">
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Veredito Final por OP</h2>
+              <p className="text-[10px] text-slate-400 mb-4 font-medium">Resultado real após a Revisão Final — deu o pedido / faltou, esforço e custo da revisão</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50">
+                    <tr>
+                      {['OP', 'Pedido', 'Aprov. direto', 'Recuperado', 'Entregue final', 'Resultado', 'Pessoas', 'Horas', 'Custo rev.', 'Status'].map(h => (
+                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                    {[...reportData.vereditos]
+                      .sort((a, b) => {
+                        const rank = (v: VereditoOp) => v.temRevisao ? (v.fechou ? 2 : 0) : 1;
+                        return rank(a) - rank(b) || a.saldo - b.saldo;
+                      })
+                      .map(v => (
+                        <tr key={v.op} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 ${v.temRevisao && v.fechou === false ? 'bg-rose-50/50 dark:bg-rose-950/10' : ''}`}>
+                          <td className="p-2.5 font-black text-slate-800 dark:text-slate-200">{v.op}</td>
+                          <td className="p-2.5 text-right font-bold">{fmt(v.pedido)}</td>
+                          <td className="p-2.5 text-right text-slate-600 dark:text-slate-400">{fmt(v.aprovadoDireto)}</td>
+                          <td className="p-2.5 text-right text-emerald-600">{v.recuperado > 0 ? fmt(v.recuperado) : '—'}</td>
+                          <td className="p-2.5 text-right font-black text-slate-800 dark:text-white">{fmt(v.entregueFinal)}</td>
+                          <td className={`p-2.5 text-right font-black ${v.saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {!v.temRevisao ? '—' : v.saldo >= 0 ? `sobra ${fmt(v.saldo)}` : `falta ${fmt(Math.abs(v.saldo))}`}
+                          </td>
+                          <td className="p-2.5 text-center text-slate-600 dark:text-slate-400">{v.pessoas || '—'}</td>
+                          <td className="p-2.5 text-center text-slate-600 dark:text-slate-400">{v.horas ? v.horas.toFixed(1) : '—'}</td>
+                          <td className="p-2.5 text-right text-slate-600 dark:text-slate-400">{v.custoRevisao > 0 ? fmtMoney(v.custoRevisao) : '—'}</td>
+                          <td className="p-2.5">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase whitespace-nowrap ${
+                              !v.temRevisao ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' :
+                              v.fechou ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                              'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
+                            }`}>
+                              {!v.temRevisao ? 'Em produção' : v.fechou ? 'Deu o pedido' : 'Não fechou'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 2c. Causadores apontados na Revisão Final */}
+          {reportData.causadores.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Causadores Apontados na Revisão</h2>
+              <p className="text-[10px] text-slate-400 mb-4 font-medium">Setores, máquinas e operadores indicados como origem dos problemas — base para ação da direção</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50">
+                    <tr>
+                      {['Origem', 'Tipo', 'Ocorrências', 'Qtd. afetada', 'OPs'].map(h => (
+                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                    {reportData.causadores.map((c, i) => (
+                      <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                        <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200 capitalize">{c.nome}</td>
+                        <td className="p-2.5">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                            c.tipo === 'setor' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' :
+                            c.tipo === 'maquina' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' :
+                            'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                          }`}>{c.tipo}</span>
+                        </td>
+                        <td className="p-2.5 text-center font-bold">{c.ocorrencias}</td>
+                        <td className="p-2.5 text-right font-black text-rose-600">{c.qtdAfetada > 0 ? fmt(c.qtdAfetada) : '—'}</td>
+                        <td className="p-2.5 text-center text-slate-500">{c.ops.size}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* 3. Operadores */}
           {reportData.operatorProblems.length > 0 && (

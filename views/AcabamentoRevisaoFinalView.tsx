@@ -50,6 +50,7 @@ type Problema = {
   id: string;
   setor: string;
   operador_id: string;
+  maquina_id: string;
   problema: string;
   qty_afetada: string;
   observacao: string;
@@ -102,7 +103,7 @@ function localNow(): string {
 const today = () => new Date().toISOString().slice(0, 10);
 const currentTime = () => new Date().toTimeString().slice(0, 5);
 
-const mkProblema = (): Problema => ({ id: newId(), setor: '', operador_id: '', problema: '', qty_afetada: '', observacao: '' });
+const mkProblema = (): Problema => ({ id: newId(), setor: '', operador_id: '', maquina_id: '', problema: '', qty_afetada: '', observacao: '' });
 const mkPeriodo = (): Periodo => ({ id: newId(), data: today(), hora_inicio: currentTime(), hora_fim: currentTime(), qty_pessoas: 1, revisores: '', setor: '', valor_hora: '', observacao: '' });
 const mkResultado = (): Resultado => ({ qty_solicitada: '', qty_revisada: '', qty_boa: '', qty_recuperada: '', qty_refugada: '' });
 
@@ -157,10 +158,11 @@ const inputCls = 'w-full h-9 rounded-lg border border-slate-200 dark:border-slat
 const ProblemaCard: React.FC<{
   problema: Problema;
   operadores: Operador[];
+  maquinas: { id: string; name: string }[];
   index: number;
   onChange: (p: Problema) => void;
   onRemove: () => void;
-}> = ({ problema, operadores, index, onChange, onRemove }) => {
+}> = ({ problema, operadores, maquinas, index, onChange, onRemove }) => {
   const set = <K extends keyof Problema>(k: K, v: Problema[K]) => onChange({ ...problema, [k]: v });
 
   return (
@@ -190,7 +192,7 @@ const ProblemaCard: React.FC<{
         </div>
       </Field>
 
-      {/* Operador + Qtd afetada */}
+      {/* Operador + Máquina */}
       <div className="grid grid-cols-2 gap-2 mb-2">
         <Field label="Operador Responsável">
           <select value={problema.operador_id} onChange={e => set('operador_id', e.target.value)}
@@ -199,13 +201,22 @@ const ProblemaCard: React.FC<{
             {operadores.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </Field>
-        <Field label="Qtd Afetada">
-          <input type="number" min="0" placeholder="opcional"
-            value={problema.qty_afetada}
-            onChange={e => set('qty_afetada', e.target.value)}
-            className={inputCls} />
+        <Field label="Máquina">
+          <select value={problema.maquina_id} onChange={e => set('maquina_id', e.target.value)}
+            className={inputCls}>
+            <option value="">— sem máquina —</option>
+            {maquinas.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
         </Field>
       </div>
+
+      {/* Qtd afetada */}
+      <Field label="Qtd Afetada" className="mb-2">
+        <input type="number" min="0" placeholder="opcional"
+          value={problema.qty_afetada}
+          onChange={e => set('qty_afetada', e.target.value)}
+          className={inputCls} />
+      </Field>
 
       {/* Problema encontrado */}
       <Field label="Problema Encontrado" className="mb-2">
@@ -366,6 +377,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const [op, setOp] = useState('');
   const [opList, setOpList] = useState<string[]>([]);
   const [operadores, setOperadores] = useState<Operador[]>([]);
+  const [maquinas, setMaquinas] = useState<{ id: string; name: string }[]>([]);
   const [problemas, setProblemas] = useState<Problema[]>([]);
   const [resultado, setResultado] = useState<Resultado>(mkResultado());
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
@@ -432,6 +444,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     });
     supabase.from('operators').select('id, name').order('name').then(({ data }) => {
       if (data) setOperadores(data as Operador[]);
+    });
+    supabase.from('machines').select('id, name').order('name').then(({ data }) => {
+      if (data) setMaquinas(data as { id: string; name: string }[]);
     });
   }, []);
 
@@ -677,6 +692,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       problemas: problemas.map(p => ({
         ...p,
         operador_nome: operadores.find(o => o.id === p.operador_id)?.name ?? '',
+        maquina_nome: maquinas.find(m => m.id === p.maquina_id)?.name ?? '',
       })),
       setores_envolvidos: setoresEnvolvidos,
       operadores_envolvidos: operadoresEnvolvidos,
@@ -1001,7 +1017,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
           <div className="flex flex-col gap-3">
             {problemas.map((p, i) => (
-              <ProblemaCard key={p.id} problema={p} operadores={operadores} index={i}
+              <ProblemaCard key={p.id} problema={p} operadores={operadores} maquinas={maquinas} index={i}
                 onChange={updated => setProblemas(prev => prev.map(x => x.id === updated.id ? updated : x))}
                 onRemove={() => setProblemas(prev => prev.filter(x => x.id !== p.id))} />
             ))}
