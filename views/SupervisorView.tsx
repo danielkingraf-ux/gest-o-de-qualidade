@@ -6,6 +6,16 @@ import { useUser } from '../contexts/UserContext';
 import { auditService } from '../services/auditService';
 import { InspectionStatus, Order, ProcessType } from '../types';
 
+type EditRequestPendente = {
+  id: string;
+  inspection_id: string;
+  op: string;
+  requested_by: string;
+  requester_name: string;
+  reason: string;
+  created_at: string;
+};
+
 type ReimpressaoPendente = {
   id: string;
   order_id: string;
@@ -177,16 +187,21 @@ export default function SupervisorView() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [opFilter, setOpFilter] = useState('');
   const [pendingReimps, setPendingReimps] = useState<ReimpressaoPendente[]>([]);
+  const [pendingEdits, setPendingEdits] = useState<EditRequestPendente[]>([]);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [inspectionsRes, ordersRes, reimpsRes, profilesRes] = await Promise.all([
+      const [inspectionsRes, ordersRes, reimpsRes, profilesRes, editReqRes] = await Promise.all([
         supabase.from('inspections').select('*').order('created_at', { ascending: false }),
         supabase.from('orders').select('*'),
         supabase.from('op_reimpressoes').select('*, orders(op, cliente, produto), machines(name), operators(name)').eq('status', 'pendente').order('created_at', { ascending: true }),
         supabase.from('user_profiles').select('user_id, name'),
+        supabase.from('edit_requests')
+          .select('id, inspection_id, requested_by, reason, created_at, inspections(op)')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true }),
       ]);
 
       if (inspectionsRes.error) throw inspectionsRes.error;
@@ -208,6 +223,17 @@ export default function SupervisorView() {
         requester_name: profileMap.get(r.solicitada_por) ?? 'Analista',
         machine_name: r.machines?.name ?? null,
         operator_name: r.operators?.name ?? null,
+        created_at: r.created_at,
+      })));
+
+      // Edit requests pendentes
+      setPendingEdits(((editReqRes.data as any[]) || []).map((r: any) => ({
+        id: r.id,
+        inspection_id: r.inspection_id,
+        op: (Array.isArray(r.inspections) ? r.inspections[0]?.op : r.inspections?.op) ?? '—',
+        requested_by: r.requested_by,
+        requester_name: profileMap.get(r.requested_by) ?? 'Analista',
+        reason: r.reason,
         created_at: r.created_at,
       })));
 
@@ -302,6 +328,40 @@ export default function SupervisorView() {
       setPendingReimps((prev) => prev.filter((r) => r.id !== reimp.id));
     } catch {
       showToast('Erro ao recusar reimpressão', 'error');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleAprovarEdicao = async (req: EditRequestPendente) => {
+    setLoadingAction(req.id);
+    try {
+      const { error } = await supabase
+        .from('edit_requests')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+        .eq('id', req.id);
+      if (error) throw error;
+      showToast(`Edição da OP ${req.op} aprovada`, 'success');
+      setPendingEdits((prev) => prev.filter((r) => r.id !== req.id));
+    } catch {
+      showToast('Erro ao aprovar edição', 'error');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRecusarEdicao = async (req: EditRequestPendente) => {
+    setLoadingAction(req.id);
+    try {
+      const { error } = await supabase
+        .from('edit_requests')
+        .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+        .eq('id', req.id);
+      if (error) throw error;
+      showToast(`Edição da OP ${req.op} recusada`, 'success');
+      setPendingEdits((prev) => prev.filter((r) => r.id !== req.id));
+    } catch {
+      showToast('Erro ao recusar edição', 'error');
     } finally {
       setLoadingAction(null);
     }
@@ -491,6 +551,73 @@ export default function SupervisorView() {
         )}
       </div>
 
+      {/* ── Solicitações de Edição Pendentes ─────────────────────────── */}
+      <div className="rounded-lg border border-blue-300 bg-blue-50 p-5 shadow-sm dark:border-blue-800 dark:bg-blue-950/20">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-blue-600">rate_review</span>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Aguardando aprovação</p>
+            <h2 className="text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white">
+              Solicitações de Edição
+              {pendingEdits.length > 0 && (
+                <span className="ml-2 inline-flex size-6 items-center justify-center rounded-full bg-blue-500 text-xs font-black text-white">
+                  {pendingEdits.length}
+                </span>
+              )}
+            </h2>
+          </div>
+        </div>
+
+        {pendingEdits.length === 0 ? (
+          <p className="py-4 text-center text-xs font-black uppercase tracking-widest text-slate-400">
+            Nenhuma solicitação de edição pendente
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {pendingEdits.map((req) => (
+              <div key={req.id} className="rounded-lg border border-blue-200 bg-white p-4 dark:border-blue-800 dark:bg-slate-900">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-black text-slate-900 dark:text-white">OP {req.op}</span>
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                        Edição
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Solicitado por <span className="font-black">{req.requester_name}</span> · {new Date(req.created_at).toLocaleString('pt-BR')}
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <span className="font-black">Motivo:</span> {req.reason}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 sm:flex-col">
+                    <button
+                      onClick={() => handleAprovarEdicao(req)}
+                      disabled={loadingAction === req.id}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
+                    >
+                      {loadingAction === req.id
+                        ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                        : <span className="material-symbols-outlined text-sm">check_circle</span>}
+                      Aprovar
+                    </button>
+                    <button
+                      onClick={() => handleRecusarEdicao(req)}
+                      disabled={loadingAction === req.id}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-700 dark:bg-slate-900 sm:flex-none"
+                    >
+                      <span className="material-symbols-outlined text-sm">cancel</span>
+                      Recusar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -642,10 +769,16 @@ export default function SupervisorView() {
                       <p className="text-xs text-slate-400">—</p>
                     </td>
                     <td className="py-3">
-                      <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${STATUS_META[op.status].color}`}>
-                        <span className={`size-2 rounded-full ${STATUS_META[op.status].dot}`} />
-                        {STATUS_META[op.status].label}
-                      </span>
+                      {STATUS_META[op.status] ? (
+                        <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${STATUS_META[op.status].color}`}>
+                          <span className={`size-2 rounded-full ${STATUS_META[op.status].dot}`} />
+                          {STATUS_META[op.status].label}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest border-slate-200 text-slate-500">
+                          {op.status}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 text-right">{formatNumber(op.inspections)}</td>
                     <td className="py-3 text-right">{formatNumber(op.initial)}</td>
