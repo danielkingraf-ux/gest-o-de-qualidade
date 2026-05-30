@@ -233,9 +233,12 @@ export default function OPTraceView() {
         // Build machine names from inspections machines joins
         (inspRes.data || []).forEach((r: any) => { if (r.machine_id && r.machines?.name) machNames[r.machine_id] = r.machines.name; });
 
-        const etapasAcab: AcabRecord[] = (acabRes.data || []).map((r: any) => {
+        const etapasAcab: AcabRecord[] = ((acabRes.data || []).map((r: any) => {
             const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
             const isRevisao = r.modulo === 'revisao_final';
+
+            // Ignorar sessões em andamento da revisão final (duplicariam os totais)
+            if (isRevisao && def.session_status === 'em_andamento') return null;
             const operadorIds: string[] = Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [];
 
             // Defects map
@@ -270,7 +273,7 @@ export default function OPTraceView() {
                 statusFinal: isRevisao ? String(def.status_final || '') : '',
                 fechouPedido: isRevisao ? (typeof def.fechou_pedido === 'boolean' ? def.fechou_pedido : null) : null,
             };
-        });
+        }) as (AcabRecord | null)[]).filter((r): r is AcabRecord => r !== null);
 
         const allRecs = [...inspections, ...(acabRes.data || [])];
         if (!order && allRecs.length === 0 && (palRes.data || []).length === 0) {

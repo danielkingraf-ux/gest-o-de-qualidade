@@ -158,8 +158,11 @@ export default function QualityPanelView() {
 
             // Normaliza registros de colagem para o formato NormalizedRecord
             const colagemRecs: NormalizedRecord[] = (colRes.data || []).map((r: any) => {
-                const defRaw = r.defects || {};
+                const defRaw = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
                 const isRevisao = r.modulo === 'revisao_final';
+
+                // Revisão Final: ignorar sessões em andamento (duplicariam os totais)
+                if (isRevisao && defRaw.session_status === 'em_andamento') return null;
                 const defMap: Record<string, number> = {};
                 if (!isRevisao) {
                     // Corte/Vinco e Colagem: defects é map de contagem de defeitos
