@@ -385,6 +385,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     defects_critical: number;
     defects_major: number;
     defects_minor: number;
+    units_per_box: number;
+    boxes_per_pallet: number;
     analyst_name: string | null;
     completed_at: string | null;
     observations: string | null;
@@ -414,6 +416,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     // Pallets
     palletsReprovados: PalletReprovado[];
     totalPallets: number;
+    unidadesPalletsReprovados: number;
     // Total escolha para revisão
     totalEscolha: number;
     totalRefugoAntes: number;
@@ -467,7 +470,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
           .eq('modulo', 'colagem'),
         // Pallets reprovados no Produto Acabado
         supabase.from('pallet_inspections')
-          .select('id, pallet_number, defects_critical, defects_major, defects_minor, analyst_name, completed_at, observations')
+          .select('id, pallet_number, defects_critical, defects_major, defects_minor, units_per_box, boxes_per_pallet, analyst_name, completed_at, observations')
           .eq('op', trimmed)
           .eq('result', 'REJECTED')
           .is('archived_at', null)
@@ -551,6 +554,13 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       const maquinasNomes = ((maqRes.data ?? []) as Array<{ id: string; name: string }>).map(m => m.name);
       const operadoresNomes = ((opRes.data ?? []) as Array<{ id: string; name: string }>).map(o => o.name);
 
+      const palletsReprovados = (palletsRes.data ?? []) as PalletReprovado[];
+      // Unidades dos pallets reprovados = unidades/caixa × caixas/pallet (não contam como boas)
+      const unidadesPalletsReprovados = palletsReprovados.reduce(
+        (s, p) => s + (Number(p.units_per_box) || 0) * (Number(p.boxes_per_pallet) || 0),
+        0
+      );
+
       const qtdSolicitada = orderRes.data?.qtd_total ?? 0;
       setSaldoOp({
         qtdSolicitada,
@@ -558,8 +568,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         rodadasCorteVinco, escolhaCorteVinco, refugoCorteVinco, aprovadoCorteVinco,
         rodadasColagem, escolhaColagem, refugoColagem, aprovadoColagem,
         rodadasProdutoAcabado, escolhaProdutoAcabado, refugoProdutoAcabado,
-        palletsReprovados: (palletsRes.data ?? []) as PalletReprovado[],
+        palletsReprovados,
         totalPallets: totalPallets ?? 0,
+        unidadesPalletsReprovados,
         totalEscolha,
         totalRefugoAntes,
         operadoresNomes, maquinasNomes,
@@ -583,10 +594,24 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const totalRefugoAntes = saldoOp?.totalRefugoAntes ?? 0;
   // Total de perdas = refugo das etapas + refugo da revisão
   const perdasTotais = totalRefugoAntes + qtyRefugadaFinal;
-  // Aprovado final = o que já saiu bom das etapas + recuperado na revisão
-  // A quantidade "boa" antes da revisão é: o que o PA produziu - escolha - refugo do PA
+  // "Boa" LOCAL do Produto Acabado (só para a tabela de etapas):
+  // o que o PA produziu - escolha do PA - refugo do PA
   const qtyBoaProdutoAcabado = Math.max(0, (saldoOp?.rodadasProdutoAcabado ?? 0) - (saldoOp?.escolhaProdutoAcabado ?? 0) - (saldoOp?.refugoProdutoAcabado ?? 0));
-  const qtyFinalAprovada = qtyBoaProdutoAcabado + qtyRecuperada;
+
+  // Unidades dos pallets reprovados no Produto Acabado (650/caixa × 48 caixas, etc.) — só informativo.
+  // NÃO é descontado de novo: essas peças já estão DENTRO do produzido do PA e a escolha (23.800)
+  // já representa o material pendente de revisão. Descontar os dois contaria a mesma peça duas vezes.
+  const unidadesPalletsReprovados = saldoOp?.unidadesPalletsReprovados ?? 0;
+
+  // Aprovado direto = unidades que passaram LIMPAS por todos os processos.
+  // A escolha (impressão/CV/colagem/PA) passa fisicamente pelo PA e está DENTRO do produzido,
+  // mas fica PENDENTE de revisão e NÃO conta como boa. Só o que a revisão recupera volta a contar.
+  const qtyBoaLimpa = Math.max(0,
+    (saldoOp?.rodadasProdutoAcabado ?? 0)
+    - (saldoOp?.totalEscolha ?? 0)
+    - (saldoOp?.refugoProdutoAcabado ?? 0)
+  );
+  const qtyFinalAprovada = qtyBoaLimpa + qtyRecuperada;
   // Fecha o pedido?
   const saldo = qtyFinalAprovada - qtySolicitada;
   const fechouPedido = saldo >= 0;
@@ -662,11 +687,13 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       quantidade_recuperada_revisao: qtyRecuperada,
       quantidade_refugada_revisao: qtyRefugadaFinal,
       quantidade_boa_produto_acabado: qtyBoaProdutoAcabado,
+      quantidade_aprovado_direto: qtyBoaLimpa,
       quantidade_final_aprovada: qtyFinalAprovada,
       perdas_totais: perdasTotais,
       saldo,
       fechou_pedido: fechouPedido,
       pallets_reprovados: numPalletsReprovados,
+      unidades_pallets_reprovados: unidadesPalletsReprovados,
       consolidado_automatico: saldoOp,
       // Periodos
       periodos,
@@ -1015,7 +1042,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
               <span className="material-symbols-outlined text-amber-500 text-sm">info</span>
               <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
                 Vieram {fmt(qtyEnviadaRevisao)} un. de escolha para revisão
-                {numPalletsReprovados > 0 && ` + ${numPalletsReprovados} pallet(s) reprovado(s)`}
+                {numPalletsReprovados > 0 && ` + ${numPalletsReprovados} pallet(s) reprovado(s) (${fmt(unidadesPalletsReprovados)} un.)`}
               </span>
               {(qtyRecuperada + qtyRefugadaFinal > 0) && (qtyRecuperada + qtyRefugadaFinal) !== qtyEnviadaRevisao && (
                 <span className="ml-auto text-[10px] font-black text-amber-600">
@@ -1032,7 +1059,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             {[
               { label: 'Pedido', value: fmt(qtySolicitada), color: 'slate' },
-              { label: 'Boa (Prod. Acabado)', value: fmt(qtyBoaProdutoAcabado), color: 'emerald' },
+              { label: 'Aprovado direto (s/ revisão)', value: fmt(qtyBoaLimpa), color: 'emerald' },
               { label: 'Recuperada (Revisão)', value: fmt(qtyRecuperada), color: 'emerald' },
               { label: 'Total aprovado', value: fmt(qtyFinalAprovada), color: 'indigo' },
               { label: 'Refugo revisão', value: fmt(qtyRefugadaFinal), color: 'rose' },
