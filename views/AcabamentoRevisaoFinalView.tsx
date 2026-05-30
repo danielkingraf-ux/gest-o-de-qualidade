@@ -474,7 +474,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     const timer = setTimeout(async () => {
       const [orderRes, inspRes, cvRes, colRes, palletsRes] = await Promise.all([
         supabase.from('orders').select('qtd_total').eq('op', trimmed).maybeSingle(),
-        supabase.from('inspections').select('observations, machine_id').eq('op', trimmed),
+        supabase.from('inspections').select('observations, machine_id, created_at').eq('op', trimmed).order('created_at', { ascending: false }),
         supabase.from('acabamento_registros')
           .select('qty_revisadas, qty_aprovadas, qty_reprovadas, operator_ids, machine_id')
           .eq('op', trimmed)
@@ -497,21 +497,35 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       const opIds = new Set<string>();
       const machineIds = new Set<string>();
 
-      for (const row of (inspRes.data ?? []) as Array<{ observations: string; machine_id: string | null }>) {
+      // Deduplicar: agrupar por numero_rodada e manter só o mais recente de cada.
+      // Dados vêm ordenados por created_at DESC, então o primeiro de cada rodada é o mais recente.
+      const seenRodadaInicial = new Set<number>();
+      const seenRodadaPA = new Set<number>();
+
+      for (const row of (inspRes.data ?? []) as Array<{ observations: string; machine_id: string | null; created_at: string }>) {
         try {
           const obs = typeof row.observations === 'string'
             ? JSON.parse(row.observations)
             : (row.observations ?? {});
+          const numRodada = Number(obs.numero_rodada) || 1;
+
           if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
-            rodadasImpressao  += Number(obs.saldo_unidades.rodadas)    || 0;
-            escolhaImpressao  += Number(obs.saldo_unidades.em_escolha) || 0;
-            refugoImpressao   += Number(obs.saldo_unidades.reprovadas) || 0;
-            boaImpressao      += Number(obs.saldo_unidades.aprovadas)  || 0;
+            if (!seenRodadaInicial.has(numRodada)) {
+              seenRodadaInicial.add(numRodada);
+              rodadasImpressao  += Number(obs.saldo_unidades.rodadas)    || 0;
+              escolhaImpressao  += Number(obs.saldo_unidades.em_escolha) || 0;
+              refugoImpressao   += Number(obs.saldo_unidades.reprovadas) || 0;
+              boaImpressao      += Number(obs.saldo_unidades.aprovadas)  || 0;
+            }
           }
           if (obs.process_area === 'produto_acabado' && obs.producao) {
-            rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
-            escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
-            refugoProdutoAcabado  += Number(obs.producao.qty_refugo)    || 0;
+            const laudoNum = Number(obs.laudo_numero) || 1;
+            if (!seenRodadaPA.has(laudoNum)) {
+              seenRodadaPA.add(laudoNum);
+              rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
+              escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
+              refugoProdutoAcabado  += Number(obs.producao.qty_refugo)    || 0;
+            }
           }
           if (Array.isArray(obs.all_operator_ids)) {
             (obs.all_operator_ids as string[]).forEach((id: string) => id && opIds.add(id));

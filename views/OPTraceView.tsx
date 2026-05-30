@@ -189,7 +189,23 @@ export default function OPTraceView() {
         const anMap: Record<string, string> = {};
         (anListRes.data || []).forEach((a: any) => { anMap[a.id] = a.name; });
 
-        const inspections = (inspRes.data || []).map((r: any): InspRecord => {
+        // Deduplicar: manter só o registro mais recente por rodada (dados vêm ordenados por created_at ASC)
+        const seenRodadaInicial = new Set<number>();
+        const seenRodadaPA = new Set<number>();
+        const rawInsp = (inspRes.data || []).slice().reverse(); // mais recente primeiro
+        const dedupedInsp: any[] = [];
+        for (const r of rawInsp) {
+            const obs = parseObs(r.observations);
+            const numRodada = Number(obs.numero_rodada) || Number(obs.laudo_numero) || 1;
+            const isAcab = obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis;
+            const seenSet = isAcab ? seenRodadaPA : seenRodadaInicial;
+            if (seenSet.has(numRodada)) continue; // duplicata — pular
+            seenSet.add(numRodada);
+            dedupedInsp.push(r);
+        }
+        dedupedInsp.reverse(); // volta à ordem cronológica
+
+        const inspections = dedupedInsp.map((r: any): InspRecord => {
             const obs = parseObs(r.observations);
             const isAcabado = obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis;
 

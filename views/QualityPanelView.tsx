@@ -35,7 +35,19 @@ const parseObs = (v: any): any => {
 };
 
 function normalize(raw: any[]): NormalizedRecord[] {
-    return raw.map(r => {
+    // Deduplicar: se a mesma OP + rodada aparece mais de uma vez, manter só o mais recente.
+    // Dados vêm ordenados por created_at DESC (mais recente primeiro).
+    const seenKey = new Set<string>();
+
+    return raw.filter(r => {
+        const obs = parseObs(r.observations);
+        const area = (obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis) ? 'pa' : 'ini';
+        const rodada = Number(obs.numero_rodada) || Number(obs.laudo_numero) || 1;
+        const key = `${String(r.op).toUpperCase()}|${area}|${rodada}`;
+        if (seenKey.has(key)) return false; // duplicata
+        seenKey.add(key);
+        return true;
+    }).map(r => {
         const obs = parseObs(r.observations);
         const isAcabado = obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis;
         const prod = obs.producao || {};
