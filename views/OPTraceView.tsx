@@ -113,10 +113,33 @@ interface OrderInfo {
     created_at: string;
 }
 
+interface AcabRecord {
+    id: string;
+    modulo: string;
+    timestamp: string;
+    machineName: string;
+    operatorNames: string[];
+    qtyRevisadas: number;
+    qtyAprovadas: number;
+    qtyEscolha: number;
+    qtyRefugo: number;
+    defects: Record<string, number>;
+    // Revisão Final extras
+    recuperado: number;
+    refugadoRevisao: number;
+    custoRevisao: number;
+    pessoas: number;
+    horas: number;
+    problemas: Array<{ setor: string; operador_nome: string; maquina_nome: string; problema: string; qty_afetada: number }>;
+    statusFinal: string;
+    fechouPedido: boolean | null;
+}
+
 interface TraceData {
     order: OrderInfo | null;
     inicial: InspRecord[];
     acabado: InspRecord[];
+    etapasAcab: AcabRecord[];
     pallets: PalletRecord[];
 }
 
@@ -143,7 +166,7 @@ export default function OPTraceView() {
         setNotFound(false);
         setTrace(null);
 
-        const [ordRes, inspRes, palRes, opListRes, anListRes] = await Promise.all([
+        const [ordRes, inspRes, palRes, opListRes, anListRes, acabRes] = await Promise.all([
             supabase.from('orders').select('op, produto, descricao, qtd_total, status, created_at').ilike('op', opUp).maybeSingle(),
             supabase.from('inspections')
                 .select('id, op, created_at, status, machine_id, operator_id, analyst_id, observations, machines(name)')
@@ -155,6 +178,10 @@ export default function OPTraceView() {
                 .order('pallet_number', { ascending: true }),
             supabase.from('operators').select('id, name'),
             supabase.from('analysts').select('id, name'),
+            supabase.from('acabamento_registros')
+                .select('id, op, modulo, timestamp, machine_id, operator_ids, qty_revisadas, qty_aprovadas, qty_reprovadas, defects, notes')
+                .ilike('op', opUp)
+                .order('timestamp', { ascending: true }),
         ]);
 
         const opMap: Record<string, string> = {};
@@ -201,13 +228,59 @@ export default function OPTraceView() {
             op: opUp, produto: '—', qtd_total: 0, status: '—', created_at: inspections[0].created_at,
         } : null;
 
-        if (!order && inspections.length === 0 && (palRes.data || []).length === 0) {
+        // Mapeia acabamento_registros (corte/vinco, colagem, revisão final)
+        const machNames: Record<string, string> = {};
+        // Build machine names from inspections machines joins
+        (inspRes.data || []).forEach((r: any) => { if (r.machine_id && r.machines?.name) machNames[r.machine_id] = r.machines.name; });
+
+        const etapasAcab: AcabRecord[] = (acabRes.data || []).map((r: any) => {
+            const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
+            const isRevisao = r.modulo === 'revisao_final';
+            const operadorIds: string[] = Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [];
+
+            // Defects map
+            const defMap: Record<string, number> = {};
+            if (!isRevisao) {
+                Object.entries(def).forEach(([k, v]) => {
+                    if (typeof v === 'number' && v > 0 && !['qty_refugo', 'turno', 'session_status'].includes(k)) defMap[k] = v;
+                });
+            }
+
+            return {
+                id: r.id,
+                modulo: r.modulo,
+                timestamp: r.timestamp,
+                machineName: machNames[r.machine_id] || '—',
+                operatorNames: operadorIds.map(id => opMap[id] || id),
+                qtyRevisadas: asN(r.qty_revisadas),
+                qtyAprovadas: asN(r.qty_aprovadas),
+                qtyEscolha: asN(r.qty_reprovadas),
+                qtyRefugo: isRevisao ? asN(def.quantidade_refugada_revisao) : asN(def.qty_refugo),
+                defects: defMap,
+                // Revisão Final extras
+                recuperado: isRevisao ? asN(def.quantidade_recuperada_revisao) : 0,
+                refugadoRevisao: isRevisao ? asN(def.quantidade_refugada_revisao) : 0,
+                custoRevisao: isRevisao ? asN(def.custo_revisao) : 0,
+                pessoas: isRevisao ? asN(def.total_pessoas) : 0,
+                horas: isRevisao ? asN(def.total_horas) : 0,
+                problemas: isRevisao && Array.isArray(def.problemas) ? def.problemas.map((p: any) => ({
+                    setor: p.setor || '', operador_nome: p.operador_nome || '', maquina_nome: p.maquina_nome || '',
+                    problema: p.problema || '', qty_afetada: asN(p.qty_afetada),
+                })) : [],
+                statusFinal: isRevisao ? String(def.status_final || '') : '',
+                fechouPedido: isRevisao ? (typeof def.fechou_pedido === 'boolean' ? def.fechou_pedido : null) : null,
+            };
+        });
+
+        const allRecs = [...inspections, ...(acabRes.data || [])];
+        if (!order && allRecs.length === 0 && (palRes.data || []).length === 0) {
             setNotFound(true);
         } else {
             setTrace({
                 order,
                 inicial: inspections.filter(r => r.area === 'inicial'),
                 acabado: inspections.filter(r => r.area === 'acabado'),
+                etapasAcab,
                 pallets: (palRes.data || []) as PalletRecord[],
             });
         }
@@ -217,18 +290,29 @@ export default function OPTraceView() {
     // ── Totais consolidados ─────────────────────────────────────────────────
     const totals = React.useMemo(() => {
         if (!trace) return null;
-        const all = [...trace.inicial, ...trace.acabado];
-        const produzida = all.reduce((s, r) => s + r.qtyProduzida, 0);
-        const escolha   = all.reduce((s, r) => s + r.qtyEscolha, 0);
-        const refugo    = all.reduce((s, r) => s + r.qtyRefugo, 0);
+        // Produzida: usa SÓ impressão (é a entrada de material — as etapas seguintes
+        // processam o mesmo material, não criam peças novas)
+        const produzida = trace.inicial.reduce((s, r) => s + r.qtyProduzida, 0);
+        // Escolha: só da impressão (as escolhas de CV/Colagem são subconjunto)
+        const escolha   = trace.inicial.reduce((s, r) => s + r.qtyEscolha, 0);
+        // Refugo: soma de TODAS as etapas (peças diferentes refugadas em etapas distintas)
+        const refugoInicial = trace.inicial.reduce((s, r) => s + r.qtyRefugo, 0);
+        const refugoPA = trace.acabado.reduce((s, r) => s + r.qtyRefugo, 0);
+        const refugoAcab = trace.etapasAcab.reduce((s, r) => s + r.qtyRefugo, 0);
+        const refugo = refugoInicial + refugoPA + refugoAcab;
 
-        // Defeitos consolidados
+        // Defeitos consolidados (todas as etapas)
         const defMap = new Map<string, number>();
+        const all = [...trace.inicial, ...trace.acabado];
         all.forEach(r => r.defects.forEach(d => defMap.set(d.name, (defMap.get(d.name) || 0) + d.count)));
+        trace.etapasAcab.forEach(r => Object.entries(r.defects).forEach(([k, v]) => defMap.set(k, (defMap.get(k) || 0) + Number(v))));
         const topDefects = Array.from(defMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-        // Todos operadores únicos
-        const ops = Array.from(new Set(all.flatMap(r => r.operatorNames).filter(Boolean)));
+        // Todos operadores únicos (todas as etapas)
+        const ops = Array.from(new Set([
+            ...all.flatMap(r => r.operatorNames),
+            ...trace.etapasAcab.flatMap(r => r.operatorNames),
+        ].filter(Boolean)));
 
         // Status geral
         const allStatuses = [

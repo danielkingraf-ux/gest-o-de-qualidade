@@ -225,7 +225,8 @@ const AppShell = ({ session }: { session: Session }) => {
               <Route path="/pallets" element={protectedElement(['administrador', 'analista_qualidade', 'expedicao'], <PalletListView />)} />
               <Route path="/rastreabilidade" element={protectedElement(['administrador', 'direcao', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'consulta_auditoria'], <OPTraceView />)} />
               <Route path="/quality-panel" element={protectedElement(['administrador', 'supervisao'], <QualityPanelView />)} />
-              <Route path="/reports" element={protectedElement(['administrador', 'direcao', 'supervisao', 'consulta_auditoria'], <ReportsView />)} />
+              {/* /reports redirecionado para quality-panel (fusão) */}
+              <Route path="/reports" element={<Navigate to="/quality-panel" replace />} />
               <Route path="/management-report" element={protectedElement(['administrador', 'direcao', 'supervisao'], <ManagementReportView />)} />
               <Route path="/ocorrencias-op" element={protectedElement(['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'direcao', 'consulta_auditoria'], <OcorrenciasOpView />)} />
               <Route path="/shift-log" element={protectedElement(['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'], <ShiftLogView />)} />

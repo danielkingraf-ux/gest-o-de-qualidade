@@ -159,29 +159,49 @@ export default function QualityPanelView() {
             // Normaliza registros de colagem para o formato NormalizedRecord
             const colagemRecs: NormalizedRecord[] = (colRes.data || []).map((r: any) => {
                 const defRaw = r.defects || {};
+                const isRevisao = r.modulo === 'revisao_final';
                 const defMap: Record<string, number> = {};
-                Object.entries(defRaw).forEach(([k, v]) => {
-                    const entry = toDefectEntry(k, v);
-                    if (entry) defMap[entry.name] = entry.count;
-                });
-                const qtyRefugo = asN(defRaw.qty_refugo);
+                if (!isRevisao) {
+                    // Corte/Vinco e Colagem: defects é map de contagem de defeitos
+                    Object.entries(defRaw).forEach(([k, v]) => {
+                        if (['qty_refugo', 'turno', 'session_status'].includes(k)) return;
+                        const entry = toDefectEntry(k, v);
+                        if (entry) defMap[entry.name] = entry.count;
+                    });
+                }
+
+                // Refugo: revisão final salva em quantidade_refugada_revisao
+                const qtyRefugo = isRevisao
+                    ? asN(defRaw.quantidade_refugada_revisao)
+                    : asN(defRaw.qty_refugo);
+
+                // Produzido: revisão final tem quantidade_enviada_revisao (para contexto)
+                const qtyProduzida = isRevisao ? asN(defRaw.quantidade_enviada_revisao) : asN(r.qty_revisadas);
+
+                // Operadores: revisão final pode ter operator_ids vazio — puxar dos problemas
+                let operatorIds: string[] = Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [];
+                // Se revisão final sem operador, não gerar registro fantasma: pular
+                if (isRevisao && operatorIds.length === 0 && qtyRefugo === 0 && qtyProduzida === 0) {
+                    return null; // será filtrado abaixo
+                }
+
                 return {
                     id: `col_${r.id}`,
                     op: String(r.op || '—'),
                     date: new Date(r.timestamp || r.created_at),
                     area: 'acabado' as const,
-                    process: r.modulo === 'corte_vinco' ? 'Corte/Vinco' : r.modulo === 'revisao_final' ? 'Revisão Final' : 'Colagem',
+                    process: r.modulo === 'corte_vinco' ? 'Corte/Vinco' : isRevisao ? 'Revisão Final' : 'Colagem',
                     turno: String(defRaw.turno || 'Sem turno'),
-                    status: 'APPROVED',
+                    status: isRevisao ? String(defRaw.status_final || 'APPROVED') : 'APPROVED',
                     machineName: machNames[r.machine_id] || '—',
                     machineId: String(r.machine_id || ''),
-                    operatorIds: Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [],
+                    operatorIds,
                     defects: defMap,
-                    qtyProduzida: 0,
-                    qtyEscolha: asN(r.qty_reprovadas),
+                    qtyProduzida,
+                    qtyEscolha: isRevisao ? 0 : asN(r.qty_reprovadas),
                     qtyRefugo,
                 };
-            }).filter((r: NormalizedRecord) => !isNaN(r.date.getTime()));
+            }).filter((r: any): r is NormalizedRecord => r !== null && !isNaN(new Date(r?.date).getTime()));
 
             setRecords([...inspRecs, ...colagemRecs]);
             setLoading(false);

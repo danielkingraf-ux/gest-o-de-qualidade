@@ -52,7 +52,6 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
       items: [
         { path: 'chat', label: 'Ocorrencias', icon: 'forum', badge: unreadCount, isAction: true, roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'] },
         { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['administrador', 'analista_qualidade', 'expedicao'] },
-        { path: '/reports', label: 'Relatorios', icon: 'insert_chart', roles: ['administrador', 'direcao', 'supervisao', 'consulta_auditoria'] },
         { path: '/management-report', label: 'Rel. Gerencial', icon: 'summarize', roles: ['administrador', 'direcao', 'supervisao'] },
         { path: '/supervisor', label: 'Aprovacoes', icon: 'rule', badge: pendingRequests, roles: ['administrador', 'supervisao'] },
       ],
