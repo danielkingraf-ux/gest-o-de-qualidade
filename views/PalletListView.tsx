@@ -3,9 +3,12 @@
  * Acesso via /pallets — analistas e supervisores
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
+import { useUser } from '../contexts/UserContext';
+import { useToast } from '../contexts/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 interface PalletSummary {
     id: string;
@@ -32,39 +35,57 @@ const RESULT_META = {
 const getJoinedOrder = (orders: PalletSummary['orders']) => Array.isArray(orders) ? orders[0] : orders;
 
 export default function PalletListView() {
+    const { isSupervisor } = useUser();
+    const { showToast } = useToast();
     const [pallets, setPallets] = useState<PalletSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [opFilter, setOpFilter] = useState('');
     const [resultFilter, setResultFilter] = useState<string>('');
+    const [palletToDelete, setPalletToDelete] = useState<PalletSummary | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const load = useCallback(async () => {
+        const { data } = await supabase
+            .from('pallet_inspections')
+            .select('id, op, order_id, orders!inner(id, op), pallet_number, analyst_name, machine_name, result, defects_critical, defects_major, defects_minor, nqa_profile_name, completed_at')
+            .order('completed_at', { ascending: false })
+            .limit(200);
+        setPallets(((data ?? []) as unknown as PalletSummary[])
+            .filter(p => {
+                const order = getJoinedOrder(p.orders);
+                return (
+                    !!p.order_id &&
+                    order?.id === p.order_id &&
+                    String(order?.op || '').trim().toUpperCase() === String(p.op || '').trim().toUpperCase()
+                );
+            })
+            .map(p => ({ ...p, op: getJoinedOrder(p.orders)?.op || p.op })));
+        setLoading(false);
+    }, []);
 
     useEffect(() => {
-        const load = async () => {
-            const { data } = await supabase
-                .from('pallet_inspections')
-                .select('id, op, order_id, orders!inner(id, op), pallet_number, analyst_name, machine_name, result, defects_critical, defects_major, defects_minor, nqa_profile_name, completed_at')
-                .order('completed_at', { ascending: false })
-                .limit(200);
-            setPallets(((data ?? []) as unknown as PalletSummary[])
-                .filter(p => {
-                    const order = getJoinedOrder(p.orders);
-                    return (
-                        !!p.order_id &&
-                        order?.id === p.order_id &&
-                        String(order?.op || '').trim().toUpperCase() === String(p.op || '').trim().toUpperCase()
-                    );
-                })
-                .map(p => ({ ...p, op: getJoinedOrder(p.orders)?.op || p.op })));
-            setLoading(false);
-        };
         load();
-
         // Realtime: atualiza quando novo pallet for registrado
         const sub = supabase
             .channel('pallet_list')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pallet_inspections' }, load)
             .subscribe();
         return () => { sub.unsubscribe(); };
-    }, []);
+    }, [load]);
+
+    const confirmDelete = async () => {
+        if (!palletToDelete) return;
+        setIsDeleting(true);
+        const { error } = await supabase.from('pallet_inspections').delete().eq('id', palletToDelete.id);
+        setIsDeleting(false);
+        if (error) {
+            showToast(`Erro ao excluir pallet: ${error.message}`, 'error');
+            return;
+        }
+        showToast(`Pallet #${palletToDelete.pallet_number} da OP ${palletToDelete.op} excluído`, 'success');
+        setPallets(prev => prev.filter(p => p.id !== palletToDelete.id));
+        setPalletToDelete(null);
+    };
 
     const filtered = pallets.filter(p => {
         const matchOp = !opFilter || p.op.toUpperCase().includes(opFilter.toUpperCase());
@@ -188,13 +209,25 @@ export default function PalletListView() {
                                                 {new Date(p.completed_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                             </td>
                                             <td className="px-5 py-3 text-right">
-                                                <Link
-                                                    to={`/pallet/${p.id}`}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-                                                >
-                                                    <span className="material-symbols-outlined text-sm">qr_code_2</span>
-                                                    Ver QR
-                                                </Link>
+                                                <div className="inline-flex items-center gap-1.5">
+                                                    <Link
+                                                        to={`/pallet/${p.id}`}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">qr_code_2</span>
+                                                        Ver QR
+                                                    </Link>
+                                                    {isSupervisor && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPalletToDelete(p)}
+                                                            title="Excluir pallet (somente supervisor)"
+                                                            className="inline-flex items-center justify-center size-8 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors"
+                                                        >
+                                                            <span className="material-symbols-outlined text-sm">delete</span>
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -204,6 +237,18 @@ export default function PalletListView() {
                     </div>
                 )}
             </div>
+
+            <ConfirmModal
+                isOpen={!!palletToDelete}
+                onClose={() => { if (!isDeleting) setPalletToDelete(null); }}
+                onConfirm={confirmDelete}
+                title="Excluir pallet"
+                message={palletToDelete
+                    ? `Tem certeza que deseja excluir o Pallet #${palletToDelete.pallet_number} da OP ${palletToDelete.op}? Esta ação não pode ser desfeita.`
+                    : ''}
+                confirmText={isDeleting ? 'Excluindo...' : 'Excluir'}
+                type="danger"
+            />
         </div>
     );
 }
