@@ -632,12 +632,17 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   // já representa o material pendente de revisão. Descontar os dois contaria a mesma peça duas vezes.
   const unidadesPalletsReprovados = saldoOp?.unidadesPalletsReprovados ?? 0;
 
-  // Aprovado direto = unidades que passaram LIMPAS por todos os processos.
-  // A escolha (impressão/CV/colagem/PA) passa fisicamente pelo PA e está DENTRO do produzido,
-  // mas fica PENDENTE de revisão e NÃO conta como boa. Só o que a revisão recupera volta a contar.
+  // Aprovado direto = boas do Produto Acabado.
+  // Cada etapa já descontou suas próprias escolhas antes de passar adiante:
+  //   Impressão: rodadas → -escolha → -refugo = aprovadas → C/V
+  //   C/V: recebido → -escolha → -refugo = aprovadas → Colagem
+  //   Colagem: recebido → -escolha → -refugo = aprovadas → PA
+  //   PA: recebido → -escolha → -refugo = boas diretas
+  // As escolhas de cada etapa vão DIRETO pra Revisão Final, não passam adiante.
+  // Por isso NÃO subtraímos totalEscolha do PA — ela nunca entrou lá.
   const qtyBoaLimpa = Math.max(0,
     (saldoOp?.rodadasProdutoAcabado ?? 0)
-    - (saldoOp?.totalEscolha ?? 0)
+    - (saldoOp?.escolhaProdutoAcabado ?? 0)
     - (saldoOp?.refugoProdutoAcabado ?? 0)
   );
   const qtyFinalAprovada = qtyBoaLimpa + qtyRecuperada;
@@ -962,9 +967,10 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 <thead>
                   <tr className="bg-teal-100/60 dark:bg-teal-900/30 text-[9px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400">
                     <th className="px-3 py-2 text-left">Etapa</th>
-                    <th className="px-3 py-2 text-right">Produzido</th>
-                    <th className="px-3 py-2 text-right text-emerald-600">Boas</th>
-                    <th className="px-3 py-2 text-right text-amber-600">Escolha</th>
+                    <th className="px-3 py-2 text-right text-indigo-500">Recebido</th>
+                    <th className="px-3 py-2 text-right text-slate-500">Rodado (ref.)</th>
+                    <th className="px-3 py-2 text-right text-emerald-600">Boas → próxima</th>
+                    <th className="px-3 py-2 text-right text-amber-600">Escolha → revisão</th>
                     <th className="px-3 py-2 text-right text-rose-600">Refugo</th>
                   </tr>
                 </thead>
@@ -974,8 +980,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                       <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-sm text-indigo-400">print</span>Impressão
                       </td>
-                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasImpressao)}</td>
-                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(saldoOp.boaImpressao)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-indigo-500">—</td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-400">{fmt(saldoOp.rodadasImpressao)}</td>
+                      <td className="px-3 py-2 text-right font-black text-emerald-600">{fmt(saldoOp.boaImpressao)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaImpressao)}</td>
                       <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoImpressao)}</td>
                     </tr>
@@ -985,8 +992,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                       <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-sm text-indigo-400">content_cut</span>Corte e Vinco
                       </td>
-                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasCorteVinco)}</td>
-                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(saldoOp.aprovadoCorteVinco)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-indigo-500">{fmt(saldoOp.boaImpressao)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-400">{fmt(saldoOp.rodadasCorteVinco)}</td>
+                      <td className="px-3 py-2 text-right font-black text-emerald-600">{fmt(saldoOp.aprovadoCorteVinco)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaCorteVinco)}</td>
                       <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoCorteVinco)}</td>
                     </tr>
@@ -996,8 +1004,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                       <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-sm text-indigo-400">precision_manufacturing</span>Colagem
                       </td>
-                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasColagem)}</td>
-                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(saldoOp.aprovadoColagem)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-indigo-500">{fmt(saldoOp.aprovadoCorteVinco)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-400">{fmt(saldoOp.rodadasColagem)}</td>
+                      <td className="px-3 py-2 text-right font-black text-emerald-600">{fmt(saldoOp.aprovadoColagem)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaColagem)}</td>
                       <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoColagem)}</td>
                     </tr>
@@ -1007,20 +1016,34 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                       <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-sm text-indigo-400">inventory_2</span>Produto Acabado
                       </td>
-                      <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt(saldoOp.rodadasProdutoAcabado)}</td>
-                      <td className="px-3 py-2 text-right font-bold text-emerald-600">{fmt(qtyBoaProdutoAcabado)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-indigo-500">{fmt(saldoOp.aprovadoColagem)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-slate-400">{fmt(saldoOp.rodadasProdutoAcabado)}</td>
+                      <td className="px-3 py-2 text-right font-black text-emerald-600">{fmt(qtyBoaProdutoAcabado)}</td>
                       <td className="px-3 py-2 text-right font-black text-amber-600">{fmt(saldoOp.escolhaProdutoAcabado)}</td>
                       <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoProdutoAcabado)}</td>
                     </tr>
                   )}
+                  {/* Totalização para revisão */}
                   <tr className="bg-amber-50 dark:bg-amber-950/20 font-black">
-                    <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-amber-700 dark:text-amber-400" colSpan={3}>Total para revisão</td>
+                    <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-amber-700 dark:text-amber-400" colSpan={4}>
+                      Total escolha → Revisão Final
+                    </td>
                     <td className="px-3 py-2 text-right text-lg text-amber-700 dark:text-amber-300">{fmt(saldoOp.totalEscolha)}</td>
                     <td className="px-3 py-2 text-right text-sm text-rose-600">{fmt(saldoOp.totalRefugoAntes)}</td>
+                  </tr>
+                  {/* Boas diretas que vão pra expedição */}
+                  <tr className="bg-emerald-50 dark:bg-emerald-950/20 font-black">
+                    <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-emerald-700 dark:text-emerald-400" colSpan={4}>
+                      Aprovado direto → Expedição (sem revisão)
+                    </td>
+                    <td className="px-3 py-2 text-right text-lg text-emerald-700 dark:text-emerald-300" colSpan={2}>{fmt(qtyBoaLimpa)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            <p className="text-[9px] text-slate-400 italic mb-1">
+              Recebido = boas da etapa anterior · Rodado = referência do processamento · Escolha de cada etapa vai direto pra Revisão Final
+            </p>
           </section>
         )}
 

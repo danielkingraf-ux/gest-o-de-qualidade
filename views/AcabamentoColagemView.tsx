@@ -128,11 +128,11 @@ const AcabamentoColagemView: React.FC = () => {
         setOpInfo((data as OrderInfo | null) ?? null);
       });
 
-    // Saldo recebido do Corte/Vinco: aprovadas + escolha (tudo que rodou)
-    // Tudo segue para colagem; a Revisão Final decide o que é bom.
+    // Saldo recebido: SÓ as APROVADAS do Corte/Vinco.
+    // A escolha do C/V vai direto pra Revisão Final — não passa pela Colagem.
     Promise.all([
       supabase.from('acabamento_registros')
-        .select('qty_revisadas')
+        .select('qty_aprovadas')
         .eq('op', opUpper)
         .eq('modulo', 'corte_vinco'),
       supabase.from('acabamento_registros')
@@ -141,12 +141,12 @@ const AcabamentoColagemView: React.FC = () => {
         .eq('modulo', 'colagem')
         .order('timestamp', { ascending: true }),
     ]).then(([cvRes, colRes]) => {
-      const totalRodadoCv = (cvRes.data ?? [])
-        .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
+      const aprovadasCv = (cvRes.data ?? [])
+        .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
       const jaProcessadoColagem = (colRes.data ?? [])
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
-      if (totalRodadoCv > 0) {
-        const liquido = Math.max(0, totalRodadoCv - jaProcessadoColagem);
+      if (aprovadasCv > 0) {
+        const liquido = Math.max(0, aprovadasCv - jaProcessadoColagem);
         setSaldoCorteVinco(liquido);
         setQtyRodadas(prev => prev === 0 ? liquido : prev);
       } else {
@@ -520,10 +520,10 @@ const AcabamentoColagemView: React.FC = () => {
             <span className="material-symbols-outlined text-indigo-500 text-sm mt-0.5">content_cut</span>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                Recebido do Corte/Vinco
+                Recebido do Corte/Vinco (somente aprovadas)
               </p>
               <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
-                {fmt(saldoCorteVinco)} unidades do Corte e Vinco disponiveis para colagem
+                {fmt(saldoCorteVinco)} un. aprovadas do Corte/Vinco (escolha do C/V vai direto pra Revisão Final)
               </p>
             </div>
           </div>

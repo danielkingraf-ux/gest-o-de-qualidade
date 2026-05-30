@@ -309,16 +309,28 @@ export default function OPTraceView() {
     // ── Totais consolidados ─────────────────────────────────────────────────
     const totals = React.useMemo(() => {
         if (!trace) return null;
-        // Produzida: usa SÓ impressão (é a entrada de material — as etapas seguintes
-        // processam o mesmo material, não criam peças novas)
+        // Rastreabilidade incremental:
+        // - Produzida = impressão (entrada de material)
+        // - Cada etapa desconta suas escolhas e refugos
+        // - Só as boas passam adiante
         const produzida = trace.inicial.reduce((s, r) => s + r.qtyProduzida, 0);
-        // Escolha: só da impressão (as escolhas de CV/Colagem são subconjunto)
-        const escolha   = trace.inicial.reduce((s, r) => s + r.qtyEscolha, 0);
-        // Refugo: soma de TODAS as etapas (peças diferentes refugadas em etapas distintas)
+        const boasImpressao = trace.inicial.reduce((s, r) => s + (r.qtyProduzida - r.qtyEscolha - r.qtyRefugo), 0);
+
+        // Escolha total = soma das escolhas de TODAS as etapas (cada uma vai pra revisão)
+        const escolhaImp = trace.inicial.reduce((s, r) => s + r.qtyEscolha, 0);
+        const escolhaCV = trace.etapasAcab.filter(r => r.modulo === 'corte_vinco').reduce((s, r) => s + r.qtyEscolha, 0);
+        const escolhaCol = trace.etapasAcab.filter(r => r.modulo === 'colagem').reduce((s, r) => s + r.qtyEscolha, 0);
+        const escolhaPA = trace.acabado.reduce((s, r) => s + r.qtyEscolha, 0);
+        const escolha = escolhaImp + escolhaCV + escolhaCol + escolhaPA;
+
+        // Refugo = soma de TODAS as etapas
         const refugoInicial = trace.inicial.reduce((s, r) => s + r.qtyRefugo, 0);
         const refugoPA = trace.acabado.reduce((s, r) => s + r.qtyRefugo, 0);
         const refugoAcab = trace.etapasAcab.reduce((s, r) => s + r.qtyRefugo, 0);
         const refugo = refugoInicial + refugoPA + refugoAcab;
+
+        // Boas finais (PA) = o que sai pra expedição
+        const boasPA = trace.acabado.reduce((s, r) => s + Math.max(0, r.qtyProduzida - r.qtyEscolha - r.qtyRefugo), 0);
 
         // Defeitos consolidados (todas as etapas)
         const defMap = new Map<string, number>();
@@ -343,7 +355,7 @@ export default function OPTraceView() {
         const hasRestricted  = allStatuses.some(s => s === 'RESTRICTED' || s === 'restricted');
         const overallStatus  = hasRejected ? 'REJECTED' : hasRestricted ? 'RESTRICTED' : 'APPROVED';
 
-        return { produzida, escolha, refugo, topDefects, ops, overallStatus };
+        return { produzida, boasImpressao, escolha, refugo, boasPA, topDefects, ops, overallStatus };
     }, [trace]);
 
     return (
@@ -445,11 +457,21 @@ export default function OPTraceView() {
                                 {/* Refugo */}
                                 <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
                                     <p className="text-[9px] font-black uppercase tracking-widest text-rose-500 flex items-center gap-1">
-                                        <span className="material-symbols-outlined text-xs">delete_sweep</span>Refugo
+                                        <span className="material-symbols-outlined text-xs">delete_sweep</span>Refugo total
                                     </p>
                                     <p className="text-2xl font-black text-rose-700 dark:text-rose-300">{fmt.format(totals.refugo)}</p>
                                     {totals.produzida > 0 && <p className="text-[10px] font-bold text-rose-500">{((totals.refugo/totals.produzida)*100).toFixed(1)}%</p>}
                                 </div>
+                                {/* Boas finais */}
+                                {totals.boasPA > 0 && (
+                                <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs">local_shipping</span>Boas → Expedição
+                                    </p>
+                                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{fmt.format(totals.boasPA)}</p>
+                                    {totals.produzida > 0 && <p className="text-[10px] font-bold text-emerald-500">{((totals.boasPA/totals.produzida)*100).toFixed(1)}%</p>}
+                                </div>
+                                )}
                                 {/* Pallets */}
                                 <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900">
                                     <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 flex items-center gap-1">

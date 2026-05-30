@@ -381,18 +381,28 @@ const AcabamentoCortesVincoView: React.FC = () => {
       let boasImpressao = 0;
       let escolhaImpressao = 0;
       let rodadas = 0;
-      for (const row of (inspRes.data ?? [])) {
+      // Deduplicar: pegar só o mais recente por rodada
+      const seenRodada = new Set<number>();
+      // Ordena DESC pra pegar o mais recente primeiro
+      const sorted = [...(inspRes.data ?? [])].sort((a: any, b: any) =>
+        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      for (const row of sorted) {
         try {
           if (typeof row.observations !== 'string' || !row.observations.trim().startsWith('{')) continue;
           const obs = JSON.parse(row.observations);
           if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+            const numRod = Number(obs.numero_rodada) || 1;
+            if (seenRodada.has(numRod)) continue;
+            seenRodada.add(numRod);
             boasImpressao += Number(obs.saldo_unidades.aprovadas) || 0;
             escolhaImpressao += Number(obs.saldo_unidades.em_escolha) || 0;
             rodadas += Number(obs.saldo_unidades.rodadas) || 0;
           }
         } catch { /* ignora registro malformado */ }
       }
-      const totalDisponivel = boasImpressao + escolhaImpressao;
+      // C/V recebe SÓ as APROVADAS da impressão.
+      // A escolha da impressão vai direto pra Revisão Final — não passa pelo C/V.
+      const totalDisponivel = boasImpressao;
       const jaProcessado = (cvRes.data ?? []).reduce(
         (s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0
       );
@@ -849,7 +859,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
             <span className="material-symbols-outlined text-indigo-500 text-sm mt-0.5">assignment_turned_in</span>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                Recebido da impressão (aprovadas + escolhas)
+                Recebido da impressão (somente aprovadas)
               </p>
               <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
                 {fmt(saldoInspecao.recebido)} unidades disponiveis
@@ -862,7 +872,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
               {saldoInspecao.escolha > 0 && (
                 <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                   <span className="material-symbols-outlined text-xs">info</span>
-                  {fmt(saldoInspecao.boas)} aprovadas + {fmt(saldoInspecao.escolha)} em escolha — tudo segue para acabamento
+                  {fmt(saldoInspecao.boas)} aprovadas da impressão (escolha de {fmt(saldoInspecao.escolha)} un. segue direto pra Revisão Final)
                 </p>
               )}
             </div>
