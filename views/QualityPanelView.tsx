@@ -237,10 +237,12 @@ export default function QualityPanelView() {
                 if (!opKey || revisaoVistaPorOp.has(opKey)) return; // já pegou a mais recente
                 revisaoVistaPorOp.add(opKey);
                 const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
+                // Refugo: preferir o JSON, fallback pra qty_reprovadas (sempre salvo no nível da linha)
+                const refug = asN(def.quantidade_refugada_revisao) || asN(r.qty_reprovadas);
+                // Recuperado: preferir o JSON, fallback pra qty_aprovadas menos o que já era bom
                 const recup = asN(def.quantidade_recuperada_revisao);
-                const refug = asN(def.quantidade_refugada_revisao);
-                // Se tem dados de resultado (recuperado ou refugo > 0), a escolha foi resolvida
-                if (recup > 0 || refug > 0) {
+                // Se tem QUALQUER dado de revisão (refugo OU recuperado OU qty_reprovadas > 0)
+                if (refug > 0 || recup > 0 || asN(r.qty_reprovadas) > 0 || asN(r.qty_aprovadas) > 0) {
                     revisaoFinalizadaOps.add(opKey);
                     revisaoRecuperado.set(opKey, recup);
                     revisaoRefugo.set(opKey, refug);
