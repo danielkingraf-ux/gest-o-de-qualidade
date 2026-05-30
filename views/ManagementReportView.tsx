@@ -637,8 +637,11 @@ export default function ManagementReportView() {
               <table className="w-full text-left text-[11px]">
                 <thead className="bg-slate-50 dark:bg-slate-800/50">
                   <tr>
-                    {['OP', 'Cliente', 'Pedido', 'Entregue final', 'Perda', 'Status'].map(h => (
-                      <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                    {([
+                      ['OP', 'text-left'], ['Cliente', 'text-left'], ['Pedido', 'text-right'],
+                      ['Entregue final', 'text-right'], ['Perda', 'text-right'], ['Status', 'text-left'],
+                    ] as const).map(([h, align]) => (
+                      <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -673,8 +676,19 @@ export default function ManagementReportView() {
                 <table className="w-full text-left text-[11px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      {['OP', 'Pedido', 'Aprov. direto', 'Recuperado', 'Entregue final', 'Resultado', 'Pessoas', 'Horas', 'Custo rev.', 'Status'].map(h => (
-                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      {([
+                        ['OP', 'text-left'],
+                        ['Pedido', 'text-right'],
+                        ['Aprov. direto', 'text-right'],
+                        ['Recuperado', 'text-right'],
+                        ['Entregue final', 'text-right'],
+                        ['Resultado', 'text-right'],
+                        ['Pessoas', 'text-center'],
+                        ['Horas', 'text-center'],
+                        ['Custo rev.', 'text-right'],
+                        ['Status', 'text-left'],
+                      ] as const).map(([h, align]) => (
+                        <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -723,8 +737,8 @@ export default function ManagementReportView() {
                 <table className="w-full text-left text-[11px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      {['Origem', 'Tipo', 'Ocorrências', 'Qtd. afetada', 'OPs'].map(h => (
-                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      {([['Origem', 'text-left'], ['Tipo', 'text-left'], ['Ocorrências', 'text-center'], ['Qtd. afetada', 'text-right'], ['OPs', 'text-center']] as const).map(([h, align]) => (
+                        <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -758,8 +772,8 @@ export default function ManagementReportView() {
                 <table className="w-full text-left text-[11px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      {['Operador', 'Maquina', 'OPs', 'Defeito Principal', 'Taxa Media'].map(h => (
-                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      {([['Operador', 'text-left'], ['Maquina', 'text-left'], ['OPs', 'text-center'], ['Defeito Principal', 'text-left'], ['Taxa Media', 'text-center']] as const).map(([h, align]) => (
+                        <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -787,8 +801,8 @@ export default function ManagementReportView() {
                 <table className="w-full text-left text-[11px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      {['Maquina', 'Operadores', 'OPs', 'Defeito Recorrente', 'Taxa'].map(h => (
-                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      {([['Maquina', 'text-left'], ['Operadores', 'text-center'], ['OPs', 'text-center'], ['Defeito Recorrente', 'text-left'], ['Taxa', 'text-center']] as const).map(([h, align]) => (
+                        <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -816,8 +830,8 @@ export default function ManagementReportView() {
                 <table className="w-full text-left text-[11px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      {['OP', 'Rodada', 'Motivo', 'Qtd. (unid.)'].map(h => (
-                        <th key={h} className="p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest">{h}</th>
+                      {([['OP', 'text-left'], ['Rodada', 'text-center'], ['Motivo', 'text-left'], ['Qtd. (unid.)', 'text-right']] as const).map(([h, align]) => (
+                        <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
