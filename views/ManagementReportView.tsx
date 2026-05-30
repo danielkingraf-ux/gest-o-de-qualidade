@@ -15,6 +15,16 @@ import {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n);
 const fmtMoney = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+
+// Mapa ESTÁTICO de cores — classes dinâmicas (bg-${color}-50) não são geradas pelo Tailwind.
+const CARD_STYLES: Record<string, { box: string; icon: string; value: string }> = {
+  indigo:  { box: 'border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/20',     icon: 'text-indigo-500',  value: 'text-indigo-700 dark:text-indigo-300' },
+  slate:   { box: 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60',           icon: 'text-slate-500',   value: 'text-slate-800 dark:text-slate-100' },
+  emerald: { box: 'border-emerald-100 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20', icon: 'text-emerald-500', value: 'text-emerald-700 dark:text-emerald-300' },
+  rose:    { box: 'border-rose-100 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20',             icon: 'text-rose-500',    value: 'text-rose-700 dark:text-rose-300' },
+  amber:   { box: 'border-amber-100 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20',         icon: 'text-amber-500',   value: 'text-amber-700 dark:text-amber-300' },
+};
+const cardStyle = (c: string) => CARD_STYLES[c] ?? CARD_STYLES.slate;
 const pct = (v: number, total: number) => total > 0 ? ((v / total) * 100).toFixed(1) + '%' : '—';
 
 const parseObs = (observations: string | null): Record<string, any> => {
@@ -609,12 +619,12 @@ export default function ManagementReportView() {
                 { label: 'OPs aprovadas', value: String(s!.opsAprovadas), icon: 'thumb_up', color: 'emerald' },
                 { label: 'OPs reprovadas', value: String(s!.opsReprovadas), icon: 'thumb_down', color: 'rose' },
               ].map(card => (
-                <div key={card.label} className={`rounded-xl border border-${card.color}-100 dark:border-${card.color}-900/40 bg-${card.color}-50 dark:bg-${card.color}-950/20 p-3`}>
+                <div key={card.label} className={`rounded-xl border p-3 ${cardStyle(card.color).box}`}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`material-symbols-outlined text-${card.color}-500 text-sm`}>{card.icon}</span>
+                    <span className={`material-symbols-outlined text-sm ${cardStyle(card.color).icon}`}>{card.icon}</span>
                     <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">{card.label}</span>
                   </div>
-                  <p className={`text-lg font-black text-${card.color}-700 dark:text-${card.color}-300`}>{card.value}</p>
+                  <p className={`text-lg font-black ${cardStyle(card.color).value}`}>{card.value}</p>
                 </div>
               ))}
             </div>
@@ -840,7 +850,7 @@ export default function ManagementReportView() {
                 { label: 'Aprovacao sem restricao', value: reportData.kpis.aprovacaoSemRestricao, icon: 'verified', color: 'emerald' },
               ].map(kpi => (
                 <div key={kpi.label} className="flex items-center gap-3 p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
-                  <span className={`material-symbols-outlined text-2xl text-${kpi.color}-500`}>{kpi.icon}</span>
+                  <span className={`material-symbols-outlined text-2xl ${cardStyle(kpi.color).icon}`}>{kpi.icon}</span>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{kpi.label}</p>
                     <p className="text-xl font-black text-slate-800 dark:text-white">{kpi.value}</p>

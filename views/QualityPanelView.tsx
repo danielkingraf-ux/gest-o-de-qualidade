@@ -148,7 +148,7 @@ export default function QualityPanelView() {
                     .limit(1000),
                 supabase.from('operators').select('id, name'),
                 supabase.from('acabamento_registros')
-                    .select('id, op, timestamp, machine_id, operator_ids, qty_revisadas, qty_reprovadas, defects')
+                    .select('id, op, modulo, timestamp, machine_id, operator_ids, qty_revisadas, qty_aprovadas, qty_reprovadas, defects')
                     .in('modulo', ['corte_vinco', 'colagem', 'revisao_final'])
                     .order('timestamp', { ascending: false })
                     .limit(500),
