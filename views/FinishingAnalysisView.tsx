@@ -324,8 +324,11 @@ export default function FinishingAnalysisView() {
         return { critOk, majOk, minOk, overall: critOk && majOk && minOk };
     }, [palletSamplingPlan, palletDefects]);
 
-    const totalExpectedPallets = palletLotSize > 0 && qtyProduzida > 0
-        ? Math.ceil(qtyProduzida / palletLotSize) : null;
+    // Pallets só são formados com as BOAS rodadas (produzida − escolha − refugo).
+    // Não pode gerar pallets indiscriminadamente: o teto é a quantidade boa produzida.
+    const boasRodadasPA = Math.max(0, qtyProduzida - qtyEscolha - qtyRefugo);
+    const totalExpectedPallets = palletLotSize > 0 && boasRodadasPA > 0
+        ? Math.ceil(boasRodadasPA / palletLotSize) : null;
     const palletsRemaining = totalExpectedPallets !== null
         ? Math.max(0, totalExpectedPallets - savedPallets.length) : null;
     const allPalletsInspected = palletsRemaining === 0;
@@ -335,6 +338,13 @@ export default function FinishingAnalysisView() {
         const selectedOrder = orders.find(o => o.op.toUpperCase() === selectedOrderId.toUpperCase());
         if (!selectedOrderId || !selectedOrder || nqaConfig.unidades_por_caixa <= 0 || !palletSamplingPlan) {
             showToast('Configure unidades por caixa e caixas por pallet antes de registrar', 'warning'); return;
+        }
+        // Bloqueia gerar pallets além do que a produção boa comporta
+        if (totalExpectedPallets === null || boasRodadasPA <= 0) {
+            showToast('Informe o "Rodado nesta etapa" (boas) antes de registrar pallets.', 'warning'); return;
+        }
+        if (savedPallets.length >= totalExpectedPallets) {
+            showToast(`A OP comporta apenas ${totalExpectedPallets} pallet(s) (${fmt(boasRodadasPA)} un. boas ÷ ${fmt(palletLotSize)} un./pallet). Não é possível gerar mais.`, 'error'); return;
         }
         setIsSavingPallet(true);
         try {
@@ -933,10 +943,9 @@ export default function FinishingAnalysisView() {
 
                     {/* ── Tracker visual de andamento dos pallets ── */}
                     {(() => {
-                        const totalEsperado = palletLotSize > 0 && qtyProduzida > 0
-                            ? Math.ceil(qtyProduzida / palletLotSize) : null;
+                        const totalEsperado = totalExpectedPallets;
                         const currentNum = savedPallets.length + 1;
-                        const total = Math.max(totalEsperado ?? currentNum, currentNum);
+                        const total = totalEsperado ?? Math.max(savedPallets.length, currentNum);
                         const nums = Array.from({ length: total }, (_, i) => i + 1);
                         return (
                             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
@@ -949,7 +958,7 @@ export default function FinishingAnalysisView() {
                                     </div>
                                     {totalEsperado && palletLotSize > 0 && (
                                         <span className="text-[10px] font-bold text-slate-400">
-                                            {fmt(qtyProduzida)} un. ÷ {fmt(palletLotSize)} un/pallet = {totalEsperado} pallets estimados
+                                            {fmt(boasRodadasPA)} un. boas ÷ {fmt(palletLotSize)} un/pallet = {totalEsperado} pallets
                                         </span>
                                     )}
                                 </div>
@@ -1171,13 +1180,20 @@ export default function FinishingAnalysisView() {
                                 </div>
 
                                 {/* Botão registrar pallet */}
-                                <button type="button" onClick={handleSavePallet} disabled={isSavingPallet || !selectedOrderId}
+                                <button type="button" onClick={handleSavePallet} disabled={isSavingPallet || !selectedOrderId || allPalletsInspected}
                                     className="w-full h-12 rounded-2xl bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50">
                                     {isSavingPallet
                                         ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span>
                                         : <span className="material-symbols-outlined text-sm">add_task</span>}
-                                    Registrar Pallet #{savedPallets.length + 1} e Gerar QR
+                                    {allPalletsInspected
+                                        ? `Todos os ${totalExpectedPallets} pallet(s) já registrados`
+                                        : `Registrar Pallet #${savedPallets.length + 1} e Gerar QR`}
                                 </button>
+                                {allPalletsInspected && (
+                                    <p className="mt-2 text-center text-[10px] font-bold text-slate-400">
+                                        A produção boa ({fmt(boasRodadasPA)} un.) comporta {totalExpectedPallets} pallet(s). Limite atingido.
+                                    </p>
+                                )}
                             </div>
                         </div>
                     )}
