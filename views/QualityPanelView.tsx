@@ -176,8 +176,9 @@ export default function QualityPanelView() {
                 const defRaw = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
                 const isRevisao = r.modulo === 'revisao_final';
 
-                // Revisão Final: ignorar sessões em andamento (duplicariam os totais)
-                if (isRevisao && defRaw.session_status === 'em_andamento') return null;
+                // Revisão Final: não inclui como record normalizado — o refugo da revisão
+                // é tratado separadamente via revisaoRefugoMap nos totais (evita dupla contagem)
+                if (isRevisao) return null;
                 const defMap: Record<string, number> = {};
                 if (!isRevisao) {
                     // Corte/Vinco e Colagem: defects é map de contagem de defeitos
@@ -222,20 +223,27 @@ export default function QualityPanelView() {
                 };
             }).filter((r: any): r is NormalizedRecord => r !== null && !isNaN(new Date(r?.date).getTime()));
 
-            // Identifica OPs com revisão finalizada — a escolha dessas OPs já foi resolvida
-            // (parte recuperada, parte refugo). Não deve contar como "aguardando revisão".
+            // Identifica OPs com revisão (finalizada OU em andamento com dados).
+            // Por OP, pega SÓ a revisão mais recente (evita dupla contagem).
+            // Se tem dados de refugo/recuperado, a escolha dessa OP já foi resolvida.
             const revisaoFinalizadaOps = new Set<string>();
-            const revisaoRecuperado = new Map<string, number>(); // op → recuperado
-            const revisaoRefugo = new Map<string, number>();     // op → refugo definitivo
+            const revisaoRecuperado = new Map<string, number>();
+            const revisaoRefugo = new Map<string, number>();
+            const revisaoVistaPorOp = new Set<string>(); // dedup: só a mais recente por OP
+            // colRes.data vem ordenado por timestamp DESC (mais recente primeiro)
             (colRes.data || []).forEach((r: any) => {
                 if (r.modulo !== 'revisao_final') return;
-                const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
-                if (def.session_status === 'em_andamento') return;
                 const opKey = String(r.op || '').trim().toUpperCase();
-                if (opKey) {
+                if (!opKey || revisaoVistaPorOp.has(opKey)) return; // já pegou a mais recente
+                revisaoVistaPorOp.add(opKey);
+                const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
+                const recup = asN(def.quantidade_recuperada_revisao);
+                const refug = asN(def.quantidade_refugada_revisao);
+                // Se tem dados de resultado (recuperado ou refugo > 0), a escolha foi resolvida
+                if (recup > 0 || refug > 0) {
                     revisaoFinalizadaOps.add(opKey);
-                    revisaoRecuperado.set(opKey, (revisaoRecuperado.get(opKey) || 0) + asN(def.quantidade_recuperada_revisao));
-                    revisaoRefugo.set(opKey, (revisaoRefugo.get(opKey) || 0) + asN(def.quantidade_refugada_revisao));
+                    revisaoRecuperado.set(opKey, recup);
+                    revisaoRefugo.set(opKey, refug);
                 }
             });
 
@@ -288,12 +296,14 @@ export default function QualityPanelView() {
         // Escolha líquida = o que ainda está PENDENTE de revisão
         const escolha = Math.max(0, escolhaBruta - escolhaRevisada);
 
-        // Recuperado total (das OPs que têm revisão finalizada)
+        // Somar refugo da revisão final (vem do map, não dos records normalizados)
+        let refugoRevisao = 0;
         let recuperadoTotal = 0;
+        revisaoRefugoMap.forEach(v => { refugoRevisao += v; });
         revisaoRecuperadoMap.forEach(v => { recuperadoTotal += v; });
 
-        return { laudos: opsSet.size, registros, produzida, escolha, escolhaBruta, refugo, recuperadoTotal };
-    }, [filtered, areaTab, revisaoFinalizada, revisaoRecuperadoMap]);
+        return { laudos: opsSet.size, registros, produzida, escolha, escolhaBruta, refugo: refugo + refugoRevisao, recuperadoTotal };
+    }, [filtered, areaTab, revisaoFinalizada, revisaoRecuperadoMap, revisaoRefugoMap]);
 
     // ── Ranking de defeitos ─────────────────────────────────────────────────
     const defectRanking = useMemo(() => {

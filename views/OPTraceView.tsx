@@ -253,8 +253,9 @@ export default function OPTraceView() {
             const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
             const isRevisao = r.modulo === 'revisao_final';
 
-            // Ignorar sessões em andamento da revisão final (duplicariam os totais)
-            if (isRevisao && def.session_status === 'em_andamento') return null;
+            // Deduplicar revisão final por OP: só pega a mais recente (dados vêm por timestamp ASC,
+            // mas vamos processar e o último sobrescreve)
+            // Não filtra em_andamento — se só existe em_andamento com dados, usa ela.
             const operadorIds: string[] = Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [];
 
             // Defects map
@@ -289,7 +290,16 @@ export default function OPTraceView() {
                 statusFinal: isRevisao ? String(def.status_final || '') : '',
                 fechouPedido: isRevisao ? (typeof def.fechou_pedido === 'boolean' ? def.fechou_pedido : null) : null,
             };
-        }) as (AcabRecord | null)[]).filter((r): r is AcabRecord => r !== null);
+        }) as (AcabRecord | null)[]).filter((r): r is AcabRecord => r !== null)
+        // Deduplicar revisão final: manter só a mais recente por OP
+        .filter((r, _i, arr) => {
+            if (r.modulo !== 'revisao_final') return true;
+            const opKey = (acabRes.data || []).find((a: any) => a.id === r.id)?.op?.trim().toUpperCase() ?? '';
+            const revisoes = arr.filter(a => a.modulo === 'revisao_final' &&
+                (acabRes.data || []).find((x: any) => x.id === a.id)?.op?.trim().toUpperCase() === opKey);
+            // Manter só a última (maior timestamp)
+            return revisoes.length <= 1 || r === revisoes[revisoes.length - 1];
+        });
 
         const allRecs = [...inspections, ...(acabRes.data || [])];
         if (!order && allRecs.length === 0 && (palRes.data || []).length === 0) {
