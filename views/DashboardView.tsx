@@ -721,61 +721,63 @@ export default function DashboardView() {
     }).map((r) => (r.op ?? '').trim().toUpperCase()).filter(Boolean)).size;
     const reimpressoes = revisaoPeriodo.filter((r) => ((r.defects ?? {}) as Record<string, unknown>).status_final === 'precisa_reimpressao').length;
     const custoRevisao = revisaoPeriodo.reduce((s, r) => s + asN(((r.defects ?? {}) as Record<string, unknown>).custo_revisao), 0);
-    const perdasTotais = summary.escolha + summary.reprovadas;
+    // Perda = SÓ refugo definitivo (de todas as etapas). Escolha NÃO é perda — é pendente de revisão.
+    const perdasTotais = summary.reprovadas;
     const percentualPerda = summary.rodadas > 0 ? (perdasTotais / summary.rodadas) * 100 : 0;
     const topProcessosPerda = bySetor.filter((p) => p.total > 0).slice(0, 3);
     const principaisCausas = byDefeito.slice(0, 6);
-    // ── Chart data (12 semanas) ─────────────────────────────────────────────
+    // ── Chart data (6 meses) ─────────────────────────────────────────────
     const chartData = useMemo(() => {
-        const WEEKS = 12;
+        const MONTHS = 6;
+        const MESES_LABEL = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
         const now = new Date();
-        const weekBuckets = Array.from({ length: WEEKS }, (_, i) => {
-            const weekEnd = new Date(now);
-            weekEnd.setDate(now.getDate() - (WEEKS - 1 - i) * 7);
-            weekEnd.setHours(23, 59, 59, 999);
-            const weekStart = new Date(weekEnd);
-            weekStart.setDate(weekEnd.getDate() - 6);
-            weekStart.setHours(0, 0, 0, 0);
-            const label = `${String(weekStart.getDate()).padStart(2, '0')}/${String(weekStart.getMonth() + 1).padStart(2, '0')}`;
-            return { start: weekStart, end: weekEnd, label };
+        const monthBuckets = Array.from({ length: MONTHS }, (_, i) => {
+            const d = new Date(now.getFullYear(), now.getMonth() - (MONTHS - 1 - i), 1);
+            const start = new Date(d.getFullYear(), d.getMonth(), 1);
+            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+            const label = `${MESES_LABEL[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
+            return { start, end, label };
         });
 
-        const inWeek = (dateStr: string, s: Date, e: Date) => {
+        const inBucket = (dateStr: string, s: Date, e: Date) => {
             const d = new Date(dateStr);
             return d >= s && d <= e;
         };
 
-        // 1. Perdas por setor (semanal)
-        const perdasPorSetor = weekBuckets.map((w) => {
+        // 1. Refugo por setor (mensal) — SÓ refugo, não escolha
+        const perdasPorSetor = monthBuckets.map((w) => {
             let inicial = 0; let corte = 0; let acabado = 0; let revisao = 0;
 
             inspections.forEach((r) => {
-                if (!inWeek(r.created_at, w.start, w.end)) return;
+                if (!inBucket(r.created_at, w.start, w.end)) return;
                 const obs = parseObs(r.observations);
                 if (obs.process_area === 'producao_inicial') {
-                    inicial += asN(obs.saldo_unidades?.em_escolha) + asN(obs.saldo_unidades?.reprovadas);
+                    inicial += asN(obs.saldo_unidades?.reprovadas); // só refugo, NÃO escolha
                 } else if (obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis === true) {
-                    acabado += asN(obs.producao?.qty_escolha) + asN(obs.producao?.qty_refugo);
+                    acabado += asN(obs.producao?.qty_refugo); // só refugo do PA
                 }
             });
 
             acabamentos.forEach((r) => {
-                if (!inWeek(r.timestamp, w.start, w.end)) return;
-                if (r.modulo === 'corte_vinco') corte += asN(r.qty_reprovadas);
-                if (r.modulo === 'revisao_final') revisao += asN(r.qty_reprovadas);
+                if (!inBucket(r.timestamp, w.start, w.end)) return;
+                const def = typeof r.defects === 'object' ? r.defects : {};
+                if (r.modulo === 'corte_vinco') corte += asN((def as Record<string, unknown>).qty_refugo);
+                if (r.modulo === 'revisao_final' && (def as Record<string, unknown>).session_status !== 'em_andamento') {
+                    revisao += asN((def as Record<string, unknown>).quantidade_refugada_revisao);
+                }
             });
 
             return {
-                semana: w.label,
+                mes: w.label,
                 'Processo Inicial': inicial,
                 'Corte/Vinco': corte,
                 'Produto Acabado': acabado,
-                'Revisao Final': revisao,
+                'Revisão Final': revisao,
                 total: inicial + corte + acabado + revisao,
             };
         });
 
-        // 2. Top 5 defeitos — evolucao semanal
+        // 2. Top 5 defeitos — evolucao mensal
         // Primeiro, achar os top 5 defeitos globais
         const globalDefects: Record<string, number> = {};
         inspections.forEach((r) => {
@@ -800,12 +802,12 @@ export default function DashboardView() {
         });
         const top5Defects = Object.entries(globalDefects).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name]) => name);
 
-        const defeitosSemana = weekBuckets.map((w) => {
+        const defeitosMes = monthBuckets.map((w) => {
             const counts: Record<string, number> = {};
             top5Defects.forEach((d) => (counts[d] = 0));
 
             inspections.forEach((r) => {
-                if (!inWeek(r.created_at, w.start, w.end)) return;
+                if (!inBucket(r.created_at, w.start, w.end)) return;
                 const obs = parseObs(r.observations);
                 const porUnidade = obs.defeitos?.por_unidade as Record<string, unknown> | undefined;
                 if (porUnidade) {
@@ -819,20 +821,20 @@ export default function DashboardView() {
             });
 
             acabamentos.forEach((r) => {
-                if (!inWeek(r.timestamp, w.start, w.end)) return;
+                if (!inBucket(r.timestamp, w.start, w.end)) return;
                 const defects = r.defects as Record<string, number> | null;
                 if (defects) for (const [k, v] of Object.entries(defects)) { if (asN(v) > 0) { const e = toDefectEntry(k, asN(v)); if (e && counts[e.name] !== undefined) counts[e.name] += e.count; } }
             });
 
-            return { semana: w.label, ...counts };
+            return { mes: w.label, ...counts };
         });
 
-        // 3. Taxa de aprovacao semanal (%)
-        const taxaAprovacao = weekBuckets.map((w) => {
+        // 3. Taxa de aprovacao mensal (%)
+        const taxaAprovacao = monthBuckets.map((w) => {
             let totalRodadas = 0; let totalAprovadas = 0;
 
             inspections.forEach((r) => {
-                if (!inWeek(r.created_at, w.start, w.end)) return;
+                if (!inBucket(r.created_at, w.start, w.end)) return;
                 const obs = parseObs(r.observations);
                 if (obs.process_area === 'producao_inicial') {
                     totalRodadas += asN(obs.saldo_unidades?.rodadas);
@@ -841,13 +843,13 @@ export default function DashboardView() {
             });
 
             acabamentos.forEach((r) => {
-                if (!inWeek(r.timestamp, w.start, w.end)) return;
+                if (!inBucket(r.timestamp, w.start, w.end)) return;
                 totalRodadas += asN(r.qty_revisadas);
                 totalAprovadas += asN(r.qty_aprovadas);
             });
 
             const taxa = totalRodadas > 0 ? (totalAprovadas / totalRodadas) * 100 : null;
-            return { semana: w.label, aprovacao: taxa !== null ? Number(taxa.toFixed(1)) : null, rodadas: totalRodadas };
+            return { mes: w.label, aprovacao: taxa !== null ? Number(taxa.toFixed(1)) : null, rodadas: totalRodadas };
         });
 
         // 4. Perdas por maquina (bar chart)
@@ -882,7 +884,7 @@ export default function DashboardView() {
             .sort((a, b) => b.total - a.total)
             .slice(0, 8);
 
-        return { perdasPorSetor, defeitosSemana, top5Defects, taxaAprovacao, maquinasChart };
+        return { perdasPorSetor, defeitosMes, top5Defects, taxaAprovacao, maquinasChart };
     }, [inspections, acabamentos, machineNames]);
 
     const CHART_COLORS = ['#6366f1', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899'];
@@ -924,18 +926,18 @@ export default function DashboardView() {
                     <StatCard label="Número de reimpressões" value={String(reimpressoes)} tone={reimpressoes > 0 ? 'rose' : 'slate'} />
                     <StatCard label="Percentual de perda total" value={`${percentualPerda.toFixed(1)}%`} tone={percentualPerda > 3 ? 'rose' : percentualPerda > 1 ? 'amber' : 'slate'} />
                     <StatCard label="Custo estimado de revisão" value={custoRevisao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} tone={custoRevisao > 0 ? 'amber' : 'slate'} />
-                    <StatCard label="Unidades em perda/escolha" value={fmt(perdasTotais)} tone={perdasTotais > 0 ? 'amber' : 'slate'} />
+                    <StatCard label="Refugo definitivo" value={fmt(perdasTotais)} tone={perdasTotais > 0 ? 'rose' : 'slate'} />
                     <StatCard label="Base rodada" value={fmt(summary.rodadas)} />
                 </div>
 
                 {/* ── Graficos de Tendencia ─────────────────────────────────── */}
 
-                {/* 1. Tendencia semanal de perdas por setor */}
+                {/* 1. Tendencia mensal de refugo por setor */}
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                     <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-base text-indigo-500">trending_down</span>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tendência de Perdas por Setor — Últimas 12 semanas</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Refugo por Setor — Últimos 6 meses</p>
                         </div>
                     </div>
                     <div className="p-4" style={{ height: 320 }}>
@@ -960,7 +962,7 @@ export default function DashboardView() {
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis dataKey="semana" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                <XAxis dataKey="mes" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
                                 <YAxis tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" width={45} />
                                 <Tooltip
                                     contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
@@ -981,7 +983,7 @@ export default function DashboardView() {
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                         <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
                             <div className="flex items-center gap-2">
-                                <span className="material-symbols-outlined text-base text-rose-500">bug_report</span>
+                                <span className="material-symbols-outlined text-base text-rose-500">trending_down</span>
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Evolução dos Top 5 Defeitos</p>
                             </div>
                         </div>
@@ -990,9 +992,9 @@ export default function DashboardView() {
                                 <div className="flex h-full items-center justify-center text-xs text-slate-400">Sem dados de defeitos</div>
                             ) : (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData.defeitosSemana} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                    <LineChart data={chartData.defeitosMes} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="semana" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                        <XAxis dataKey="mes" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
                                         <YAxis tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" width={40} />
                                         <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }} />
                                         <Legend iconType="circle" wrapperStyle={{ fontSize: 9, fontWeight: 800 }} />
@@ -1005,12 +1007,12 @@ export default function DashboardView() {
                         </div>
                     </div>
 
-                    {/* 3. Taxa de aprovacao semanal */}
+                    {/* 3. Taxa de aprovacao mensal */}
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                         <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
                             <div className="flex items-center gap-2">
                                 <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Taxa de Aprovação Semanal (%)</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Taxa de Aprovação Mensal (%)</p>
                             </div>
                         </div>
                         <div className="p-4" style={{ height: 280 }}>
@@ -1023,7 +1025,7 @@ export default function DashboardView() {
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="semana" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
+                                    <XAxis dataKey="mes" tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" />
                                     <YAxis domain={[0, 100]} tick={{ fontSize: 10, fontWeight: 700 }} stroke="#94a3b8" width={40} unit="%" />
                                     <Tooltip
                                         contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
@@ -1067,10 +1069,10 @@ export default function DashboardView() {
                     {/* Top processos com mais perda */}
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                         <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Top processos com mais perda</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Top processos com mais refugo</p>
                         </div>
                         <div className="divide-y divide-slate-50 dark:divide-slate-800">
-                            {topProcessosPerda.length === 0 ? <p className="px-5 py-4 text-xs text-slate-400">Sem perdas no período</p> : topProcessosPerda.map((item, i) => (
+                            {topProcessosPerda.length === 0 ? <p className="px-5 py-4 text-xs text-slate-400">Sem refugo no período</p> : topProcessosPerda.map((item, i) => (
                                 <div key={item.nome} className="flex items-center gap-3 px-5 py-3">
                                     <span className="w-4 text-[11px] font-black text-slate-400">{i + 1}</span>
                                     <span className="flex-1 text-xs font-bold text-slate-700 dark:text-slate-200">{item.nome}</span>
@@ -1083,7 +1085,7 @@ export default function DashboardView() {
                     {/* Principais causas de perda */}
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                         <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Principais causas de perda</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Principais causas de refugo</p>
                         </div>
                         <div className="divide-y divide-slate-50 dark:divide-slate-800">
                             {principaisCausas.length === 0 ? <p className="px-5 py-4 text-xs text-slate-400">Sem defeitos reais no período</p> : principaisCausas.map((item, i) => (
