@@ -175,8 +175,9 @@ export default function QualityPanelView() {
                     ? asN(defRaw.quantidade_refugada_revisao)
                     : asN(defRaw.qty_refugo);
 
-                // Produzido: revisão final tem quantidade_enviada_revisao (para contexto)
-                const qtyProduzida = isRevisao ? asN(defRaw.quantidade_enviada_revisao) : asN(r.qty_revisadas);
+                // Revisão Final NÃO produz material novo — é revisão do existente.
+                // Só corte/vinco e colagem têm qty_revisadas como produzido.
+                const qtyProduzida = isRevisao ? 0 : asN(r.qty_revisadas);
 
                 // Operadores: revisão final pode ter operator_ids vazio — puxar dos problemas
                 let operatorIds: string[] = Array.isArray(r.operator_ids) ? r.operator_ids.filter(Boolean) : [];
