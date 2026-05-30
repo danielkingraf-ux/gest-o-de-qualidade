@@ -134,6 +134,9 @@ export default function QualityPanelView() {
     const [period, setPeriod]     = useState<Period>('month');
     const [areaTab, setAreaTab]   = useState<'all' | 'inicial' | 'acabado'>('all');
     const [palletRecs, setPalletRecs] = useState<any[]>([]);
+    const [revisaoFinalizada, setRevisaoFinalizada] = useState<Set<string>>(new Set());
+    const [revisaoRecuperadoMap, setRevisaoRecuperadoMap] = useState<Map<string, number>>(new Map());
+    const [revisaoRefugoMap, setRevisaoRefugoMap] = useState<Map<string, number>>(new Map());
 
     useEffect(() => {
         (async () => {
@@ -219,7 +222,28 @@ export default function QualityPanelView() {
                 };
             }).filter((r: any): r is NormalizedRecord => r !== null && !isNaN(new Date(r?.date).getTime()));
 
+            // Identifica OPs com revisão finalizada — a escolha dessas OPs já foi resolvida
+            // (parte recuperada, parte refugo). Não deve contar como "aguardando revisão".
+            const revisaoFinalizadaOps = new Set<string>();
+            const revisaoRecuperado = new Map<string, number>(); // op → recuperado
+            const revisaoRefugo = new Map<string, number>();     // op → refugo definitivo
+            (colRes.data || []).forEach((r: any) => {
+                if (r.modulo !== 'revisao_final') return;
+                const def = typeof r.defects === 'string' ? JSON.parse(r.defects) : (r.defects || {});
+                if (def.session_status === 'em_andamento') return;
+                const opKey = String(r.op || '').trim().toUpperCase();
+                if (opKey) {
+                    revisaoFinalizadaOps.add(opKey);
+                    revisaoRecuperado.set(opKey, (revisaoRecuperado.get(opKey) || 0) + asN(def.quantidade_recuperada_revisao));
+                    revisaoRefugo.set(opKey, (revisaoRefugo.get(opKey) || 0) + asN(def.quantidade_refugada_revisao));
+                }
+            });
+
             setRecords([...inspRecs, ...colagemRecs]);
+            // Salvar set de OPs com revisão finalizada pra usar nos totais
+            setRevisaoFinalizada(revisaoFinalizadaOps);
+            setRevisaoRecuperadoMap(revisaoRecuperado);
+            setRevisaoRefugoMap(revisaoRefugo);
             setLoading(false);
         })();
     }, []);
@@ -235,23 +259,41 @@ export default function QualityPanelView() {
 
     // ── Totais ──────────────────────────────────────────────────────────────
     const totals = useMemo(() => {
-        let registros = 0, produzida = 0, escolha = 0, refugo = 0;
+        let registros = 0, produzida = 0, escolhaBruta = 0, refugo = 0;
         const opsSet = new Set<string>();
         filtered.forEach(r => {
             registros++;
             opsSet.add(r.op);
-            // Quando exibindo ambas as áreas, não somar produto acabado para produzida e escolha:
-            // - qtyProduzida: a OP tem UMA quantidade (a do processo inicial)
-            // - qtyEscolha: o em_escolha do acabado é subconjunto do em_escolha da impressão
-            // - qtyRefugo: é aditivo — diferentes peças refugadas em etapas distintas
             if (areaTab !== 'all' || r.area === 'inicial') {
                 produzida += r.qtyProduzida;
-                escolha   += r.qtyEscolha;
+                escolhaBruta += r.qtyEscolha;
             }
             refugo += r.qtyRefugo;
         });
-        return { laudos: opsSet.size, registros, produzida, escolha, refugo };
-    }, [filtered, areaTab]);
+
+        // Descontar escolha das OPs que JÁ têm revisão finalizada.
+        // Essas escolhas foram resolvidas: parte recuperada (volta como boa), parte refugo.
+        let escolhaRevisada = 0;
+        opsSet.forEach(op => {
+            const opKey = op.trim().toUpperCase();
+            if (revisaoFinalizada.has(opKey)) {
+                // Soma toda a escolha dessa OP nos records iniciais
+                const escolhaDaOp = filtered
+                    .filter(r => r.op.trim().toUpperCase() === opKey && r.area === 'inicial')
+                    .reduce((s, r) => s + r.qtyEscolha, 0);
+                escolhaRevisada += escolhaDaOp;
+            }
+        });
+
+        // Escolha líquida = o que ainda está PENDENTE de revisão
+        const escolha = Math.max(0, escolhaBruta - escolhaRevisada);
+
+        // Recuperado total (das OPs que têm revisão finalizada)
+        let recuperadoTotal = 0;
+        revisaoRecuperadoMap.forEach(v => { recuperadoTotal += v; });
+
+        return { laudos: opsSet.size, registros, produzida, escolha, escolhaBruta, refugo, recuperadoTotal };
+    }, [filtered, areaTab, revisaoFinalizada, revisaoRecuperadoMap]);
 
     // ── Ranking de defeitos ─────────────────────────────────────────────────
     const defectRanking = useMemo(() => {
@@ -338,10 +380,11 @@ export default function QualityPanelView() {
     }, [filtered]);
 
     const riskOps = useMemo(() => {
-        const map = new Map<string, { op: string; escolha: number; refugo: number; processos: Set<string>; latest: Date }>();
+        const map = new Map<string, { op: string; escolha: number; refugo: number; processos: Set<string>; latest: Date; revisada: boolean }>();
         filtered.forEach(r => {
             if (r.qtyEscolha <= 0 && r.qtyRefugo <= 0) return;
-            const cur = map.get(r.op) || { op: r.op, escolha: 0, refugo: 0, processos: new Set<string>(), latest: r.date };
+            const opKey = r.op.trim().toUpperCase();
+            const cur = map.get(r.op) || { op: r.op, escolha: 0, refugo: 0, processos: new Set<string>(), latest: r.date, revisada: revisaoFinalizada.has(opKey) };
             cur.escolha += r.qtyEscolha;
             cur.refugo += r.qtyRefugo;
             cur.processos.add(r.process);
@@ -349,7 +392,7 @@ export default function QualityPanelView() {
             map.set(r.op, cur);
         });
         return Array.from(map.values()).sort((a, b) => (b.escolha + b.refugo) - (a.escolha + a.refugo)).slice(0, 12);
-    }, [filtered]);
+    }, [filtered, revisaoFinalizada]);
 
     const rejectedPalletOps = useMemo(() => {
         const map = new Map<string, { op: string; reprovados: number; restritos: number; latest: string }>();
@@ -366,7 +409,8 @@ export default function QualityPanelView() {
         return Array.from(map.values()).sort((a, b) => b.reprovados - a.reprovados || b.latest.localeCompare(a.latest)).slice(0, 10);
     }, [palletRecs]);
 
-    const pendingReviewQty = riskOps.reduce((s, op) => s + op.escolha, 0);
+    // Aguardando revisão = só escolha de OPs que AINDA NÃO foram revisadas
+    const pendingReviewQty = riskOps.filter(op => !op.revisada).reduce((s, op) => s + op.escolha, 0);
     const defectIncreaseAlerts = defectRanking.slice(0, 3).filter(d => d.count > Math.max(10, totals.registros * 2));
 
     // ── Status de pallets por OP ────────────────────────────────────────────
@@ -504,7 +548,12 @@ export default function QualityPanelView() {
                                         <span className="text-sm font-black text-slate-900 dark:text-white">OP {op.op}</span>
                                         <span className="text-[10px] font-black text-rose-600">{fmt.format(op.escolha + op.refugo)} un.</span>
                                     </div>
-                                    <p className="mt-1 text-[10px] font-bold text-rose-500">Escolha {fmt.format(op.escolha)} · Refugo {fmt.format(op.refugo)} · {[...op.processos].join(', ')}</p>
+                                    <p className="mt-1 text-[10px] font-bold text-rose-500">
+                                        {op.revisada
+                                            ? `✅ Revisada · Refugo ${fmt.format(op.refugo)} · ${[...op.processos].join(', ')}`
+                                            : `⏳ Escolha ${fmt.format(op.escolha)} · Refugo ${fmt.format(op.refugo)} · ${[...op.processos].join(', ')}`
+                                        }
+                                    </p>
                                 </div>
                             ))}
                         </div>
@@ -534,7 +583,9 @@ export default function QualityPanelView() {
                         <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Aguardando revisão</h2>
                     </div>
                     <p className="text-4xl font-black text-amber-700 dark:text-amber-300">{fmt.format(pendingReviewQty)}</p>
-                    <p className="text-xs font-bold text-slate-400">Quantidade em escolha aguardando ação da Revisão Final</p>
+                    <p className="text-xs font-bold text-slate-400">
+                        {pendingReviewQty > 0 ? 'Quantidade em escolha aguardando Revisão Final' : 'Todas as escolhas já foram revisadas'}
+                    </p>
                     {defectIncreaseAlerts.length > 0 && (
                         <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20 p-3">
                             <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">Alertas de aumento de defeito</p>
