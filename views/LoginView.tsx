@@ -21,7 +21,7 @@ export default function LoginView() {
 
             showToast('Bem-vindo ao Sistema Kingraf', 'success');
         } catch (error: any) {
-            showToast(`Erro de autenticacao: ${error.message}`, 'error');
+            showToast(`Erro de autenticação: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -44,10 +44,10 @@ export default function LoginView() {
                     <div className="mt-8 hidden md:block">
                         <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Sistema interno</p>
                         <h1 className="mt-4 max-w-xs text-3xl font-black leading-tight">
-                            Gestao de qualidade e rastreabilidade.
+                            Gestão de qualidade e rastreabilidade.
                         </h1>
                         <p className="mt-4 max-w-xs text-sm font-medium leading-6 text-slate-300">
-                            Acesso seguro para lancamentos, revisoes, relatorios e controle por OP.
+                            Acesso seguro para lançamentos, revisões, relatórios e controle por OP.
                         </p>
                     </div>
 
@@ -58,7 +58,7 @@ export default function LoginView() {
                         </div>
                         <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                             <span className="material-symbols-outlined text-base text-cyan-300">history</span>
-                            Auditoria e historico
+                            Auditoria e histórico
                         </div>
                         <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                             <span className="material-symbols-outlined text-base text-cyan-300">qr_code_2</span>
@@ -118,7 +118,7 @@ export default function LoginView() {
                                 </div>
 
                                 <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-semibold leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
-                                    Acesso individual registrado para seguranca, auditoria e conformidade LGPD.
+                                    Acesso individual registrado para segurança, auditoria e conformidade LGPD.
                                 </div>
 
                                 <button
@@ -140,7 +140,7 @@ export default function LoginView() {
                     </div>
 
                     <footer className="border-t border-slate-200 bg-white px-6 py-4 text-center text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:border-slate-800 dark:bg-slate-900">
-                        Desenvolvedor Daniel Oliveira | versao 1
+                        Desenvolvedor Daniel Oliveira | versão 1
                     </footer>
                 </section>
             </section>

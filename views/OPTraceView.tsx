@@ -365,7 +365,26 @@ export default function OPTraceView() {
         const hasRestricted  = allStatuses.some(s => s === 'RESTRICTED' || s === 'restricted');
         const overallStatus  = hasRejected ? 'REJECTED' : hasRestricted ? 'RESTRICTED' : 'APPROVED';
 
-        return { produzida, boasImpressao, escolha, refugo, boasPA, topDefects, ops, overallStatus };
+        // ── Cadeia de saldo por etapa: recebido → rodado → boas → escolha → refugo ──
+        const sum = (arr: AcabRecord[], f: (r: AcabRecord) => number) => arr.reduce((s, r) => s + f(r), 0);
+        const cvRecs = trace.etapasAcab.filter(r => r.modulo === 'corte_vinco');
+        const colRecs = trace.etapasAcab.filter(r => r.modulo === 'colagem');
+        const cvRodado = sum(cvRecs, r => r.qtyRevisadas);
+        const cvBoas = sum(cvRecs, r => r.qtyAprovadas);
+        const cvRefugo = sum(cvRecs, r => r.qtyRefugo);
+        const colRodado = sum(colRecs, r => r.qtyRevisadas);
+        const colBoas = sum(colRecs, r => r.qtyAprovadas);
+        const colRefugo = sum(colRecs, r => r.qtyRefugo);
+        const paContado = trace.acabado.reduce((s, r) => s + r.qtyProduzida, 0); // boas marcadas no PA (qty_produzida)
+
+        type CadeiaRow = { setor: string; recebido: number | null; rodado: number; boas: number; escolha: number; refugo: number; alerta: boolean };
+        const cadeia: CadeiaRow[] = [];
+        if (produzida > 0) cadeia.push({ setor: 'Impressão', recebido: null, rodado: produzida, boas: boasImpressao, escolha: escolhaImp, refugo: refugoInicial, alerta: false });
+        if (cvRecs.length) cadeia.push({ setor: 'Corte/Vinco', recebido: boasImpressao, rodado: cvRodado, boas: cvBoas, escolha: escolhaCV, refugo: cvRefugo, alerta: cvRodado > boasImpressao });
+        if (colRecs.length) cadeia.push({ setor: 'Colagem', recebido: cvBoas, rodado: colRodado, boas: colBoas, escolha: escolhaCol, refugo: colRefugo, alerta: colRodado > cvBoas });
+        if (trace.acabado.length) cadeia.push({ setor: 'Produto Acabado', recebido: colBoas, rodado: paContado, boas: boasPA, escolha: escolhaPA, refugo: refugoPA, alerta: colBoas > 0 && (boasPA + escolhaPA) > colBoas });
+
+        return { produzida, boasImpressao, escolha, refugo, boasPA, topDefects, ops, overallStatus, cadeia };
     }, [trace]);
 
     return (
@@ -523,6 +542,48 @@ export default function OPTraceView() {
                             )}
                         </div>
                     </div>
+
+                    {/* ── CADEIA DE SALDO POR ETAPA ────────────────────────────────── */}
+                    {totals.cadeia.length > 1 && (
+                        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-indigo-500">conveyor_belt</span>
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Cadeia de Saldo por Etapa</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold">Recebido = boas da etapa anterior. Linha em vermelho = rodou mais do que recebeu.</p>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-100/60 dark:bg-slate-800/40 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                            <th className="px-3 py-2 text-left">Etapa</th>
+                                            <th className="px-3 py-2 text-right text-indigo-500">Recebido</th>
+                                            <th className="px-3 py-2 text-right text-slate-500">Rodado</th>
+                                            <th className="px-3 py-2 text-right text-emerald-600">Boas → próxima</th>
+                                            <th className="px-3 py-2 text-right text-amber-600">Escolha</th>
+                                            <th className="px-3 py-2 text-right text-rose-600">Refugo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {totals.cadeia.map((c) => (
+                                            <tr key={c.setor} className={c.alerta ? 'bg-rose-50 dark:bg-rose-950/20' : 'bg-white dark:bg-slate-900/50'}>
+                                                <td className="px-3 py-2 font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                                                    {c.alerta && <span className="material-symbols-outlined text-sm text-rose-500">warning</span>}
+                                                    {c.setor}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-bold text-indigo-500">{c.recebido == null ? '—' : fmt.format(c.recebido)}</td>
+                                                <td className="px-3 py-2 text-right font-bold text-slate-500">{fmt.format(c.rodado)}</td>
+                                                <td className="px-3 py-2 text-right font-black text-emerald-600">{fmt.format(c.boas)}</td>
+                                                <td className="px-3 py-2 text-right font-black text-amber-600">{c.escolha > 0 ? fmt.format(c.escolha) : '—'}</td>
+                                                <td className="px-3 py-2 text-right font-bold text-rose-500">{c.refugo > 0 ? fmt.format(c.refugo) : '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ── PROCESSO INICIAL ─────────────────────────────────────────── */}
                     {trace.inicial.length > 0 && (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
+import PageContainer from '../components/PageContainer';
 import {
   reportService,
   type ManagementReportData,
@@ -60,6 +61,16 @@ interface Causador {
   ocorrencias: number;
   qtdAfetada: number;
   ops: Set<string>;
+}
+
+// Linha detalhada de escolha (setor / operador / problema / quantidade / horas)
+interface EscolhaRow {
+  op: string;
+  setor: string;
+  operador: string;
+  problema: string;
+  quantidade: number;
+  horas: number;
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
@@ -165,7 +176,7 @@ export default function ManagementReportView() {
   }, [period, showToast]);
 
   // ─── Processamento dos dados ──────────────────────────────────────────────
-  const reportData = useMemo((): (ManagementReportData & { vereditos: VereditoOp[]; causadores: Causador[] }) | null => {
+  const reportData = useMemo((): (ManagementReportData & { vereditos: VereditoOp[]; causadores: Causador[]; escolhas: EscolhaRow[] }) | null => {
     if (loading || inspections.length === 0) return null;
 
     const orderMap = new Map(orders.map((o: any) => [o.id, o]));
@@ -210,6 +221,7 @@ export default function ManagementReportView() {
     }
 
     const vereditos: VereditoOp[] = [];
+    const escolhas: EscolhaRow[] = [];
     // Causadores apontados na Revisão Final (setor / operador / máquina)
     const causadorMap = new Map<string, Causador>();
     const addCausador = (tipo: Causador['tipo'], nome: string, qtd: number, op: string) => {
@@ -296,12 +308,21 @@ export default function ManagementReportView() {
 
         // Causadores apontados na revisão
         const problemas = Array.isArray(revDef.problemas) ? revDef.problemas : [];
+        const horasOp = Number(revDef.total_horas) || 0;
         for (const p of problemas) {
           const qtd = Number(p.qty_afetada) || 0;
           if (p.setor) addCausador('setor', String(p.setor), qtd, op);
           const opNome = p.operador_nome || operatorMap.get(p.operador_id) || '';
           if (opNome) addCausador('operador', opNome, qtd, op);
           if (p.maquina_nome || p.maquina) addCausador('maquina', String(p.maquina_nome || p.maquina), qtd, op);
+          escolhas.push({
+            op,
+            setor: String(p.setor || '—'),
+            operador: opNome || '—',
+            problema: String(p.problema || '—'),
+            quantidade: qtd,
+            horas: horasOp,
+          });
         }
       } else {
         // Sem revisão ainda: usa as boas da etapa mais avançada concluída
@@ -505,6 +526,7 @@ export default function ManagementReportView() {
       },
       vereditos,
       causadores,
+      escolhas,
     };
   }, [loading, inspections, orders, machines, operators, reimpressoes, userProfiles, acabamentoRegs, palletInsps, periodLabel]);
 
@@ -538,7 +560,7 @@ export default function ManagementReportView() {
   const s = reportData?.summary;
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
+    <PageContainer maxWidth="6xl">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -728,6 +750,37 @@ export default function ManagementReportView() {
             </div>
           )}
 
+          {/* 2b-2. Escolhas detalhadas (setor / operador / problema / quantidade / horas) */}
+          {reportData.escolhas.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-amber-200 dark:border-amber-900/40 p-5 shadow-sm">
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-1">Escolhas — Detalhamento</h2>
+              <p className="text-[10px] text-slate-400 mb-4 font-medium">Cada escolha registrada na Revisão Final: setor, operador, problema, quantidade afetada e horas de revisão da OP</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-amber-50 dark:bg-amber-950/20">
+                    <tr>
+                      {([['OP', 'text-left'], ['Setor', 'text-left'], ['Operador', 'text-left'], ['Problema', 'text-left'], ['Quantidade', 'text-right'], ['Horas rev.', 'text-center']] as const).map(([h, align]) => (
+                        <th key={h} className={`p-2.5 font-black uppercase text-slate-400 text-[9px] tracking-widest ${align}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                    {reportData.escolhas.map((e, i) => (
+                      <tr key={i} className="hover:bg-amber-50/40 dark:hover:bg-amber-950/10">
+                        <td className="p-2.5 font-black text-slate-800 dark:text-slate-200">{e.op}</td>
+                        <td className="p-2.5 capitalize text-slate-600 dark:text-slate-300">{e.setor}</td>
+                        <td className="p-2.5 capitalize text-slate-600 dark:text-slate-300">{e.operador}</td>
+                        <td className="p-2.5 text-slate-700 dark:text-slate-200">{e.problema}</td>
+                        <td className="p-2.5 text-right font-black text-amber-700 dark:text-amber-300">{fmt(e.quantidade)}</td>
+                        <td className="p-2.5 text-center text-slate-600 dark:text-slate-400">{e.horas ? e.horas.toFixed(1) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* 2c. Causadores apontados na Revisão Final */}
           {reportData.causadores.length > 0 && (
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
@@ -875,6 +928,6 @@ export default function ManagementReportView() {
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

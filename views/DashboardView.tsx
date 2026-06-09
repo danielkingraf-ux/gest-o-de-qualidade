@@ -156,8 +156,8 @@ function StatCard({
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-            <p className={`mt-1 text-2xl font-black tabular-nums ${valueColors[tone]}`}>{value}</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</p>
+            <p className={`mt-1 text-3xl font-black tabular-nums ${valueColors[tone]}`}>{value}</p>
         </div>
     );
 }
@@ -205,22 +205,22 @@ function ProcessInicialCard({
             </div>
             <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-slate-800">
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Unid. Rodadas</p>
-                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Unid. Rodadas</p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(rodadas)}</p>
                 </div>
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas</p>
-                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Aprovadas</p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
                     <p className="mt-0.5 text-[10px] font-bold text-emerald-600">{fmtPct(aprovadas, rodadas)}</p>
                 </div>
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Em Escolha</p>
-                    <p className={`mt-1 text-xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Em Escolha</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
                     <p className={`mt-0.5 text-[10px] font-bold ${escolha > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(escolha, rodadas)}</p>
                 </div>
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas</p>
-                    <p className={`mt-1 text-xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Reprovadas</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
                     <p className={`mt-0.5 text-[10px] font-bold ${reprovadas > 0 ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(reprovadas, rodadas)}</p>
                 </div>
             </div>
@@ -272,17 +272,17 @@ function ProcessDesvioCard({
             </div>
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovadas / Boas</p>
-                    <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Aprovadas / Boas</p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{fmt(aprovadas)}</p>
                 </div>
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Saíram p/ Escolha</p>
-                    <p className={`mt-1 text-xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Saíram p/ Escolha</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${escolha > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{fmt(escolha)}</p>
                     {total > 0 && <p className={`mt-0.5 text-[10px] font-bold ${escolha > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(escolha, total)}</p>}
                 </div>
                 <div className="p-3">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reprovadas / Refugo</p>
-                    <p className={`mt-1 text-xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Reprovadas / Refugo</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${reprovadas > 0 ? 'text-red-600' : 'text-slate-400'}`}>{fmt(reprovadas)}</p>
                     {total > 0 && <p className={`mt-0.5 text-[10px] font-bold ${reprovadas > 0 ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>{fmtPct(reprovadas, total)}</p>}
                 </div>
             </div>

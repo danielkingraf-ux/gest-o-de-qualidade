@@ -30,7 +30,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
 
   const allGroups: MenuGroup[] = [
     {
-      label: 'Visao Geral',
+      label: 'Visão Geral',
       items: [
         { path: '/', label: 'Dashboard', icon: 'dashboard', roles: ['administrador', 'direcao', 'supervisao'] },
         { path: '/quality-panel', label: 'Painel de Qualidade', icon: 'query_stats', roles: ['administrador', 'supervisao'] },
@@ -43,23 +43,24 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
         { path: '/inspections', label: 'Processo Inicial', icon: 'print', roles: ['administrador', 'analista_qualidade'] },
         { path: '/acabamento-corte-vinco', label: 'Corte e Vinco', icon: 'border_style', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
         { path: '/acabamento-colagem', label: 'Colagem', icon: 'join_inner', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
-        { path: '/finishing-analysis', label: 'Produto Acabado', icon: 'inventory_2', roles: ['administrador', 'analista_qualidade'] },
-        { path: '/acabamento-revisao-final', label: 'Revisao Final', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
+        { path: '/produto-acabado', label: 'Produto Acabado', icon: 'inventory_2', roles: ['administrador', 'analista_qualidade'] },
+        { path: '/finishing-analysis', label: 'Produto Acabado (detalhado)', icon: 'inventory', roles: ['administrador', 'analista_qualidade'] },
+        { path: '/acabamento-revisao-final', label: 'Revisão Final', icon: 'fact_check', roles: ['administrador', 'supervisao', 'revisao_escolha'] },
       ],
     },
     {
       label: 'Operacional',
       items: [
-        { path: 'chat', label: 'Ocorrencias', icon: 'forum', badge: unreadCount, isAction: true, roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'] },
+        { path: 'chat', label: 'Ocorrências', icon: 'forum', badge: unreadCount, isAction: true, roles: ['administrador', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao'] },
         { path: '/pallets', label: 'Pallets', icon: 'stacks', roles: ['administrador', 'analista_qualidade', 'expedicao'] },
         { path: '/management-report', label: 'Rel. Gerencial', icon: 'summarize', roles: ['administrador', 'direcao', 'supervisao'] },
-        { path: '/supervisor', label: 'Aprovacoes', icon: 'rule', badge: pendingRequests, roles: ['administrador', 'supervisao'] },
+        { path: '/supervisor', label: 'Aprovações', icon: 'rule', badge: pendingRequests, roles: ['administrador', 'supervisao'] },
       ],
     },
     {
       label: 'Sistema',
       items: [
-        { path: '/admin', label: 'Administracao', icon: 'admin_panel_settings', roles: ['administrador'] },
+        { path: '/admin', label: 'Administração', icon: 'admin_panel_settings', roles: ['administrador'] },
       ],
     },
   ];
@@ -72,7 +73,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
   const handleLogout = async () => {
     const { error } = await authService.signOut();
     if (!error) {
-      showToast('Sessao encerrada', 'info');
+      showToast('Sessão encerrada', 'info');
       onLogout();
     }
   };
@@ -196,7 +197,7 @@ const Sidebar = ({ user, onLogout, onOpenChat, unreadCount, pendingRequests, isC
           </div>
           {!isCollapsed && (
             <div className="flex flex-col overflow-hidden">
-              <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{profile?.name || user?.email?.split('@')[0] || 'Usuario'}</p>
+              <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{profile?.name || user?.email?.split('@')[0] || 'Usuário'}</p>
               <p className={`text-[10px] uppercase font-black tracking-widest leading-none ${
                 normalizedRole === 'administrador' ? 'text-amber-500' :
                 normalizedRole === 'revisao_escolha' ? 'text-indigo-500' :

@@ -541,7 +541,7 @@ export default function FinishingAnalysisView() {
 
     // ─── Render ───────────────────────────────────────────────────────────
     return (
-        <div className="h-screen overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
+        <div className="h-full overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
 
             {/* Header */}
             <header className="shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 md:px-6 py-4 z-30">
@@ -589,9 +589,9 @@ export default function FinishingAnalysisView() {
                                 ['Processo atual', 'Produto Acabado'],
                                 ['Status da OP', selectedOrder?.status || 'Em andamento'],
                             ].map(([label, value]) => (
-                                <div key={label} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white truncate">{value}</p>
+                                <div key={label} className="flex flex-col rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 min-h-[22px] leading-tight">{label}</p>
+                                    <p className="mt-auto text-sm font-black text-slate-900 dark:text-white truncate">{value}</p>
                                 </div>
                             ))}
                         </div>

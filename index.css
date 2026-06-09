@@ -386,3 +386,19 @@ body {
 .dark .recharts-tooltip-item {
     color: #0f172a !important;
 }
+
+/* Respeita usuários que pedem menos movimento (acessibilidade) */
+@media (prefers-reduced-motion: reduce) {
+    .animate-slide-in,
+    .animate-pulse-soft,
+    .animate-bounce-slow,
+    .animate-bell-ring,
+    .animate-pulse,
+    .animate-spin {
+        animation: none !important;
+    }
+
+    * {
+        transition-duration: 0.01ms !important;
+    }
+}

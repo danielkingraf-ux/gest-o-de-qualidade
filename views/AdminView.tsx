@@ -6,8 +6,9 @@ import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import { AQL_OPTIONS, INSPECTION_LEVELS } from '../utils/nbr5426';
 import { ROLE_OPTIONS, getRoleLabel, normalizeRole } from '../utils/permissions';
+import { escolhaProblemasService, type EscolhaProblema, type EscolhaEtapa } from '../services/escolhaProblemasService';
 
-type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users' | 'nqa';
+type Tab = 'machines' | 'operators' | 'analysts' | 'defects' | 'users' | 'nqa' | 'escolha_problemas';
 
 const AREA_OPTIONS: Array<{ value: ProductionArea; label: string }> = [
     { value: 'producao_inicial', label: 'Produção inicial' },
@@ -36,6 +37,7 @@ export default function AdminView() {
         { id: 'operators', label: 'Operadores', icon: 'groups' },
         { id: 'analysts', label: 'Analistas', icon: 'shield_person' },
         { id: 'defects', label: 'Defeitos', icon: 'error' },
+        { id: 'escolha_problemas', label: 'Problemas Escolha', icon: 'rule' },
         { id: 'users', label: 'Usuários', icon: 'manage_accounts' },
         { id: 'nqa', label: 'NQA', icon: 'fact_check' },
     ];
@@ -74,6 +76,7 @@ export default function AdminView() {
                 {activeTab === 'operators' && <OperatorsManager />}
                 {activeTab === 'analysts' && <AnalystsManager />}
                 {activeTab === 'defects' && <DefectTypesManager />}
+                {activeTab === 'escolha_problemas' && <EscolhaProblemasManager />}
                 {activeTab === 'users' && <UsersManager />}
                 {activeTab === 'nqa' && <NqaProfilesManager />}
             </div>
@@ -1383,6 +1386,141 @@ function NqaProfilesManager() {
                     <span><span className="font-black text-blue-600">Menor</span> — Defeitos cosméticos que não afetam a função</span>
                 </div>
             </div>
+        </div>
+    );
+}
+
+// ─── Problemas de Escolha (cadastro editável) ────────────────────────────────
+const ETAPA_OPTIONS: Array<{ value: EscolhaEtapa; label: string; color: string }> = [
+    { value: 'impressao',     label: 'Impressão',       color: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-300 dark:border-blue-900/40' },
+    { value: 'corte_vinco',   label: 'Corte e Vinco',   color: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/20 dark:text-indigo-300 dark:border-indigo-900/40' },
+    { value: 'colagem',       label: 'Colagem',          color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900/40' },
+    { value: 'produto_acabado', label: 'Produto Acabado', color: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/20 dark:text-teal-300 dark:border-teal-900/40' },
+    { value: 'todos',         label: 'Todas as etapas', color: 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' },
+];
+
+function EscolhaProblemasManager() {
+    const { showToast } = useToast();
+    const [rows, setRows] = useState<EscolhaProblema[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [novoLabel, setNovoLabel] = useState('');
+    const [novaEtapa, setNovaEtapa] = useState<EscolhaEtapa>('corte_vinco');
+    const [saving, setSaving] = useState(false);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            setRows(await escolhaProblemasService.listAll());
+        } catch {
+            showToast('Tabela de problemas ainda não existe. Rode a migration 028.', 'error');
+            setRows([]);
+        }
+        setLoading(false);
+    }, [showToast]);
+
+    useEffect(() => { load(); }, [load]);
+
+    const add = async () => {
+        if (!novoLabel.trim()) { showToast('Informe o nome do problema', 'error'); return; }
+        setSaving(true);
+        try {
+            await escolhaProblemasService.create(novaEtapa, novoLabel);
+            setNovoLabel('');
+            await load();
+            showToast('Problema cadastrado', 'success');
+        } catch (e) {
+            showToast(`Erro ao cadastrar: ${(e as Error).message}`, 'error');
+        }
+        setSaving(false);
+    };
+
+    const toggle = async (r: EscolhaProblema) => {
+        try { await escolhaProblemasService.setAtivo(r.id, !r.ativo); await load(); }
+        catch (e) { showToast(`Erro: ${(e as Error).message}`, 'error'); }
+    };
+
+    const remove = async (r: EscolhaProblema) => {
+        try { await escolhaProblemasService.remove(r.id); await load(); showToast('Removido', 'info'); }
+        catch (e) { showToast(`Erro: ${(e as Error).message}`, 'error'); }
+    };
+
+    const etapaAtual = ETAPA_OPTIONS.find(o => o.value === novaEtapa);
+
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-5">
+            <div>
+                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white">Problemas por Setor</h2>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                    Sugestões que aparecem no campo "Motivo da escolha" em cada etapa do processo.
+                    O operador também pode digitar um problema novo na hora e salvá-lo aqui.
+                </p>
+            </div>
+
+            {/* Formulário de adição */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Adicionar novo problema</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <select value={novaEtapa} onChange={e => setNovaEtapa(e.target.value as EscolhaEtapa)}
+                        className="h-10 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm">
+                        {ETAPA_OPTIONS.filter(o => o.value !== 'todos').map(o =>
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                        )}
+                    </select>
+                    <input value={novoLabel} onChange={e => setNovoLabel(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && add()}
+                        placeholder={`Nome do problema para ${etapaAtual?.label ?? ''}...`}
+                        className="flex-1 h-10 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-sm" />
+                    <button type="button" onClick={add} disabled={saving || !novoLabel.trim()}
+                        className="h-10 px-5 rounded-lg bg-primary text-white font-black text-[11px] uppercase tracking-widest hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm">add</span>
+                        Adicionar
+                    </button>
+                </div>
+            </div>
+
+            {/* Lista por setor */}
+            {loading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-400 py-4">
+                    <span className="size-4 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
+                    Carregando...
+                </div>
+            ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {ETAPA_OPTIONS.filter(o => o.value !== 'todos').map(et => {
+                        const items = rows.filter(r => r.etapa === et.value);
+                        return (
+                            <div key={et.value} className={`rounded-xl border p-3 ${et.color}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest">{et.label}</p>
+                                    <span className="text-[9px] font-black opacity-60">{items.filter(r => r.ativo).length} ativos</span>
+                                </div>
+                                {items.length === 0 ? (
+                                    <p className="text-[10px] opacity-50 italic">Nenhum cadastrado — usando lista padrão</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {items.map(r => (
+                                            <div key={r.id}
+                                                className={`group flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg border text-[10px] font-bold bg-white/70 dark:bg-slate-900/60 transition-opacity ${!r.ativo ? 'opacity-40 line-through' : ''}`}
+                                                style={{ borderColor: 'currentColor', opacity: r.ativo ? undefined : 0.4 }}
+                                            >
+                                                <span>{r.label}</span>
+                                                <button type="button" onClick={() => toggle(r)} title={r.ativo ? 'Desativar' : 'Reativar'}
+                                                    className="material-symbols-outlined text-[13px] opacity-40 hover:opacity-100 transition-opacity">
+                                                    {r.ativo ? 'visibility' : 'visibility_off'}
+                                                </button>
+                                                <button type="button" onClick={() => remove(r)} title="Remover"
+                                                    className="material-symbols-outlined text-[13px] opacity-40 hover:opacity-100 hover:text-rose-500 transition-opacity">
+                                                    close
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

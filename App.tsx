@@ -19,6 +19,7 @@ import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import ShiftLogView from './views/ShiftLogView';
 import FinishingAnalysisView from './views/FinishingAnalysisView';
+import ProdutoAcabadoEnxutoView from './views/ProdutoAcabadoEnxutoView';
 import ReportsView from './views/ReportsView';
 import SupervisorView from './views/SupervisorView';
 import LgpdView from './views/LgpdView';
@@ -221,6 +222,7 @@ const AppShell = ({ session }: { session: Session }) => {
               <Route path="/" element={protectedElement(['administrador', 'direcao', 'supervisao'], <DashboardView />)} />
               <Route path="/inspections" element={protectedElement(['administrador', 'analista_qualidade'], <InspectionView />)} />
               <Route path="/finishing-analysis" element={protectedElement(['administrador', 'analista_qualidade'], <FinishingAnalysisView />)} />
+              <Route path="/produto-acabado" element={protectedElement(['administrador', 'analista_qualidade'], <ProdutoAcabadoEnxutoView />)} />
               <Route path="/pallet/:id" element={protectedElement(['administrador', 'analista_qualidade', 'expedicao'], <PalletAuditView />)} />
               <Route path="/pallets" element={protectedElement(['administrador', 'analista_qualidade', 'expedicao'], <PalletListView />)} />
               <Route path="/rastreabilidade" element={protectedElement(['administrador', 'direcao', 'supervisao', 'analista_qualidade', 'revisao_escolha', 'expedicao', 'consulta_auditoria'], <OPTraceView />)} />

@@ -480,7 +480,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
           .eq('op', trimmed)
           .eq('modulo', 'corte_vinco'),
         supabase.from('acabamento_registros')
-          .select('qty_revisadas, qty_aprovadas, qty_reprovadas, operator_ids, machine_id')
+          .select('qty_revisadas, qty_aprovadas, qty_reprovadas, defects, operator_ids, machine_id')
           .eq('op', trimmed)
           .eq('modulo', 'colagem'),
         // Pallets reprovados no Produto Acabado
@@ -549,9 +549,17 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
       const rodadasColagem = (colRes.data ?? [])
         .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
+      // Escolha da colagem = escolha gerada PELA colagem + escolha acumulada (impressão + vinco)
+      // que não foi revisada antes de colar (campo escolha_para_revisao_final no defects)
       const escolhaColagem = (colRes.data ?? [])
-        .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
-      const refugoColagem = 0;
+        .reduce((s: number, r: { qty_reprovadas: number; defects: Record<string, number> | null }) => {
+          const gerada = r.qty_reprovadas || 0;
+          const passouSemRevisar = Number(r.defects?.escolha_para_revisao_final) || 0;
+          return s + gerada + passouSemRevisar;
+        }, 0);
+      const refugoColagem = (colRes.data ?? [])
+        .reduce((s: number, r: { defects: Record<string, number> | null }) =>
+          s + (Number(r.defects?.qty_refugo) || 0), 0);
       const aprovadoColagem = (colRes.data ?? [])
         .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
 
@@ -560,6 +568,9 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         if (row.machine_id) machineIds.add(row.machine_id);
       }
 
+      // Total da escolha que vai pra revisão = soma da escolha GERADA em cada etapa
+      // (impressão + corte/vinco + colagem + produto acabado). Bate com a coluna
+      // "Escolha (gerada)" do histórico por etapa.
       const totalEscolha = escolhaImpressao + escolhaCorteVinco + escolhaColagem + escolhaProdutoAcabado;
       const totalRefugoAntes = refugoImpressao + refugoCorteVinco + refugoColagem + refugoProdutoAcabado;
 
@@ -685,6 +696,42 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const save = async (status: 'em_andamento' | 'finalizado') => {
     if (!op.trim()) { showToast('Informe o número da OP', 'error'); return; }
     if (!hasData) { showToast('Adicione ao menos um problema ou informe a quantidade revisada', 'error'); return; }
+
+    // Conservação da escolha: a revisão não pode recuperar/refugar mais do que recebeu.
+    // E ao finalizar, a escolha TEM que zerar: recuperada + refugada == escolha enviada.
+    if (qtyRecuperada + qtyRefugadaFinal > qtyEnviadaRevisao) {
+      showToast(
+        `Recuperada + refugada (${fmt(qtyRecuperada + qtyRefugadaFinal)}) não pode ser maior que a escolha recebida (${fmt(qtyEnviadaRevisao)} un.).`,
+        'error',
+      );
+      return;
+    }
+    if (status === 'finalizado' && qtyEnviadaRevisao > 0
+        && qtyRecuperada + qtyRefugadaFinal !== qtyEnviadaRevisao) {
+      const faltam = qtyEnviadaRevisao - (qtyRecuperada + qtyRefugadaFinal);
+      showToast(
+        `Para finalizar, a escolha precisa fechar: ${fmt(qtyRecuperada)} recuperada + ${fmt(qtyRefugadaFinal)} refugada = ${fmt(qtyRecuperada + qtyRefugadaFinal)}, mas vieram ${fmt(qtyEnviadaRevisao)} un. (faltam ${fmt(faltam)}). Use "Salvar andamento" se ainda está revisando.`,
+        'error',
+      );
+      return;
+    }
+
+    // Ao finalizar com escolha: exigir detalhamento (setor/operador/problema/qtd) e horas de revisão.
+    if (status === 'finalizado' && qtyEnviadaRevisao > 0) {
+      if (problemas.length === 0) {
+        showToast('Registre ao menos um problema da escolha (setor, operador, problema, quantidade) antes de finalizar.', 'error');
+        return;
+      }
+      const incompleto = problemas.some(p => !p.setor.trim() || !p.operador_id || !p.problema.trim() || !String(p.qty_afetada).trim());
+      if (incompleto) {
+        showToast('Cada problema precisa de setor, operador, descrição e quantidade afetada.', 'error');
+        return;
+      }
+      if (totalMinutos <= 0) {
+        showToast('Informe as horas de revisão (períodos) antes de finalizar.', 'error');
+        return;
+      }
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { showToast('Sessão expirada. Faça login novamente.', 'error'); return; }
@@ -812,8 +859,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="pb-24">
-      <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div>
+      <div className="p-4 md:p-6 pb-28 max-w-5xl mx-auto">
 
         {/* Header */}
         <div className="mb-6">
@@ -970,7 +1017,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                     <th className="px-3 py-2 text-right text-indigo-500">Recebido</th>
                     <th className="px-3 py-2 text-right text-slate-500">Rodado (ref.)</th>
                     <th className="px-3 py-2 text-right text-emerald-600">Boas → próxima</th>
-                    <th className="px-3 py-2 text-right text-amber-600">Escolha → revisão</th>
+                    <th className="px-3 py-2 text-right text-amber-600">Escolha (gerada)</th>
                     <th className="px-3 py-2 text-right text-rose-600">Refugo</th>
                   </tr>
                 </thead>
@@ -1042,7 +1089,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
               </table>
             </div>
             <p className="text-[9px] text-slate-400 italic mb-1">
-              Recebido = boas da etapa anterior · Rodado = referência do processamento · Escolha de cada etapa vai direto pra Revisão Final
+              Cada etapa envia sua escolha diretamente à Revisão Final. A colagem soma também a escolha acumulada (impressão + vinco) que não foi revisada antes de colar. Pallets reprovados no PA seguem à Revisão Final para inspeção peça a peça.
             </p>
           </section>
         )}
@@ -1112,6 +1159,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             {[
               { label: 'Pedido', value: fmt(qtySolicitada), color: 'slate' },
+              { label: 'Tiragem impressão (rodado)', value: fmt(saldoOp?.rodadasImpressao ?? 0), color: 'slate' },
               { label: 'Aprovado direto (s/ revisão)', value: fmt(qtyBoaLimpa), color: 'emerald' },
               { label: 'Recuperada (Revisão)', value: fmt(qtyRecuperada), color: 'emerald' },
               { label: 'Total aprovado', value: fmt(qtyFinalAprovada), color: 'indigo' },
@@ -1305,20 +1353,20 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       </div>
 
       {/* ── Footer fixo ──────────────────────────────────────────────────────── */}
-      <div className="sticky bottom-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-3 flex gap-2">
+      <div className="sticky bottom-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-3 flex flex-col sm:flex-row gap-2">
         <button type="button" onClick={handleClear}
-          className="h-11 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shrink-0">
+          className="order-last sm:order-none w-full sm:w-auto sm:shrink-0 h-12 sm:h-11 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
           Limpar
         </button>
         <button type="button" onClick={() => save('em_andamento')}
           disabled={saving || !op.trim() || !hasData}
-          className="flex-1 h-11 rounded-xl border-2 border-amber-400 text-amber-700 dark:text-amber-300 text-sm font-black hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+          className="w-full sm:flex-1 h-12 sm:h-11 rounded-xl border-2 border-amber-400 text-amber-700 dark:text-amber-300 text-sm font-black hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
           <span className="material-symbols-outlined text-sm">pause_circle</span>
           {isEditing ? 'Atualizar' : 'Salvar e Continuar'}
         </button>
         <button type="button" onClick={() => save('finalizado')}
           disabled={saving || !op.trim() || !hasData}
-          className="flex-1 h-11 rounded-xl bg-teal-600 text-white text-sm font-black hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+          className="w-full sm:flex-1 h-12 sm:h-11 rounded-xl bg-teal-600 text-white text-sm font-black hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
           {saving
             ? <span className="size-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
             : <span className="material-symbols-outlined text-sm">check_circle</span>}
