@@ -327,9 +327,17 @@ export default function OPTraceView() {
         const boasImpressao = trace.inicial.reduce((s, r) => s + (r.qtyProduzida - r.qtyEscolha - r.qtyRefugo), 0);
 
         // Escolha total = soma das escolhas de TODAS as etapas (cada uma vai pra revisão)
+        // Compatibilidade formato antigo vs novo da Colagem:
+        // - Formato antigo: qty_reprovadas incluía a escolha acumulada (impressão + C/V) → dupla contagem
+        // - Formato novo (com defects.escolha_acumulada_recebida): qty_reprovadas = só escolha gerada pela colagem
+        const _colRecsEscolha = trace.etapasAcab.filter(r => r.modulo === 'colagem');
+        const isNewColagemFmt = _colRecsEscolha.some(r => 'escolha_acumulada_recebida' in r.defects);
         const escolhaImp = trace.inicial.reduce((s, r) => s + r.qtyEscolha, 0);
         const escolhaCV = trace.etapasAcab.filter(r => r.modulo === 'corte_vinco').reduce((s, r) => s + r.qtyEscolha, 0);
-        const escolhaCol = trace.etapasAcab.filter(r => r.modulo === 'colagem').reduce((s, r) => s + r.qtyEscolha, 0);
+        const escolhaColRaw = _colRecsEscolha.reduce((s, r) => s + r.qtyEscolha, 0);
+        const escolhaCol = isNewColagemFmt
+            ? escolhaColRaw
+            : Math.max(0, escolhaColRaw - (escolhaImp + escolhaCV)); // formato antigo: subtrair acumulada p/ evitar dupla contagem
         const escolhaPA = trace.acabado.reduce((s, r) => s + r.qtyEscolha, 0);
         const escolha = escolhaImp + escolhaCV + escolhaCol + escolhaPA;
 
