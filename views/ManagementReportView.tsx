@@ -176,7 +176,8 @@ export default function ManagementReportView() {
   }, [period, showToast]);
 
   // ─── Processamento dos dados ──────────────────────────────────────────────
-  const reportData = useMemo((): (ManagementReportData & { vereditos: VereditoOp[]; causadores: Causador[]; escolhas: EscolhaRow[] }) | null => {
+  type EscolhaSetorItemT = { problema: string; total: number; ocorrencias: number };
+  const reportData = useMemo((): (ManagementReportData & { vereditos: VereditoOp[]; causadores: Causador[]; escolhas: EscolhaRow[]; escolhasPorSetor: Record<string, EscolhaSetorItemT[]> }) | null => {
     if (loading || inspections.length === 0) return null;
 
     const orderMap = new Map(orders.map((o: any) => [o.id, o]));
@@ -500,6 +501,40 @@ export default function ManagementReportView() {
 
     const totalEscolhaUnid = initialInsp.reduce((sum, i) => sum + (Number(i.obs.saldo_unidades?.em_escolha) || 0), 0);
 
+    // ── Ranking de problemas por setor (C/V, Colagem, PA) ─────────────────────
+    const MODULO_TO_SETOR: Record<string, string> = { corte_vinco: 'Corte e Vinco', colagem: 'Colagem' };
+    const setorAggMap = new Map<string, Map<string, { total: number; ocorrencias: number }>>();
+    ['Corte e Vinco', 'Colagem', 'Produto Acabado'].forEach(s => setorAggMap.set(s, new Map()));
+
+    for (const reg of acabamentoRegs) {
+      const setor = MODULO_TO_SETOR[reg.modulo as string];
+      if (!setor) continue;
+      const def = typeof reg.defects === 'string' ? JSON.parse(reg.defects) : (reg.defects ?? {});
+      const motivo = String(def.escolha_motivo ?? '').trim();
+      const qty = Number(reg.qty_reprovadas) || 0;
+      if (!motivo || qty === 0) continue;
+      const m = setorAggMap.get(setor)!;
+      const prev = m.get(motivo) ?? { total: 0, ocorrencias: 0 };
+      m.set(motivo, { total: prev.total + qty, ocorrencias: prev.ocorrencias + 1 });
+    }
+    // PA: lê de inspections.observations (process_area = 'produto_acabado')
+    for (const insp of enriched) {
+      if (insp.obs.process_area !== 'produto_acabado') continue;
+      const motivo = String(insp.obs.reprovacao_motivo ?? '').trim();
+      const qty = Number(insp.obs.producao?.qty_escolha) || 0;
+      if (!motivo || qty === 0) continue;
+      const m = setorAggMap.get('Produto Acabado')!;
+      const prev = m.get(motivo) ?? { total: 0, ocorrencias: 0 };
+      m.set(motivo, { total: prev.total + qty, ocorrencias: prev.ocorrencias + 1 });
+    }
+
+    const escolhasPorSetor: Record<string, EscolhaSetorItemT[]> = {};
+    for (const [setor, m] of setorAggMap.entries()) {
+      escolhasPorSetor[setor] = Array.from(m.entries())
+        .map(([problema, s]) => ({ problema, ...s }))
+        .sort((a, b) => b.total - a.total);
+    }
+
     return {
       periodLabel,
       generatedAt: new Date().toLocaleString('pt-BR'),
@@ -527,6 +562,7 @@ export default function ManagementReportView() {
       vereditos,
       causadores,
       escolhas,
+      escolhasPorSetor,
     };
   }, [loading, inspections, orders, machines, operators, reimpressoes, userProfiles, acabamentoRegs, palletInsps, periodLabel]);
 
@@ -904,6 +940,66 @@ export default function ManagementReportView() {
               <p className="text-xs italic text-slate-400">Nenhuma reimpressao no periodo.</p>
             )}
           </div>
+
+          {/* 7. Ranking de Problemas por Setor */}
+          {reportData.escolhasPorSetor && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">7. Ranking de Problemas por Setor</h2>
+              <p className="text-[9px] text-slate-400 mb-4">Causas de escolha registradas pelos operadores em cada etapa do acabamento. Quantidade = unidades enviadas à Revisão Final por esse motivo.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {([
+                  { setor: 'Corte e Vinco', icon: 'content_cut',            color: 'indigo'  },
+                  { setor: 'Colagem',       icon: 'precision_manufacturing', color: 'amber'   },
+                  { setor: 'Produto Acabado', icon: 'inventory_2',          color: 'teal'    },
+                ] as const).map(({ setor, icon, color }) => {
+                  const items = (reportData.escolhasPorSetor[setor] ?? []).slice(0, 8);
+                  const maxTotal = items[0]?.total ?? 1;
+                  const colorMap = {
+                    indigo: { hd: 'text-indigo-700 dark:text-indigo-300', bar: 'bg-indigo-400', border: 'border-indigo-100 dark:border-indigo-900/40', bg: 'bg-indigo-50 dark:bg-indigo-950/20' },
+                    amber:  { hd: 'text-amber-700 dark:text-amber-300',   bar: 'bg-amber-400',  border: 'border-amber-100 dark:border-amber-900/40',   bg: 'bg-amber-50 dark:bg-amber-950/20'   },
+                    teal:   { hd: 'text-teal-700 dark:text-teal-300',     bar: 'bg-teal-400',   border: 'border-teal-100 dark:border-teal-900/40',     bg: 'bg-teal-50 dark:bg-teal-950/20'     },
+                  } as const;
+                  const c = colorMap[color];
+                  return (
+                    <div key={setor} className={`rounded-xl border ${c.border} ${c.bg} p-3`}>
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <span className={`material-symbols-outlined text-sm ${c.hd}`}>{icon}</span>
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${c.hd}`}>{setor}</span>
+                        {items.length > 0 && (
+                          <span className="ml-auto text-[9px] font-bold text-slate-400">{items.length} problema{items.length !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      {items.length === 0 ? (
+                        <p className="text-[10px] italic text-slate-400">Sem registros no período.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {items.map((item, i) => (
+                            <div key={item.problema}>
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate flex-1 mr-2">
+                                  <span className="text-slate-400 font-black mr-1">{i + 1}.</span>{item.problema}
+                                </span>
+                                <div className="text-right shrink-0">
+                                  <span className="text-[10px] font-black text-slate-800 dark:text-white">{fmt(item.total)}</span>
+                                  <span className="text-[8px] text-slate-400 ml-1">un · {item.ocorrencias}×</span>
+                                </div>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
+                                <div
+                                  className={`h-1.5 rounded-full ${c.bar} transition-all`}
+                                  style={{ width: `${Math.round((item.total / maxTotal) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* 6. Indicadores */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
