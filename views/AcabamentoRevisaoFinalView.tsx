@@ -623,11 +623,15 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       }
 
       const rodadasColagem    = (colRes.data ?? []).reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
-      const escolhaColagem    = (colRes.data ?? []).reduce((s: number, r: { qty_reprovadas: number; defects: Record<string, number> | null }) => {
-        const gerada = r.qty_reprovadas || 0;
-        const passouSemRevisar = Number(r.defects?.escolha_para_revisao_final) || 0;
-        return s + gerada + passouSemRevisar;
-      }, 0);
+      // Compatibilidade formato antigo / novo (mesmo critério do OPTraceView):
+      // - Formato antigo: qty_reprovadas incluía escolha acumulada (impressão + C/V) → dobra contagem
+      // - Formato novo: defects.escolha_acumulada_recebida existe; qty_reprovadas = só colagem própria
+      const colData = (colRes.data ?? []) as Array<{ qty_reprovadas: number; defects: Record<string, unknown> | null }>;
+      const isNewColagemFmt = colData.some(r => r.defects && 'escolha_acumulada_recebida' in r.defects);
+      const escolhaColRaw = colData.reduce((s, r) => s + (r.qty_reprovadas || 0), 0);
+      const escolhaColagem = isNewColagemFmt
+        ? escolhaColRaw
+        : Math.max(0, escolhaColRaw - (escolhaImpressao + escolhaCorteVinco));
       const refugoColagem     = (colRes.data ?? []).reduce((s: number, r: { defects: Record<string, number> | null }) => s + (Number(r.defects?.qty_refugo) || 0), 0);
       const aprovadoColagem   = (colRes.data ?? []).reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
 
