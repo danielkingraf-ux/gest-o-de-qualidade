@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
@@ -14,16 +14,6 @@ type OperatorOption = { id: string; name: string };
 type MachineOption  = { id: string; name: string; code: string };
 type OrderInfo = { op: string; qtd_total: number; status: string };
 
-type RecentRecord = {
-  id: string;
-  op: string;
-  qty_revisadas: number;
-  qty_aprovadas: number;
-  qty_reprovadas: number;
-  timestamp: string;
-  defects: Record<string, number>;
-};
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFECTS = [
   { key: 'fundo_virado',     label: 'Fundo Virado',     icon: 'rotate_90_degrees_cw'  },
@@ -34,9 +24,6 @@ const DEFECTS = [
   { key: 'modelo_misturado', label: 'Modelo Misturado', icon: 'shuffle'               },
   { key: 'outros',           label: 'Outros',           icon: 'more_horiz'            },
 ];
-
-const emptyDefects = (): Record<string, number> =>
-  Object.fromEntries(DEFECTS.map(d => [d.key, 0]));
 
 const getShift = () => {
   const hour = new Date().getHours();
@@ -101,7 +88,6 @@ const AcabamentoColagemView: React.FC = () => {
   const [escolhaMotivo, setEscolhaMotivo]         = useState(''); // motivo/problema da escolha COLAGEM
   const [escolhaProblemas, setEscolhaProblemas]   = useState<string[]>([]); // sugestões (cadastro + fallback)
   const [qtyRefugo, setQtyRefugo]         = useState(0);
-  const [defects, setDefects]             = useState<Record<string, number>>(emptyDefects());
   const [selectedDefectKey, setSelectedDefectKey] = useState('');
   const [defectQty, setDefectQty]         = useState(0);
   const [notes, setNotes]                 = useState('');
@@ -109,9 +95,6 @@ const AcabamentoColagemView: React.FC = () => {
   const [shift, setShift]                 = useState(getShift);
 
   const [saldoCorteVinco, setSaldoCorteVinco] = useState<number | null>(null);
-  const [opHistory, setOpHistory]             = useState<any[]>([]);
-  const [recentRecords, setRecentRecords]     = useState<RecentRecord[]>([]);
-  const [loadingRecent, setLoadingRecent]     = useState(false);
   const [saving, setSaving]                   = useState(false);
   const [pendingPhotos, setPendingPhotos]     = useState<PendingPhoto[]>([]);
 
@@ -195,24 +178,9 @@ const AcabamentoColagemView: React.FC = () => {
       // em registros anteriores de colagem (boas recuperadas + refugo da revisão).
       setEscolhaAcumulada(Math.max(0, escolhaImpressao + escolhaVinco - boasRevisadasAnt - refugoRevisaoAnt));
 
-      setOpHistory(colRes.data ?? []);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op]);
-
-  const loadRecent = useCallback(async () => {
-    setLoadingRecent(true);
-    const { data } = await supabase
-      .from('acabamento_registros')
-      .select('id, op, qty_revisadas, qty_aprovadas, qty_reprovadas, timestamp, defects')
-      .eq('modulo', 'colagem')
-      .order('timestamp', { ascending: false })
-      .limit(10);
-    setRecentRecords((data as RecentRecord[]) ?? []);
-    setLoadingRecent(false);
-  }, []);
-
-  useEffect(() => { loadRecent(); }, [loadRecent]);
 
   const handleClear = () => {
     setOp('');
@@ -226,7 +194,6 @@ const AcabamentoColagemView: React.FC = () => {
     setQtyRefugoRevisao(0);
     setEscolhaMotivo('');
     setQtyRefugo(0);
-    setDefects(emptyDefects());
     setSelectedDefectKey('');
     setDefectQty(0);
     setNotes('');
@@ -273,9 +240,6 @@ const AcabamentoColagemView: React.FC = () => {
 
     const defectsPayload: Record<string, number | string> = {};
     if (selectedDefectKey && defectQty > 0) defectsPayload[selectedDefectKey] = defectQty;
-    for (const d of DEFECTS) {
-      if ((defects[d.key] ?? 0) > 0) defectsPayload[d.key] = Number(defectsPayload[d.key] ?? 0) + defects[d.key];
-    }
     // Refugo e motivo da escolha COLAGEM
     if (qtyRefugo > 0) defectsPayload['qty_refugo'] = qtyRefugo;
     if (escolhaMotivo.trim()) defectsPayload['escolha_motivo'] = escolhaMotivo.trim();
@@ -339,12 +303,10 @@ const AcabamentoColagemView: React.FC = () => {
     setSaving(false);
     showToast('Registro de colagem salvo!', 'success');
     handleClear();
-    loadRecent();
   };
 
   const fmt = (n: number) => n.toLocaleString('pt-BR');
   const qtyAprovadas = Math.max(0, qtyRodadas - qtyEscolha - qtyRefugo);
-  const totalDefects = DEFECTS.reduce((s, d) => s + (defects[d.key] ?? 0), 0);
   const saldoRecebido = saldoCorteVinco ?? 0;
   // Boas recuperadas AGORA (formulário atual) entram no disponível — elas são
   // material físico que volta pro fluxo e pode ser colado nesta rodada.
@@ -363,7 +325,7 @@ const AcabamentoColagemView: React.FC = () => {
           <div className="flex items-center gap-2 mb-3">
             <span className="material-symbols-outlined text-indigo-500">precision_manufacturing</span>
             <div className="flex-1 min-w-0">
-              <p className="text-[8px] font-black uppercase tracking-widest text-indigo-500 leading-none">Processo</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 leading-none">Processo</p>
               <h1 className="text-lg font-black uppercase text-slate-900 dark:text-white leading-tight">Colagem</h1>
             </div>
             {(saldoExcedido || composicaoInvalida) && (
@@ -374,21 +336,21 @@ const AcabamentoColagemView: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <div className="md:col-span-2">
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
               <input list="col-op-list-simple" value={op} onChange={e => setOp(e.target.value)} placeholder="OP"
                 className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800" />
               <datalist id="col-op-list-simple">{opList.map(o => <option key={o} value={o} />)}</datalist>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
               <p className="mt-0.5 flex h-9 items-center rounded-lg bg-slate-50 px-2.5 text-sm font-black text-slate-700 dark:bg-slate-800 dark:text-slate-100">{fmt(opInfo?.qtd_total ?? 0)}</p>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Status</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Status</label>
               <p className={`mt-0.5 flex h-9 items-center rounded-lg px-2.5 text-xs font-black uppercase truncate ${opFound === false ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20'}`}>{statusLabel}</p>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Data</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Data</label>
               <input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)}
                 className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800" />
             </div>
@@ -403,20 +365,20 @@ const AcabamentoColagemView: React.FC = () => {
 
             {/* Saldo da etapa */}
             <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
                 <span className="material-symbols-outlined text-indigo-500 text-sm">calculate</span>
                 Saldo da etapa
               </p>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50 dark:border-indigo-900 dark:bg-indigo-950/20 p-2.5 flex flex-col gap-1">
-                  <p className="text-[7px] font-black uppercase tracking-widest text-indigo-500 leading-tight">Boas C/V</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 leading-tight">Boas C/V</p>
                   <p className="text-xl font-black text-indigo-800 dark:text-indigo-200 leading-none">{fmt(saldoRecebido)}</p>
                 </div>
                 <QtyCard label="Rodado" value={qtyRodadas} onChange={setQtyRodadas} colorClass="border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50" />
                 <QtyCard label="Escolha" value={qtyEscolha} onChange={setQtyEscolha} colorClass="border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20" />
                 <QtyCard label="Refugo" value={qtyRefugo} onChange={setQtyRefugo} colorClass="border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20" />
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20 p-2.5 flex flex-col gap-1">
-                  <p className="text-[7px] font-black uppercase tracking-widest text-emerald-600 leading-tight">Saldo bom</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 leading-tight">Saldo bom</p>
                   <p className="text-xl font-black text-emerald-800 dark:text-emerald-200 leading-none">{fmt(qtyAprovadas)}</p>
                 </div>
               </div>
@@ -443,7 +405,7 @@ const AcabamentoColagemView: React.FC = () => {
             {/* Escolha acumulada — revisão antes de colar */}
             {escolhaAcumulada > 0 && (
               <section className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/10 p-4 shadow-sm">
-                <p className="text-[8px] font-black uppercase tracking-widest text-amber-600 mb-2 flex items-center gap-1">
+                <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-2 flex items-center gap-1">
                   <span className="material-symbols-outlined text-amber-500 text-sm">rule</span>
                   Escolha acumulada (impressão + vinco): <span className="text-amber-800 dark:text-amber-300 ml-1">{fmt(escolhaAcumulada)} un.</span>
                 </p>
@@ -480,9 +442,9 @@ const AcabamentoColagemView: React.FC = () => {
                 {/* Campos condicionais — revisada = SIM */}
                 {revisadaAntesColar === true && (
                   <div className="space-y-2">
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                       <div className="rounded-xl border border-amber-200 bg-white dark:border-amber-900/40 dark:bg-slate-900 p-2.5 flex flex-col gap-1">
-                        <p className="text-[7px] font-black uppercase tracking-widest text-amber-500 leading-tight">Total recebido</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-amber-500 leading-tight">Total recebido</p>
                         <p className="text-xl font-black text-amber-700 dark:text-amber-300 leading-none">{fmt(escolhaAcumulada)}</p>
                       </div>
                       <QtyCard label="Boas (incluir no Rodado)" value={qtyBoasRevisadas} onChange={setQtyBoasRevisadas} colorClass="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20" />
@@ -526,13 +488,13 @@ const AcabamentoColagemView: React.FC = () => {
 
           {/* Coluna direita: turno */}
           <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
               <span className="material-symbols-outlined text-indigo-500 text-sm">assignment_ind</span>
               Registro do turno
             </p>
             <div className="space-y-2.5">
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Operador</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador</label>
                 <select value={selectedOperatorIds[0] ?? ''} onChange={e => setSelectedOperatorIds(e.target.value ? [e.target.value] : [])}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione o operador</option>
@@ -540,7 +502,7 @@ const AcabamentoColagemView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
                 <select value={selectedMachineId} onChange={e => setSelectedMachineId(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione a máquina</option>
@@ -548,7 +510,7 @@ const AcabamentoColagemView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Turno</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Turno</label>
                 <select value={shift} onChange={e => setShift(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="Manha">Manhã</option>
@@ -557,7 +519,7 @@ const AcabamentoColagemView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Defeito encontrado</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Defeito encontrado</label>
                 <select value={selectedDefectKey} onChange={e => setSelectedDefectKey(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Sem defeito</option>
@@ -566,14 +528,14 @@ const AcabamentoColagemView: React.FC = () => {
               </div>
               {selectedDefectKey && (
                 <div>
-                  <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Qtd. do defeito</label>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. do defeito</label>
                   <input type="number" min={0} value={defectQty}
                     onChange={e => setDefectQty(Math.max(0, Number(e.target.value) || 0))}
                     className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none dark:border-slate-700 dark:bg-slate-800" />
                 </div>
               )}
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Observação</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Observação</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4}
                   placeholder="Observações do processo..."
                   className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs outline-none dark:border-slate-700 dark:bg-slate-800 resize-none" />
@@ -584,6 +546,13 @@ const AcabamentoColagemView: React.FC = () => {
       </div>
 
       <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+        {(saldoExcedido || composicaoInvalida) && (
+          <p className="mx-auto max-w-5xl mb-2 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+            ⚠ {saldoExcedido
+              ? `Rodado maior que o disponível (${fmt(disponivelTotal)} un. = saldo C/V + recuperadas) — ajuste para salvar.`
+              : 'Escolha + refugo maior que o rodado — ajuste para salvar.'}
+          </p>
+        )}
         <div className="mx-auto flex max-w-5xl gap-3">
           <button type="button" onClick={handleClear} className="h-11 flex-1 rounded-xl border border-slate-200 text-sm font-black text-slate-500 dark:border-slate-700">Limpar</button>
           <button type="button" onClick={handleSave} disabled={saving || !op.trim() || !selectedMachineId || selectedOperatorIds.length === 0 || saldoExcedido || composicaoInvalida} className="h-11 flex-[2] rounded-xl bg-indigo-600 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">

@@ -349,8 +349,11 @@ export default function OPTraceView() {
         const refugoAcab = trace.etapasAcab.reduce((s, r) => s + r.qtyRefugo, 0);
         const refugo = refugoInicial + refugoPA + refugoAcab + refugoRevisaoCol;
 
-        // Boas finais (PA) = o que sai pra expedição
+        // Boas finais = boas do PA + recuperadas na Revisão Final (também são
+        // peças aprovadas que seguem pra expedição)
         const boasPA = trace.acabado.reduce((s, r) => s + Math.max(0, r.qtyProduzida - r.qtyEscolha - r.qtyRefugo), 0);
+        const recuperadoRF = revRecs.reduce((s, r) => s + r.recuperado, 0);
+        const boasExpedicao = boasPA + recuperadoRF;
 
         // Defeitos consolidados (todas as etapas)
         const defMap = new Map<string, number>();
@@ -395,7 +398,7 @@ export default function OPTraceView() {
         if (colRecs.length) cadeia.push({ setor: 'Colagem', recebido: cvBoas + boasRevisadasCol, rodado: colRodado, boas: colBoas, escolha: escolhaCol, refugo: colRefugo, alerta: colRodado > cvBoas + boasRevisadasCol });
         if (trace.acabado.length) cadeia.push({ setor: 'Produto Acabado', recebido: colBoas, rodado: paContado, boas: boasPA, escolha: escolhaPA, refugo: refugoPA, alerta: colBoas > 0 && (boasPA + escolhaPA) > colBoas });
 
-        return { produzida, boasImpressao, escolha, refugo, boasPA, topDefects, ops, overallStatus, cadeia };
+        return { produzida, boasImpressao, escolha, refugo, boasPA, boasExpedicao, topDefects, ops, overallStatus, cadeia };
     }, [trace]);
 
     return (
@@ -502,14 +505,14 @@ export default function OPTraceView() {
                                     <p className="text-2xl font-black text-rose-700 dark:text-rose-300">{fmt.format(totals.refugo)}</p>
                                     {totals.produzida > 0 && <p className="text-[10px] font-bold text-rose-500">{((totals.refugo/totals.produzida)*100).toFixed(1)}%</p>}
                                 </div>
-                                {/* Boas finais */}
-                                {totals.boasPA > 0 && (
+                                {/* Boas finais = boas do PA + recuperadas na Revisão Final */}
+                                {totals.boasExpedicao > 0 && (
                                 <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
                                     <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1">
                                         <span className="material-symbols-outlined text-xs">local_shipping</span>Boas → Expedição
                                     </p>
-                                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{fmt.format(totals.boasPA)}</p>
-                                    {totals.produzida > 0 && <p className="text-[10px] font-bold text-emerald-500">{((totals.boasPA/totals.produzida)*100).toFixed(1)}%</p>}
+                                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{fmt.format(totals.boasExpedicao)}</p>
+                                    {totals.produzida > 0 && <p className="text-[10px] font-bold text-emerald-500">{((totals.boasExpedicao/totals.produzida)*100).toFixed(1)}%</p>}
                                 </div>
                                 )}
                                 {/* Pallets */}

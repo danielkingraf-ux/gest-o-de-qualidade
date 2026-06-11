@@ -105,14 +105,6 @@ type DbRecord = {
 let _seq = 0;
 const newId = () => `r${++_seq}${Math.random().toString(36).slice(2, 5)}`;
 
-function localNow(): string {
-  const n = new Date();
-  const p = (x: number) => String(x).padStart(2, '0');
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`;
-}
-// keep localNow in scope (used implicitly via mkPeriodo chain)
-void localNow;
-
 const today = () => new Date().toISOString().slice(0, 10);
 const currentTime = () => new Date().toTimeString().slice(0, 5);
 
@@ -305,70 +297,6 @@ const ProblemaCard: React.FC<{
     </div>
   );
 };
-
-// ── PeriodoCard (legacy — not used in render) ──────────────────────────────────
-const PeriodoCard: React.FC<{
-  periodo: Periodo;
-  index: number;
-  onChange: (p: Periodo) => void;
-  onRemove: () => void;
-}> = ({ periodo, index, onChange, onRemove }) => {
-  const set = <K extends keyof Periodo>(k: K, v: Periodo[K]) => onChange({ ...periodo, [k]: v });
-  const min = periodoMinutos(periodo);
-  const hh = ((min / 60) * periodo.qty_pessoas).toFixed(1).replace('.', ',');
-
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Período {index + 1}</span>
-          {min > 0 && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 font-black">
-              {fmtDuracao(min)} · {hh} HH
-            </span>
-          )}
-        </div>
-        <button type="button" onClick={onRemove}
-          className="size-6 rounded-lg flex items-center justify-center text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
-          <span className="material-symbols-outlined text-sm">close</span>
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <Field label="Início">
-          <input type="datetime-local" value={periodo.inicio}
-            onChange={e => set('inicio', e.target.value)}
-            className={inputCls} />
-        </Field>
-        <Field label="Término">
-          <input type="datetime-local" value={periodo.fim}
-            onChange={e => set('fim', e.target.value)}
-            className={inputCls} />
-        </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <Field label="Pessoas Envolvidas">
-          <input type="text" placeholder="Ex: Ana, Maria, João"
-            value={periodo.pessoas}
-            onChange={e => set('pessoas', e.target.value)}
-            className={inputCls} />
-        </Field>
-        <Field label="Qtd de Pessoas">
-          <input type="number" min="1"
-            value={periodo.qty_pessoas}
-            onChange={e => set('qty_pessoas', Math.max(1, parseInt(e.target.value) || 1))}
-            className={inputCls} />
-        </Field>
-      </div>
-      <Field label="Observação">
-        <input type="text" placeholder="opcional..."
-          value={periodo.observacao}
-          onChange={e => set('observacao', e.target.value)}
-          className={inputCls} />
-      </Field>
-    </div>
-  );
-};
-void PeriodoCard; // suppress unused warning
 
 // ── PeriodoTecnicoCard ─────────────────────────────────────────────────────────
 const PeriodoTecnicoCard: React.FC<{
@@ -697,7 +625,13 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
   const perdasTotais            = totalRefugoAntes + qtyRefugadaFinal;
   const qtyBoaProdutoAcabado    = Math.max(0, (saldoOp?.rodadasProdutoAcabado ?? 0) - (saldoOp?.escolhaProdutoAcabado ?? 0) - (saldoOp?.refugoProdutoAcabado ?? 0));
   const unidadesPalletsReprovados = saldoOp?.unidadesPalletsReprovados ?? 0;
-  const qtyBoaLimpa             = Math.max(0, (saldoOp?.rodadasProdutoAcabado ?? 0) - (saldoOp?.escolhaProdutoAcabado ?? 0) - (saldoOp?.refugoProdutoAcabado ?? 0));
+  // Aprovado direto = boas da etapa mais avançada concluída. Sem laudo de PA,
+  // usa as aprovadas da Colagem (ou C/V, ou impressão) — antes ficava 0 e a OP
+  // nunca fechava mesmo com produção boa.
+  const qtyBoaLimpa             = (saldoOp?.rodadasProdutoAcabado ?? 0) > 0 ? qtyBoaProdutoAcabado
+    : (saldoOp?.aprovadoColagem ?? 0) > 0 ? (saldoOp?.aprovadoColagem ?? 0)
+    : (saldoOp?.aprovadoCorteVinco ?? 0) > 0 ? (saldoOp?.aprovadoCorteVinco ?? 0)
+    : (saldoOp?.boaImpressao ?? 0);
   const qtyFinalAprovada        = qtyBoaLimpa + qtyRecuperada;
   const saldo                   = qtyFinalAprovada - qtySolicitada;
   const fechouPedido            = saldo >= 0;

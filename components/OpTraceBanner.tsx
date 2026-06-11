@@ -73,6 +73,7 @@ const OpTraceBanner: React.FC<Props> = ({ op, moduloAtual }) => {
     let resolvidoColagem = 0;   // boas recuperadas + refugo da revisão feita na colagem
     let refugoRevisaoCol = 0;
     let resolvidoRevisaoFinal = 0; // recuperado + refugado na Revisão Final
+    let recuperadoRF = 0;          // só o recuperado (vai pra expedição)
     for (const row of (acabamentoRes.data ?? []) as Array<{ modulo: string; qty_revisadas: number; qty_reprovadas: number; qty_aprovadas: number; defects: Record<string, number> | null }>) {
       const m = row.modulo;
       if (!modulos[m]) {
@@ -88,6 +89,7 @@ const OpTraceBanner: React.FC<Props> = ({ op, moduloAtual }) => {
         refugoRevisaoCol += num(row.defects?.refugo_revisao);
       }
       if (isRevisaoFinal) {
+        recuperadoRF += num(row.defects?.quantidade_recuperada_revisao);
         resolvidoRevisaoFinal += num(row.defects?.quantidade_recuperada_revisao) + num(row.qty_reprovadas);
       }
     }
@@ -125,7 +127,8 @@ const OpTraceBanner: React.FC<Props> = ({ op, moduloAtual }) => {
     const escolhaGerada = inicial.escolha + modVals.reduce((s, m) => s + m.escolha, 0) + acabado.escolha;
     const escolhaTotal = Math.max(0, escolhaGerada - resolvidoColagem - resolvidoRevisaoFinal);
     const refugoTotal  = inicial.refugo + modVals.reduce((s, m) => s + m.refugo, 0) + acabado.refugo + refugoRevisaoCol;
-    const boasExpedicao = acabado.count > 0 ? acabado.boas : 0;
+    // Boas pra expedição = boas do PA + recuperadas na Revisão Final
+    const boasExpedicao = (acabado.count > 0 ? acabado.boas : 0) + recuperadoRF;
 
     setSummary({
       op: opUpper,

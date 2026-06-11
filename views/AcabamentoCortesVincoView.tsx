@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
@@ -10,18 +10,6 @@ import { escolhaProblemasService } from '../services/escolhaProblemasService';
 import { dedupInspections, parseObsSafe } from '../utils/inspectionDedup';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type FacaCount = Record<number, number>;
-
-type RecentRecord = {
-  id: string;
-  op: string;
-  qty_revisadas: number;
-  qty_aprovadas: number;
-  qty_reprovadas: number;
-  timestamp: string;
-  defects: Record<string, number>;
-};
-
 type OperatorOption = { id: string; name: string };
 type MachineOption  = { id: string; name: string; code: string };
 type OrderInfo = { op: string; qtd_total: number; status: string; unidades_por_folha?: number };
@@ -35,226 +23,11 @@ const DEFECTS = [
   { key: 'outros',          label: 'Outros',            icon: 'more_horiz' },
 ];
 
-const emptyFacaCounts = (): Record<string, FacaCount> =>
-  Object.fromEntries(DEFECTS.map(d => [d.key, {} as FacaCount]));
-
-const facaTotal = (fc: FacaCount) =>
-  Object.values(fc).reduce((s, v) => s + (Number(v) || 0), 0);
-
-const totalAllDefects = (facaCounts: Record<string, FacaCount>) =>
-  DEFECTS.reduce((s, d) => s + facaTotal(facaCounts[d.key] ?? {}), 0);
-
 const getShift = () => {
   const hour = new Date().getHours();
   if (hour >= 6 && hour < 14) return 'Manha';
   if (hour >= 14 && hour < 22) return 'Tarde';
   return 'Noite';
-};
-
-// ── FacaDefectCounter component ───────────────────────────────────────────────
-const FacaDefectCounter: React.FC<{
-  name: string;
-  icon: string;
-  facaCounts: FacaCount;
-  numFacas: number;
-  onUpdate: (faca: number, count: number) => void;
-  descricao?: string;
-  onDescricaoChange?: (v: string) => void;
-}> = ({ name, icon, facaCounts, numFacas, onUpdate, descricao, onDescricaoChange }) => {
-  const [modal, setModal] = useState<{ faca: number; value: string } | null>(null);
-  const [allModal, setAllModal] = useState<{ value: string } | null>(null);
-  const total = facaTotal(facaCounts);
-
-  const openModal = (faca: number) =>
-    setModal({ faca, value: String(facaCounts[faca] ?? 0) });
-
-  const confirmModal = () => {
-    if (!modal) return;
-    onUpdate(modal.faca, Math.max(0, Number(modal.value) || 0));
-    setModal(null);
-  };
-
-  const confirmAllModal = () => {
-    if (!allModal) return;
-    const count = Math.max(0, Number(allModal.value) || 0);
-    Array.from({ length: numFacas }, (_, i) => i + 1).forEach(faca => onUpdate(faca, count));
-    setAllModal(null);
-  };
-
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-2.5">
-        <span className="material-symbols-outlined text-slate-400 text-base">{icon}</span>
-        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 flex-1 truncate">
-          {name}
-        </span>
-        <button
-          type="button"
-          onClick={() => setAllModal({ value: '' })}
-          className="text-[8px] font-black uppercase tracking-widest px-2 h-5 rounded-full border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
-        >
-          Todas
-        </button>
-        {total > 0 && (
-          <span className="text-[10px] font-black text-white bg-rose-500 rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
-            {total}
-          </span>
-        )}
-      </div>
-
-      {/* Grid de facas */}
-      <div className="flex flex-wrap gap-1.5">
-        {Array.from({ length: numFacas }, (_, i) => i + 1).map(faca => {
-          const count = facaCounts[faca] ?? 0;
-          const active = count > 0;
-          return (
-            <button
-              key={faca}
-              type="button"
-              onClick={() => openModal(faca)}
-              className={`relative flex flex-col items-center justify-center w-11 h-11 rounded-xl border-2 transition-all ${
-                active
-                  ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/40 text-rose-700'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-400 hover:border-indigo-400/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[13px] leading-none">content_cut</span>
-              <span className="text-[9px] font-black leading-none mt-0.5">{faca}</span>
-              {active && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-3.5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center px-0.5 leading-none">
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Campo de descrição — somente para "outros" */}
-      {onDescricaoChange !== undefined && (
-        <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700">
-          <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-            Descreva o defeito
-          </label>
-          <textarea
-            value={descricao ?? ''}
-            onChange={e => onDescricaoChange(e.target.value)}
-            placeholder="Ex: rebarbas, faca torta, entulho..."
-            rows={2}
-            className="mt-1 w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500/20 resize-none"
-          />
-        </div>
-      )}
-
-      {/* Modal — faca individual */}
-      {modal && (
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
-          onClick={() => setModal(null)}
-        >
-          <div
-            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xl w-72"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="size-9 rounded-xl bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center">
-                <span className="material-symbols-outlined text-indigo-600 text-base">content_cut</span>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Faca {modal.faca}</p>
-                <p className="text-sm font-black text-slate-800 dark:text-white">{name}</p>
-              </div>
-            </div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-              Quantidade de defeitos nesta posição
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={modal.value}
-              onChange={e => setModal(prev => prev ? { ...prev, value: e.target.value } : prev)}
-              onKeyDown={e => e.key === 'Enter' && confirmModal()}
-              autoFocus
-              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
-            />
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmModal}
-                className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors"
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal — todas as facas */}
-      {allModal && (
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
-          onClick={() => setAllModal(null)}
-        >
-          <div
-            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xl w-72"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="size-9 rounded-xl bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center">
-                <span className="material-symbols-outlined text-indigo-600 text-base">content_cut</span>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-                  Todas as Posições
-                </p>
-                <p className="text-sm font-black text-slate-800 dark:text-white">{name}</p>
-              </div>
-            </div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-              Quantidade por posição
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={allModal.value}
-              onChange={e => setAllModal(prev => prev ? { ...prev, value: e.target.value } : prev)}
-              onKeyDown={e => e.key === 'Enter' && confirmAllModal()}
-              autoFocus
-              className="mt-1.5 h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xl font-black outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
-            />
-            <p className="text-[9px] text-slate-400 mt-1.5 text-center">
-              Será aplicado às {numFacas} posições
-            </p>
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAllModal(null)}
-                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmAllModal}
-                className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors"
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 };
 
 // ── Qty stepper ───────────────────────────────────────────────────────────────
@@ -302,8 +75,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
   const [escolhaMotivo, setEscolhaMotivo] = useState(''); // motivo/problema da escolha gerada no C/V
   const [escolhaProblemas, setEscolhaProblemas] = useState<string[]>([]); // sugestões (cadastro + fallback)
   const [qtyRefugo, setQtyRefugo] = useState(0);
-  const [facaCounts, setFacaCounts] = useState<Record<string, FacaCount>>(emptyFacaCounts());
-  const [outrosDescricao, setOutrosDescricao] = useState('');
   const [notes, setNotes] = useState('');
   const [recordDate, setRecordDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [shift, setShift] = useState(getShift);
@@ -322,10 +93,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
   const [opList, setOpList] = useState<string[]>([]);
   const [opInfo, setOpInfo] = useState<OrderInfo | null>(null);
-  const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
-  const [loadingRecent, setLoadingRecent] = useState(false);
   const [saldoInspecao, setSaldoInspecao] = useState<{ recebido: number; rodadas: number; boas: number; escolha: number } | null>(null);
-  const [opHistory, setOpHistory] = useState<any[]>([]);
 
   // Carrega lista de OPs, operadores e máquinas de Corte e Vinco
   useEffect(() => {
@@ -412,7 +180,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
       } else {
         setSaldoInspecao(null);
       }
-      setOpHistory(cvRes.data ?? []);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op]);
@@ -422,29 +189,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
     setNumFacas(manualFacas);
   }, [manualFacas]);
 
-  const loadRecent = useCallback(async () => {
-    setLoadingRecent(true);
-    const { data } = await supabase
-      .from('acabamento_registros')
-      .select('id, op, qty_revisadas, qty_aprovadas, qty_reprovadas, timestamp, defects')
-      .eq('modulo', 'corte_vinco')
-      .order('timestamp', { ascending: false })
-      .limit(10);
-    setRecentRecords((data as RecentRecord[]) ?? []);
-    setLoadingRecent(false);
-  }, []);
-
-  useEffect(() => { loadRecent(); }, [loadRecent]);
-
-  const handleUpdate = (defectKey: string, faca: number, count: number) => {
-    setFacaCounts(prev => ({
-      ...prev,
-      [defectKey]: { ...prev[defectKey], [faca]: count },
-    }));
-  };
-
-  const totalDefects = totalAllDefects(facaCounts);
-
   const handleClear = () => {
     setOp('');
     setSelectedOperatorIds([]);
@@ -453,8 +197,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
     setQtyEscolha(0);
     setEscolhaMotivo('');
     setQtyRefugo(0);
-    setFacaCounts(emptyFacaCounts());
-    setOutrosDescricao('');
     setNotes('');
     setRecordDate(new Date().toISOString().slice(0, 10));
     setShift(getShift());
@@ -518,23 +260,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
     if (selectedDefectKey && defectQty > 0) {
       defectsPayload[selectedDefectKey] = defectQty;
     }
-    for (const d of DEFECTS) {
-      const total = facaTotal(facaCounts[d.key] ?? {});
-      if (total > 0) defectsPayload[d.key] = (defectsPayload[d.key] ?? 0) + total;
-    }
-
-    // Detalhes por posição de faca
-    const facaDefectsPayload: Record<string, Record<string, number> | string> = {};
-    for (const d of DEFECTS) {
-      const fc = facaCounts[d.key] ?? {};
-      const entries = Object.entries(fc).filter(([, v]) => (v as number) > 0);
-      if (entries.length > 0) {
-        facaDefectsPayload[d.key] = Object.fromEntries(entries) as Record<string, number>;
-      }
-    }
-    if (outrosDescricao.trim()) {
-      facaDefectsPayload['outros_descricao'] = outrosDescricao.trim();
-    }
     if (qtyRefugo > 0) {
       defectsPayload['qty_refugo'] = qtyRefugo;
     }
@@ -552,7 +277,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
       qty_aprovadas: Math.max(0, qtyRevisadas - qtyEscolha - qtyRefugo),
       qty_reprovadas: qtyEscolha,
       defects: escolhaMotivo.trim() ? { ...defectsPayload, escolha_motivo: escolhaMotivo.trim() } : defectsPayload,
-      faca_defects: Object.keys(facaDefectsPayload).length > 0 ? facaDefectsPayload : null,
       unidades_por_folha: numFacas > 0 ? numFacas : null,
       notes: [
         `Data: ${recordDate}`,
@@ -588,7 +312,6 @@ const AcabamentoCortesVincoView: React.FC = () => {
     setSaving(false);
     showToast('Registro salvo com sucesso!', 'success');
     handleClear();
-    loadRecent();
   };
 
   const fmt = (n: number) => n.toLocaleString('pt-BR');
@@ -607,7 +330,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
           <div className="flex items-center gap-2 mb-3">
             <span className="material-symbols-outlined text-indigo-500">content_cut</span>
             <div className="flex-1 min-w-0">
-              <p className="text-[8px] font-black uppercase tracking-widest text-indigo-500 leading-none">Processo</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 leading-none">Processo</p>
               <h1 className="text-lg font-black uppercase text-slate-900 dark:text-white leading-tight">Corte e Vinco</h1>
             </div>
             {(saldoExcedido || composicaoInvalida) && (
@@ -618,21 +341,21 @@ const AcabamentoCortesVincoView: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <div className="md:col-span-2">
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
               <input list="cv-op-list-simple" value={op} onChange={e => setOp(e.target.value)} placeholder="OP"
                 className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800" />
               <datalist id="cv-op-list-simple">{opList.map(o => <option key={o} value={o} />)}</datalist>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
               <p className="mt-0.5 flex h-9 items-center rounded-lg bg-slate-50 px-2.5 text-sm font-black text-slate-700 dark:bg-slate-800 dark:text-slate-100">{fmt(opInfo?.qtd_total ?? 0)}</p>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Status</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Status</label>
               <p className={`mt-0.5 flex h-9 items-center rounded-lg px-2.5 text-xs font-black uppercase truncate ${opFound === false ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20'}`}>{statusLabel}</p>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Data</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Data</label>
               <input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)}
                 className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800" />
             </div>
@@ -647,7 +370,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
             {/* Saldo da etapa */}
             <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
                 <span className="material-symbols-outlined text-indigo-500 text-sm">calculate</span>
                 Saldo da etapa
               </p>
@@ -660,16 +383,16 @@ const AcabamentoCortesVincoView: React.FC = () => {
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50 dark:border-indigo-900 dark:bg-indigo-950/20 p-2.5 flex flex-col gap-1">
-                  <p className="text-[7px] font-black uppercase tracking-widest text-indigo-500 leading-tight">Boas recebidas</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 leading-tight">Boas recebidas</p>
                   <p className="text-xl font-black text-indigo-800 dark:text-indigo-200 leading-none">{fmt(saldoRecebido)}</p>
                 </div>
                 <QtyCard label="Rodado" value={qtyRevisadas} onChange={setQtyRevisadas} colorClass="border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50" />
                 <QtyCard label="Escolha C/V" value={qtyEscolha} onChange={setQtyEscolha} colorClass="border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20" />
                 <QtyCard label="Refugo" value={qtyRefugo} onChange={setQtyRefugo} colorClass="border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20" />
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20 p-2.5 flex flex-col gap-1">
-                  <p className="text-[7px] font-black uppercase tracking-widest text-emerald-600 leading-tight">Saldo bom</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 leading-tight">Saldo bom</p>
                   <p className="text-xl font-black text-emerald-800 dark:text-emerald-200 leading-none">{fmt(qtyAprovadas)}</p>
                 </div>
               </div>
@@ -696,13 +419,13 @@ const AcabamentoCortesVincoView: React.FC = () => {
 
           {/* Coluna direita: turno */}
           <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
               <span className="material-symbols-outlined text-indigo-500 text-sm">assignment_ind</span>
               Registro do turno
             </p>
             <div className="space-y-2.5">
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Operador</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador</label>
                 <select value={selectedOperatorIds[0] ?? ''} onChange={e => setSelectedOperatorIds(e.target.value ? [e.target.value] : [])}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione o operador</option>
@@ -710,7 +433,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
                 <select value={selectedMachineId} onChange={e => setSelectedMachineId(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione a máquina</option>
@@ -718,7 +441,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Turno</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Turno</label>
                 <select value={shift} onChange={e => setShift(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="Manha">Manhã</option>
@@ -727,7 +450,7 @@ const AcabamentoCortesVincoView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Defeito encontrado</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Defeito encontrado</label>
                 <select value={selectedDefectKey} onChange={e => setSelectedDefectKey(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Sem defeito</option>
@@ -736,14 +459,14 @@ const AcabamentoCortesVincoView: React.FC = () => {
               </div>
               {selectedDefectKey && (
                 <div>
-                  <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Qtd. do defeito</label>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. do defeito</label>
                   <input type="number" min={0} value={defectQty}
                     onChange={e => setDefectQty(Math.max(0, Number(e.target.value) || 0))}
                     className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none dark:border-slate-700 dark:bg-slate-800" />
                 </div>
               )}
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Observação</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Observação</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4}
                   placeholder="Observações do processo..."
                   className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs outline-none dark:border-slate-700 dark:bg-slate-800 resize-none" />
@@ -754,6 +477,13 @@ const AcabamentoCortesVincoView: React.FC = () => {
       </div>
 
       <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+        {(saldoExcedido || composicaoInvalida) && (
+          <p className="mx-auto max-w-5xl mb-2 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+            ⚠ {saldoExcedido
+              ? `Rodado maior que o disponível da etapa anterior (${fmt(saldoRecebido)} un.) — ajuste para salvar.`
+              : 'Escolha + refugo maior que o rodado — ajuste para salvar.'}
+          </p>
+        )}
         <div className="mx-auto flex max-w-5xl gap-3">
           <button type="button" onClick={handleClear} className="h-11 flex-1 rounded-xl border border-slate-200 text-sm font-black text-slate-500 dark:border-slate-700">Limpar</button>
           <button type="button" onClick={handleSave} disabled={saving || !op.trim() || !selectedMachineId || selectedOperatorIds.length === 0 || saldoExcedido || composicaoInvalida} className="h-11 flex-[2] rounded-xl bg-indigo-600 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
