@@ -8,6 +8,7 @@ import DefectCounter from '../components/DefectCounter';
 import DefectPhotoUpload from '../components/DefectPhotoUpload';
 import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 import { escolhaRevisaoService } from '../services/escolhaRevisaoService';
+import { DOUBLE_SAVE_WINDOW_MS, parseObsSafe } from '../utils/inspectionDedup';
 import type { OrigemProblemaEscolha } from '../types';
 
 const MetricInput: React.FC<{
@@ -799,6 +800,26 @@ export default function InspectionView() {
           })),
         };
         dataToSave.observations = JSON.stringify(observationsPayload);
+      }
+
+      // Trava anti duplo-save: bloqueia registro idêntico (mesma OP + rodada +
+      // mesmo saldo) gravado há poucos minutos. Apontamentos parciais novos da
+      // mesma rodada (quantidades diferentes) continuam permitidos.
+      const windowStart = new Date(Date.now() - DOUBLE_SAVE_WINDOW_MS).toISOString();
+      const { data: recentRows } = await supabase
+        .from('inspections')
+        .select('observations, created_at')
+        .eq('op', selectedOrder.op)
+        .gte('created_at', windowStart);
+      const isDoubleSave = (recentRows ?? []).some((row: { observations: string | null }) => {
+        const obs = parseObsSafe(row.observations);
+        return obs.process_area === 'producao_inicial'
+          && String(obs.numero_rodada ?? '1') === String(numeroRodada)
+          && JSON.stringify(obs.saldo_unidades ?? null) === JSON.stringify(saldo);
+      });
+      if (isDoubleSave) {
+        showToast(`Já existe um registro idêntico desta rodada salvo há menos de ${Math.round(DOUBLE_SAVE_WINDOW_MS / 60000)} min. Se este é um apontamento parcial novo, as quantidades devem ser diferentes.`, 'error');
+        return;
       }
 
       const { data: inserted, error } = await supabase.from('inspections').insert([dataToSave]).select('id').single();

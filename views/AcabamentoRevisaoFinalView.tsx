@@ -5,6 +5,7 @@ import { useUser } from '../contexts/UserContext';
 import OpTraceBanner from '../components/OpTraceBanner';
 import DefectPhotoUpload from '../components/DefectPhotoUpload';
 import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
+import { dedupInspections, parseObsSafe } from '../utils/inspectionDedup';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SETORES_ORIGEM = [
@@ -580,35 +581,34 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
       let rodadasProdutoAcabado = 0, escolhaProdutoAcabado = 0, refugoProdutoAcabado = 0;
       const opIds = new Set<string>();
       const machineIds = new Set<string>();
-      const seenRodadaInicial = new Set<number>();
-      const seenRodadaPA = new Set<number>();
 
-      for (const row of (inspRes.data ?? []) as Array<{ observations: string; machine_id: string | null; created_at: string }>) {
-        try {
-          const obs = typeof row.observations === 'string' ? JSON.parse(row.observations) : (row.observations ?? {});
-          const numRodada = Number(obs.numero_rodada) || 1;
-          if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
-            if (!seenRodadaInicial.has(numRodada)) {
-              seenRodadaInicial.add(numRodada);
-              rodadasImpressao  += Number(obs.saldo_unidades.rodadas)    || 0;
-              escolhaImpressao  += Number(obs.saldo_unidades.em_escolha) || 0;
-              refugoImpressao   += Number(obs.saldo_unidades.reprovadas) || 0;
-              boaImpressao      += Number(obs.saldo_unidades.aprovadas)  || 0;
-            }
-          }
-          if (obs.process_area === 'produto_acabado' && obs.producao) {
-            const laudoNum = Number(obs.laudo_numero) || 1;
-            if (!seenRodadaPA.has(laudoNum)) {
-              seenRodadaPA.add(laudoNum);
-              rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
-              escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
-              refugoProdutoAcabado  += Number(obs.producao.qty_refugo)    || 0;
-            }
-          }
-          if (Array.isArray(obs.all_operator_ids)) {
-            (obs.all_operator_ids as string[]).forEach((id: string) => id && opIds.add(id));
-          }
-        } catch { /* ignora */ }
+      // Parciais da mesma rodada SOMAM; só duplo-save idêntico e laudo PA
+      // repetido (vale o mais recente) são descartados.
+      type InspRow = { observations: string; machine_id: string | null; created_at: string };
+      const inspRows = dedupInspections((inspRes.data ?? []) as InspRow[], {
+        getObs: row => parseObsSafe(row.observations),
+        getCreatedAt: row => row.created_at,
+      });
+      for (const row of inspRows) {
+        const obs = parseObsSafe(row.observations);
+        if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+          rodadasImpressao  += Number(obs.saldo_unidades.rodadas)    || 0;
+          escolhaImpressao  += Number(obs.saldo_unidades.em_escolha) || 0;
+          refugoImpressao   += Number(obs.saldo_unidades.reprovadas) || 0;
+          boaImpressao      += Number(obs.saldo_unidades.aprovadas)  || 0;
+        }
+        if (obs.process_area === 'produto_acabado' && obs.producao) {
+          rodadasProdutoAcabado += Number(obs.producao.qty_produzida) || 0;
+          escolhaProdutoAcabado += Number(obs.producao.qty_escolha)   || 0;
+          refugoProdutoAcabado  += Number(obs.producao.qty_refugo)    || 0;
+        }
+      }
+      // Operadores e máquinas: considerar TODOS os registros (inclusive duplicados)
+      for (const row of (inspRes.data ?? []) as InspRow[]) {
+        const obs = parseObsSafe(row.observations);
+        if (Array.isArray(obs.all_operator_ids)) {
+          (obs.all_operator_ids as string[]).forEach((id: string) => id && opIds.add(id));
+        }
         if (row.machine_id) machineIds.add(row.machine_id);
       }
 

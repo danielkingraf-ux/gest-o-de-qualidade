@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useToast } from '../contexts/ToastContext';
 import PageContainer from '../components/PageContainer';
+import { dedupInspections } from '../utils/inspectionDedup';
 import {
   reportService,
   type ManagementReportData,
@@ -185,10 +186,18 @@ export default function ManagementReportView() {
     const operatorMap = new Map<string, string>(operators.map((o: any) => [o.id, o.name ?? '']));
 
     // Enriquecer inspecoes com dados parseados
-    const enriched = inspections.map((insp: any) => {
+    const enrichedAll = inspections.map((insp: any) => {
       const obs = parseObs(insp.observations);
       const order = orderMap.get(insp.order_id);
       return { ...insp, obs, order };
+    });
+    // Parciais da mesma rodada SOMAM; só duplo-save idêntico e laudo PA
+    // repetido (vale o mais recente) são descartados. Escopo por OP, pois
+    // o relatório mistura OPs diferentes.
+    const enriched = dedupInspections<any>(enrichedAll, {
+      getObs: i => i.obs,
+      getCreatedAt: i => i.created_at,
+      getScope: i => String(i.op ?? ''),
     });
 
     // Apenas inspecoes de producao inicial (tem saldo_unidades)
@@ -249,23 +258,16 @@ export default function ManagementReportView() {
       // Produto Acabado (boas que chegaram ao final)
       let boasPA = 0;
 
-      // Deduplicar: mesma rodada pode ter sido salva mais de uma vez (teste, save-and-continue)
-      // Dados vêm por created_at DESC, então o primeiro de cada rodada é o mais recente.
-      const seenRodadaIni = new Set<number>();
-      const seenRodadaPA = new Set<number>();
-
+      // opInsps já vem deduplicado (parciais somam; duplo-save e laudo PA
+      // repetido já foram descartados em `enriched`).
       for (const insp of opInsps) {
-        const numRodada = Number(insp.obs.numero_rodada) || Number(insp.obs.laudo_numero) || 1;
-
         const saldo = insp.obs.saldo_unidades;
-        if (saldo && !seenRodadaIni.has(numRodada)) {
-          seenRodadaIni.add(numRodada);
+        if (saldo) {
           aprovadas += Number(saldo.aprovadas) || 0;
           emEscolha += Number(saldo.em_escolha) || 0;
           reprovadas += Number(saldo.reprovadas) || 0;
         }
-        if (insp.obs.process_area === 'produto_acabado' && insp.obs.producao && !seenRodadaPA.has(numRodada)) {
-          seenRodadaPA.add(numRodada);
+        if (insp.obs.process_area === 'produto_acabado' && insp.obs.producao) {
           boasPA += Math.max(0, (Number(insp.obs.producao.qty_produzida) || 0) - (Number(insp.obs.producao.qty_escolha) || 0) - (Number(insp.obs.producao.qty_refugo) || 0));
         }
         if (emEscolha > 0 || (insp.obs.envio_escolha && insp.obs.envio_escolha.length > 0)) {

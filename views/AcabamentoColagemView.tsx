@@ -7,6 +7,7 @@ import DefectPhotoUpload from '../components/DefectPhotoUpload';
 import EscolhaMotivoInput from '../components/EscolhaMotivoInput';
 import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 import { escolhaProblemasService } from '../services/escolhaProblemasService';
+import { dedupInspections, parseObsSafe } from '../utils/inspectionDedup';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type OperatorOption = { id: string; name: string };
@@ -154,8 +155,7 @@ const AcabamentoColagemView: React.FC = () => {
       supabase.from('inspections')
         .select('observations, created_at')
         .eq('op', opUpper)
-        .order('created_at', { ascending: false })
-        .limit(20),
+        .order('created_at', { ascending: false }),
     ]).then(([cvRes, colRes, inspRes]) => {
       const aprovadasCv = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
@@ -170,19 +170,17 @@ const AcabamentoColagemView: React.FC = () => {
       }
 
       // ── Escolha acumulada (impressão + vinco) — exibição informativa ──
+      // Parciais da mesma rodada SOMAM; só duplo-save idêntico é descartado.
       let escolhaImpressao = 0;
-      const seenRod = new Set<number>();
-      for (const row of (inspRes.data ?? []) as Array<{ observations: string }>) {
-        try {
-          if (typeof row.observations !== 'string' || !row.observations.trim().startsWith('{')) continue;
-          const obs = JSON.parse(row.observations);
-          if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
-            const nr = Number(obs.numero_rodada) || 1;
-            if (seenRod.has(nr)) continue;
-            seenRod.add(nr);
-            escolhaImpressao += Number(obs.saldo_unidades.em_escolha) || 0;
-          }
-        } catch { /* ignora */ }
+      const inspRows = dedupInspections((inspRes.data ?? []) as Array<{ observations: string; created_at: string }>, {
+        getObs: row => parseObsSafe(row.observations),
+        getCreatedAt: row => row.created_at,
+      });
+      for (const row of inspRows) {
+        const obs = parseObsSafe(row.observations);
+        if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+          escolhaImpressao += Number(obs.saldo_unidades.em_escolha) || 0;
+        }
       }
       const escolhaVinco = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);

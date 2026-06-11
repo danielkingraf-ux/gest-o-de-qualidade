@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabase';
 import { normalizeDefectLabel, toDefectEntry } from '../utils/defects';
+import { dedupInspections } from '../utils/inspectionDedup';
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 type Period = 'week' | 'month' | 'quarter' | 'all';
@@ -35,18 +36,13 @@ const parseObs = (v: any): any => {
 };
 
 function normalize(raw: any[]): NormalizedRecord[] {
-    // Deduplicar: se a mesma OP + rodada aparece mais de uma vez, manter só o mais recente.
-    // Dados vêm ordenados por created_at DESC (mais recente primeiro).
-    const seenKey = new Set<string>();
-
-    return raw.filter(r => {
-        const obs = parseObs(r.observations);
-        const area = (obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis) ? 'pa' : 'ini';
-        const rodada = Number(obs.numero_rodada) || Number(obs.laudo_numero) || 1;
-        const key = `${String(r.op).toUpperCase()}|${area}|${rodada}`;
-        if (seenKey.has(key)) return false; // duplicata
-        seenKey.add(key);
-        return true;
+    // Parciais da mesma rodada SOMAM; só duplo-save idêntico e laudo PA
+    // repetido (vale o mais recente) são descartados. Escopo por OP, pois
+    // o painel mistura OPs diferentes.
+    return dedupInspections(raw, {
+        getObs: r => parseObs(r.observations),
+        getCreatedAt: r => r.created_at,
+        getScope: r => String(r.op ?? ''),
     }).map(r => {
         const obs = parseObs(r.observations);
         const isAcabado = obs.process_area === 'produto_acabado' || obs.is_spreadsheet_analysis;

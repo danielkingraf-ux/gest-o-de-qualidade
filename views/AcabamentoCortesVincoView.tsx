@@ -7,6 +7,7 @@ import DefectPhotoUpload from '../components/DefectPhotoUpload';
 import EscolhaMotivoInput from '../components/EscolhaMotivoInput';
 import { defectPhotoService, type PendingPhoto } from '../services/defectPhotoService';
 import { escolhaProblemasService } from '../services/escolhaProblemasService';
+import { dedupInspections, parseObsSafe } from '../utils/inspectionDedup';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FacaCount = Record<number, number>;
@@ -372,10 +373,9 @@ const AcabamentoCortesVincoView: React.FC = () => {
     Promise.all([
       supabase
         .from('inspections')
-        .select('observations')
+        .select('observations, created_at')
         .eq('op', opUpper)
-        .order('created_at', { ascending: false })
-        .limit(20),
+        .order('created_at', { ascending: false }),
       supabase
         .from('acabamento_registros')
         .select('id, qty_revisadas, qty_reprovadas, qty_aprovadas, defects, operator_ids, machine_id, timestamp')
@@ -386,24 +386,18 @@ const AcabamentoCortesVincoView: React.FC = () => {
       let boasImpressao = 0;
       let escolhaImpressao = 0;
       let rodadas = 0;
-      // Deduplicar: pegar só o mais recente por rodada
-      const seenRodada = new Set<number>();
-      // Ordena DESC pra pegar o mais recente primeiro
-      const sorted = [...(inspRes.data ?? [])].sort((a: any, b: any) =>
-        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-      for (const row of sorted) {
-        try {
-          if (typeof row.observations !== 'string' || !row.observations.trim().startsWith('{')) continue;
-          const obs = JSON.parse(row.observations);
-          if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
-            const numRod = Number(obs.numero_rodada) || 1;
-            if (seenRodada.has(numRod)) continue;
-            seenRodada.add(numRod);
-            boasImpressao += Number(obs.saldo_unidades.aprovadas) || 0;
-            escolhaImpressao += Number(obs.saldo_unidades.em_escolha) || 0;
-            rodadas += Number(obs.saldo_unidades.rodadas) || 0;
-          }
-        } catch { /* ignora registro malformado */ }
+      // Parciais da mesma rodada SOMAM; só duplo-save idêntico é descartado.
+      const inspRows = dedupInspections((inspRes.data ?? []) as Array<{ observations: string; created_at: string }>, {
+        getObs: row => parseObsSafe(row.observations),
+        getCreatedAt: row => row.created_at,
+      });
+      for (const row of inspRows) {
+        const obs = parseObsSafe(row.observations);
+        if (obs.process_area === 'producao_inicial' && obs.saldo_unidades) {
+          boasImpressao += Number(obs.saldo_unidades.aprovadas) || 0;
+          escolhaImpressao += Number(obs.saldo_unidades.em_escolha) || 0;
+          rodadas += Number(obs.saldo_unidades.rodadas) || 0;
+        }
       }
       // C/V recebe SÓ as APROVADAS da impressão.
       // A escolha da impressão vai direto pra Revisão Final — não passa pelo C/V.

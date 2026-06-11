@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../services/supabase';
+import { dedupInspections, parseObsSafe } from '../utils/inspectionDedup';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type ModuloInfo = {
@@ -79,33 +80,25 @@ const OpTraceBanner: React.FC<Props> = ({ op, moduloAtual }) => {
       modulos[m].count++;
     }
 
-    // Inspeções: início (producao_inicial) e acabado (produto_acabado), deduplicando por rodada
+    // Inspeções: início (producao_inicial) e acabado (produto_acabado).
+    // Parciais da mesma rodada SOMAM; só duplo-save idêntico e laudo PA
+    // repetido (vale o mais recente) são descartados.
     const inicial = emptyArea();
     const acabado = emptyArea();
-    const seenIni = new Set<number>();
-    const seenPA = new Set<number>();
-    for (const row of (inspecoesRes.data ?? []) as Array<{ observations: string }>) {
-      let obs: Record<string, unknown> | null = null;
-      try {
-        if (typeof row.observations === 'string' && row.observations.trim().startsWith('{')) obs = JSON.parse(row.observations);
-        else if (typeof row.observations === 'object') obs = row.observations as Record<string, unknown>;
-      } catch { /* ignora */ }
-      if (!obs) continue;
-
+    const inspRows = dedupInspections((inspecoesRes.data ?? []) as Array<{ observations: string; created_at: string }>, {
+      getObs: row => parseObsSafe(row.observations),
+      getCreatedAt: row => row.created_at,
+    });
+    for (const row of inspRows) {
+      const obs = parseObsSafe(row.observations);
       const area = (obs.process_area as string) ?? '';
       if (area === 'producao_inicial' && obs.saldo_unidades) {
-        const rod = num(obs.numero_rodada) || 1;
-        if (seenIni.has(rod)) continue;
-        seenIni.add(rod);
         const s = obs.saldo_unidades as Record<string, number>;
         inicial.count++;
         inicial.boas    += num(s.aprovadas);
         inicial.escolha += num(s.em_escolha);
         inicial.refugo  += num(s.reprovadas);
       } else if (area === 'produto_acabado' && obs.producao) {
-        const laudo = num(obs.laudo_numero) || 1;
-        if (seenPA.has(laudo)) continue;
-        seenPA.add(laudo);
         const p = obs.producao as Record<string, number>;
         acabado.count++;
         acabado.boas    += Math.max(0, num(p.qty_produzida) - num(p.qty_escolha) - num(p.qty_refugo));
