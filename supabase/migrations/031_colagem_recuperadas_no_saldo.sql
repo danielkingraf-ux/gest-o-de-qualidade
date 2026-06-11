@@ -22,7 +22,69 @@
 --     <= escolha(impressao) + escolha(C/V) - ja resolvido em outras linhas
 --
 -- Requer a migration 030 (kg_initial_process_good_qty com soma de parciais).
+-- AUTOSSUFICIENTE quanto a 025: recria abaixo kg_jsonb_int e
+-- kg_acabamento_stage_qty, pois ha bancos onde a 025 nunca foi aplicada.
 -- Executar no Supabase SQL Editor (idempotente).
+
+-- ── Pre-requisitos (originalmente na migration 025) ─────────────────────────
+
+create or replace function public.kg_jsonb_int(payload jsonb, key text)
+returns int
+language sql
+immutable
+as $$
+  select case
+    when payload ? key and (payload ->> key) ~ '^-?[0-9]+$'
+      then (payload ->> key)::int
+    else 0
+  end;
+$$;
+
+create or replace function public.kg_acabamento_stage_qty(
+  p_op text,
+  p_modulo text,
+  p_column text,
+  p_exclude_id uuid default null
+)
+returns int
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  total int := 0;
+begin
+  if p_column = 'qty_revisadas' then
+    select coalesce(sum(qty_revisadas), 0)
+      into total
+      from public.acabamento_registros
+     where upper(btrim(op)) = upper(btrim(p_op))
+       and modulo = p_modulo
+       and (p_exclude_id is null or id <> p_exclude_id);
+  elsif p_column = 'qty_aprovadas' then
+    select coalesce(sum(qty_aprovadas), 0)
+      into total
+      from public.acabamento_registros
+     where upper(btrim(op)) = upper(btrim(p_op))
+       and modulo = p_modulo
+       and (p_exclude_id is null or id <> p_exclude_id);
+  elsif p_column = 'qty_reprovadas' then
+    select coalesce(sum(qty_reprovadas), 0)
+      into total
+      from public.acabamento_registros
+     where upper(btrim(op)) = upper(btrim(p_op))
+       and modulo = p_modulo
+       and (p_exclude_id is null or id <> p_exclude_id);
+  else
+    raise exception 'Coluna de quantidade invalida: %', p_column;
+  end if;
+
+  return total;
+end;
+$$;
+
+-- ── Novas funcoes desta migration ────────────────────────────────────────────
 
 -- Soma de uma chave inteira do jsonb defects nas linhas de um modulo da OP.
 create or replace function public.kg_acabamento_defects_int_sum(
