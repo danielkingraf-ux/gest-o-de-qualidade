@@ -331,13 +331,23 @@ export default function OPTraceView() {
             ? escolhaColRaw
             : Math.max(0, escolhaColRaw - (escolhaImp + escolhaCV)); // formato antigo: subtrair acumulada p/ evitar dupla contagem
         const escolhaPA = trace.acabado.reduce((s, r) => s + r.qtyEscolha, 0);
-        const escolha = escolhaImp + escolhaCV + escolhaCol + escolhaPA;
+        // Escolha resolvida ANTES da Revisão Final: a colagem pode revisar a
+        // escolha acumulada antes de colar (boas recuperadas + refugo da revisão).
+        const dInt = (d: Record<string, number>, k: string) => Number(d?.[k]) || 0;
+        const boasRevisadasCol = _colRecsEscolha.reduce((s, r) => s + dInt(r.defects, 'boas_revisadas'), 0);
+        const refugoRevisaoCol = _colRecsEscolha.reduce((s, r) => s + dInt(r.defects, 'refugo_revisao'), 0);
+        // Escolha resolvida na Revisão Final (recuperado + refugado)
+        const revRecs = trace.etapasAcab.filter(r => r.modulo === 'revisao_final');
+        const resolvidoRevisao = revRecs.reduce((s, r) => s + r.recuperado + r.refugadoRevisao, 0);
+        // "Em Escolha" = PENDENTE: gerada − resolvida na colagem − resolvida na RF (zera ao fechar)
+        const escolhaGerada = escolhaImp + escolhaCV + escolhaCol + escolhaPA;
+        const escolha = Math.max(0, escolhaGerada - boasRevisadasCol - refugoRevisaoCol - resolvidoRevisao);
 
-        // Refugo = soma de TODAS as etapas
+        // Refugo = soma de TODAS as etapas + refugo das revisões (colagem e RF)
         const refugoInicial = trace.inicial.reduce((s, r) => s + r.qtyRefugo, 0);
         const refugoPA = trace.acabado.reduce((s, r) => s + r.qtyRefugo, 0);
         const refugoAcab = trace.etapasAcab.reduce((s, r) => s + r.qtyRefugo, 0);
-        const refugo = refugoInicial + refugoPA + refugoAcab;
+        const refugo = refugoInicial + refugoPA + refugoAcab + refugoRevisaoCol;
 
         // Boas finais (PA) = o que sai pra expedição
         const boasPA = trace.acabado.reduce((s, r) => s + Math.max(0, r.qtyProduzida - r.qtyEscolha - r.qtyRefugo), 0);
@@ -381,7 +391,8 @@ export default function OPTraceView() {
         const cadeia: CadeiaRow[] = [];
         if (produzida > 0) cadeia.push({ setor: 'Impressão', recebido: null, rodado: produzida, boas: boasImpressao, escolha: escolhaImp, refugo: refugoInicial, alerta: false });
         if (cvRecs.length) cadeia.push({ setor: 'Corte/Vinco', recebido: boasImpressao, rodado: cvRodado, boas: cvBoas, escolha: escolhaCV, refugo: cvRefugo, alerta: cvRodado > boasImpressao });
-        if (colRecs.length) cadeia.push({ setor: 'Colagem', recebido: cvBoas, rodado: colRodado, boas: colBoas, escolha: escolhaCol, refugo: colRefugo, alerta: colRodado > cvBoas });
+        // Colagem recebe as boas do C/V + as boas recuperadas da escolha revisada antes de colar
+        if (colRecs.length) cadeia.push({ setor: 'Colagem', recebido: cvBoas + boasRevisadasCol, rodado: colRodado, boas: colBoas, escolha: escolhaCol, refugo: colRefugo, alerta: colRodado > cvBoas + boasRevisadasCol });
         if (trace.acabado.length) cadeia.push({ setor: 'Produto Acabado', recebido: colBoas, rodado: paContado, boas: boasPA, escolha: escolhaPA, refugo: refugoPA, alerta: colBoas > 0 && (boasPA + escolhaPA) > colBoas });
 
         return { produzida, boasImpressao, escolha, refugo, boasPA, topDefects, ops, overallStatus, cadeia };
@@ -478,7 +489,7 @@ export default function OPTraceView() {
                                 {/* Em escolha */}
                                 <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
                                     <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                        <span className="material-symbols-outlined text-xs">rule</span>Em Escolha
+                                        <span className="material-symbols-outlined text-xs">rule</span>Escolha pendente
                                     </p>
                                     <p className="text-2xl font-black text-amber-700 dark:text-amber-300">{fmt.format(totals.escolha)}</p>
                                     {totals.produzida > 0 && <p className="text-[10px] font-bold text-amber-500">{((totals.escolha/totals.produzida)*100).toFixed(1)}%</p>}

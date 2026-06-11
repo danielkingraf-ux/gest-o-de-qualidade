@@ -67,17 +67,29 @@ const OpTraceBanner: React.FC<Props> = ({ op, moduloAtual }) => {
         .order('created_at', { ascending: false }),
     ]);
 
-    // Acabamento por módulo (escolha = qty_reprovadas; refugo = defects.qty_refugo)
+    // Acabamento por módulo (escolha = qty_reprovadas; refugo = defects.qty_refugo).
+    // Revisão Final é exceção: qty_reprovadas ali é o REFUGADO da revisão (não escolha).
     const modulos: Record<string, ModuloInfo> = {};
-    for (const row of (acabamentoRes.data ?? []) as Array<{ modulo: string; qty_revisadas: number; qty_reprovadas: number; defects: Record<string, number> | null }>) {
+    let resolvidoColagem = 0;   // boas recuperadas + refugo da revisão feita na colagem
+    let refugoRevisaoCol = 0;
+    let resolvidoRevisaoFinal = 0; // recuperado + refugado na Revisão Final
+    for (const row of (acabamentoRes.data ?? []) as Array<{ modulo: string; qty_revisadas: number; qty_reprovadas: number; qty_aprovadas: number; defects: Record<string, number> | null }>) {
       const m = row.modulo;
       if (!modulos[m]) {
         modulos[m] = { label: MODULO_META[m]?.label ?? m, icon: MODULO_META[m]?.icon ?? 'check', rodado: 0, escolha: 0, refugo: 0, count: 0 };
       }
+      const isRevisaoFinal = m === 'revisao_final';
       modulos[m].rodado  += num(row.qty_revisadas);
-      modulos[m].escolha += num(row.qty_reprovadas);
-      modulos[m].refugo  += num(row.defects?.qty_refugo);
+      modulos[m].escolha += isRevisaoFinal ? 0 : num(row.qty_reprovadas);
+      modulos[m].refugo  += isRevisaoFinal ? num(row.qty_reprovadas) : num(row.defects?.qty_refugo);
       modulos[m].count++;
+      if (m === 'colagem') {
+        resolvidoColagem += num(row.defects?.boas_revisadas) + num(row.defects?.refugo_revisao);
+        refugoRevisaoCol += num(row.defects?.refugo_revisao);
+      }
+      if (isRevisaoFinal) {
+        resolvidoRevisaoFinal += num(row.defects?.quantidade_recuperada_revisao) + num(row.qty_reprovadas);
+      }
     }
 
     // Inspeções: início (producao_inicial) e acabado (produto_acabado).
@@ -108,8 +120,11 @@ const OpTraceBanner: React.FC<Props> = ({ op, moduloAtual }) => {
     }
 
     const modVals = Object.values(modulos);
-    const escolhaTotal = inicial.escolha + modVals.reduce((s, m) => s + m.escolha, 0) + acabado.escolha;
-    const refugoTotal  = inicial.refugo  + modVals.reduce((s, m) => s + m.refugo,  0) + acabado.refugo;
+    // Escolha PENDENTE: gerada em todas as etapas − resolvida na colagem
+    // (revisada antes de colar) − resolvida na Revisão Final. Zera ao fechar a OP.
+    const escolhaGerada = inicial.escolha + modVals.reduce((s, m) => s + m.escolha, 0) + acabado.escolha;
+    const escolhaTotal = Math.max(0, escolhaGerada - resolvidoColagem - resolvidoRevisaoFinal);
+    const refugoTotal  = inicial.refugo + modVals.reduce((s, m) => s + m.refugo, 0) + acabado.refugo + refugoRevisaoCol;
     const boasExpedicao = acabado.count > 0 ? acabado.boas : 0;
 
     setSummary({

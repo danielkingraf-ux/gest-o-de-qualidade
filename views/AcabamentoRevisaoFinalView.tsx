@@ -515,6 +515,8 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
     escolhaColagem: number;
     refugoColagem: number;
     aprovadoColagem: number;
+    boasRevisadasColagem: number;
+    refugoRevisaoColagem: number;
     rodadasProdutoAcabado: number;
     escolhaProdutoAcabado: number;
     refugoProdutoAcabado: number;
@@ -634,14 +636,21 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         : Math.max(0, escolhaColRaw - (escolhaImpressao + escolhaCorteVinco));
       const refugoColagem     = (colRes.data ?? []).reduce((s: number, r: { defects: Record<string, number> | null }) => s + (Number(r.defects?.qty_refugo) || 0), 0);
       const aprovadoColagem   = (colRes.data ?? []).reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
+      // Escolha já RESOLVIDA na colagem (revisada antes de colar): as boas
+      // recuperadas voltaram pro fluxo e o refugo da revisão é perda definitiva.
+      // Nada disso chega à Revisão Final.
+      const boasRevisadasColagem = colData.reduce((s, r) => s + (Number((r.defects as Record<string, unknown>)?.boas_revisadas) || 0), 0);
+      const refugoRevisaoColagem = colData.reduce((s, r) => s + (Number((r.defects as Record<string, unknown>)?.refugo_revisao) || 0), 0);
 
       for (const row of (colRes.data ?? []) as Array<{ operator_ids: string[] | null; machine_id: string | null }>) {
         if (Array.isArray(row.operator_ids)) row.operator_ids.forEach((id: string) => id && opIds.add(id));
         if (row.machine_id) machineIds.add(row.machine_id);
       }
 
-      const totalEscolha     = escolhaImpressao + escolhaCorteVinco + escolhaColagem + escolhaProdutoAcabado;
-      const totalRefugoAntes = refugoImpressao + refugoCorteVinco + refugoColagem + refugoProdutoAcabado;
+      const totalEscolha     = Math.max(0,
+        escolhaImpressao + escolhaCorteVinco + escolhaColagem + escolhaProdutoAcabado
+        - boasRevisadasColagem - refugoRevisaoColagem);
+      const totalRefugoAntes = refugoImpressao + refugoCorteVinco + refugoColagem + refugoRevisaoColagem + refugoProdutoAcabado;
 
       const { count: totalPallets } = await supabase
         .from('pallet_inspections').select('id', { count: 'exact', head: true })
@@ -668,6 +677,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
         rodadasImpressao, escolhaImpressao, refugoImpressao, boaImpressao,
         rodadasCorteVinco, escolhaCorteVinco, refugoCorteVinco, aprovadoCorteVinco,
         rodadasColagem, escolhaColagem, refugoColagem, aprovadoColagem,
+        boasRevisadasColagem, refugoRevisaoColagem,
         rodadasProdutoAcabado, escolhaProdutoAcabado, refugoProdutoAcabado,
         palletsReprovados, totalPallets: totalPallets ?? 0, unidadesPalletsReprovados,
         totalEscolha, totalRefugoAntes, operadoresNomes, maquinasNomes,
@@ -1092,6 +1102,13 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                       <td className="px-3 py-2 text-right font-bold text-rose-500">{fmt(saldoOp.refugoProdutoAcabado)}</td>
                     </tr>
                   )}
+                  {(saldoOp.boasRevisadasColagem > 0 || saldoOp.refugoRevisaoColagem > 0) && (
+                    <tr className="bg-slate-50 dark:bg-slate-800/40">
+                      <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-slate-500" colSpan={4}>Escolha já resolvida na Colagem (revisada antes de colar)</td>
+                      <td className="px-3 py-2 text-right text-sm font-bold text-emerald-600">−{fmt(saldoOp.boasRevisadasColagem)} recuperadas</td>
+                      <td className="px-3 py-2 text-right text-sm font-bold text-rose-500">−{fmt(saldoOp.refugoRevisaoColagem)} refugo</td>
+                    </tr>
+                  )}
                   <tr className="bg-amber-50 dark:bg-amber-950/20 font-black">
                     <td className="px-3 py-2 text-[10px] uppercase tracking-widest text-amber-700 dark:text-amber-400" colSpan={4}>Total escolha → Revisão Final</td>
                     <td className="px-3 py-2 text-right text-lg text-amber-700 dark:text-amber-300">{fmt(saldoOp.totalEscolha)}</td>
@@ -1105,7 +1122,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
               </table>
             </div>
             <p className="text-[9px] text-slate-400 italic">
-              Cada etapa envia sua escolha diretamente à Revisão Final. A colagem soma também a escolha acumulada (impressão + vinco) que não foi revisada antes de colar. Pallets reprovados no PA seguem à Revisão Final para inspeção peça a peça.
+              Cada etapa envia sua escolha à Revisão Final. O que a colagem já revisou antes de colar (boas recuperadas + refugo da revisão) é descontado — só chega aqui a escolha pendente. Pallets reprovados no PA seguem à Revisão Final para inspeção peça a peça.
             </p>
           </section>
         )}

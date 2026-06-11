@@ -159,10 +159,17 @@ const AcabamentoColagemView: React.FC = () => {
     ]).then(([cvRes, colRes, inspRes]) => {
       const aprovadasCv = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_aprovadas: number }) => s + (r.qty_aprovadas || 0), 0);
-      const jaProcessadoColagem = (colRes.data ?? [])
-        .reduce((s: number, r: { qty_revisadas: number }) => s + (r.qty_revisadas || 0), 0);
-      if (aprovadasCv > 0) {
-        const liquido = Math.max(0, aprovadasCv - jaProcessadoColagem);
+      const colRows = (colRes.data ?? []) as Array<{ qty_revisadas: number; defects: Record<string, unknown> | null }>;
+      const jaProcessadoColagem = colRows.reduce((s, r) => s + (r.qty_revisadas || 0), 0);
+      const dInt = (d: Record<string, unknown> | null, k: string) => Number(d?.[k]) || 0;
+      // Escolha já resolvida em registros ANTERIORES de colagem desta OP:
+      // as boas recuperadas voltaram pro fluxo (entraram no Rodado anterior)
+      // e o refugo da revisão saiu definitivamente.
+      const boasRevisadasAnt  = colRows.reduce((s, r) => s + dInt(r.defects, 'boas_revisadas'), 0);
+      const refugoRevisaoAnt  = colRows.reduce((s, r) => s + dInt(r.defects, 'refugo_revisao'), 0);
+      const baseDisponivel = aprovadasCv + boasRevisadasAnt;
+      if (baseDisponivel > 0) {
+        const liquido = Math.max(0, baseDisponivel - jaProcessadoColagem);
         setSaldoCorteVinco(liquido);
         setQtyRodadas(prev => prev === 0 ? liquido : prev);
       } else {
@@ -184,8 +191,9 @@ const AcabamentoColagemView: React.FC = () => {
       }
       const escolhaVinco = (cvRes.data ?? [])
         .reduce((s: number, r: { qty_reprovadas: number }) => s + (r.qty_reprovadas || 0), 0);
-      // Total acumulado (informativo — vai para Revisão Final, exceto boas da revisão)
-      setEscolhaAcumulada(Math.max(0, escolhaImpressao + escolhaVinco));
+      // Escolha acumulada PENDENTE = gerada (impressão + vinco) − já resolvida
+      // em registros anteriores de colagem (boas recuperadas + refugo da revisão).
+      setEscolhaAcumulada(Math.max(0, escolhaImpressao + escolhaVinco - boasRevisadasAnt - refugoRevisaoAnt));
 
       setOpHistory(colRes.data ?? []);
     });
@@ -238,8 +246,9 @@ const AcabamentoColagemView: React.FC = () => {
     if (qtyRodadas === 0) { showToast('Informe a quantidade rodada', 'error'); return; }
     if (!recordDate || !shift) { showToast('Informe data e turno', 'error'); return; }
     if (!selectedDefectKey && defectQty > 0) { showToast('Selecione o defeito encontrado', 'error'); return; }
-    if (saldoCorteVinco !== null && qtyRodadas > saldoCorteVinco) {
-      showToast(`Quantidade rodada maior que o saldo disponivel da etapa anterior. Recebido: ${fmt(saldoCorteVinco)} un.`, 'error');
+    const disponivelParaRodar = (saldoCorteVinco ?? 0) + (revisadaAntesColar === true ? qtyBoasRevisadas : 0);
+    if (saldoCorteVinco !== null && qtyRodadas > disponivelParaRodar) {
+      showToast(`Quantidade rodada maior que o disponivel (saldo C/V + boas recuperadas). Disponivel: ${fmt(disponivelParaRodar)} un.`, 'error');
       return;
     }
     if (qtyEscolha + qtyRefugo > qtyRodadas) {
@@ -337,7 +346,11 @@ const AcabamentoColagemView: React.FC = () => {
   const qtyAprovadas = Math.max(0, qtyRodadas - qtyEscolha - qtyRefugo);
   const totalDefects = DEFECTS.reduce((s, d) => s + (defects[d.key] ?? 0), 0);
   const saldoRecebido = saldoCorteVinco ?? 0;
-  const saldoExcedido = saldoCorteVinco !== null && qtyRodadas > saldoRecebido;
+  // Boas recuperadas AGORA (formulário atual) entram no disponível — elas são
+  // material físico que volta pro fluxo e pode ser colado nesta rodada.
+  const recuperadasAtuais = revisadaAntesColar === true ? qtyBoasRevisadas : 0;
+  const disponivelTotal = saldoRecebido + recuperadasAtuais;
+  const saldoExcedido = saldoCorteVinco !== null && qtyRodadas > disponivelTotal;
   const composicaoInvalida = qtyEscolha + qtyRefugo > qtyRodadas;
   const statusLabel = opInfo?.status ? opInfo.status.replace(/_/g, ' ') : opFound === false ? 'OP nao encontrada' : 'Em preenchimento';
 
@@ -407,6 +420,11 @@ const AcabamentoColagemView: React.FC = () => {
                   <p className="text-xl font-black text-emerald-800 dark:text-emerald-200 leading-none">{fmt(qtyAprovadas)}</p>
                 </div>
               </div>
+              {recuperadasAtuais > 0 && (
+                <p className="mt-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  Disponível p/ rodar: {fmt(disponivelTotal)} un. ({fmt(saldoRecebido)} do C/V + {fmt(recuperadasAtuais)} recuperadas da escolha)
+                </p>
+              )}
               {/* Motivo da escolha gerada na colagem */}
               {qtyEscolha > 0 && (
                 <div className="mt-2.5">
