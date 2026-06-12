@@ -898,7 +898,7 @@ export default function RecordsView() {
                     return (
                       <div key={idx} className={`flex justify-between items-center p-2 rounded-lg border ${colorClasses}`}>
                         <div className="flex items-center gap-2">
-                          {d.category && <span className="text-[8px] font-black uppercase tracking-widest opacity-50">{d.category}</span>}
+                          {d.category && <span className="text-[9px] font-black uppercase tracking-widest opacity-50">{d.category}</span>}
                           <span className="text-xs font-bold uppercase">{d.name}</span>
                         </div>
                         <span className="text-sm font-black">{d.count}</span>

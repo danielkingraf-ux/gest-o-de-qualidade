@@ -83,7 +83,7 @@ const EscolhaMotivoInput: React.FC<Props> = ({
   return (
     <div>
       {label && (
-        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1">
+        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1">
           {label}
           {required && <span className="text-rose-500">*</span>}
         </label>

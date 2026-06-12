@@ -725,7 +725,7 @@ export default function FinishingAnalysisView() {
                                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
                                     <span className="material-symbols-outlined text-xs text-indigo-500">engineering</span>
                                     Operadores <span className="text-rose-400">*</span>
-                                    <span className="ml-auto text-[8px] font-bold text-amber-500 normal-case tracking-normal">⚠ 1 registro por turno</span>
+                                    <span className="ml-auto text-[9px] font-bold text-amber-500 normal-case tracking-normal">⚠ 1 registro por turno</span>
                                 </label>
                                 {selectedOperatorIds.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
@@ -985,7 +985,7 @@ export default function FinishingAnalysisView() {
                                             >
                                                 <span className="text-[10px] font-black leading-none">#{num}</span>
                                                 {icon  && <span className="material-symbols-outlined text-[13px] leading-none mt-0.5">{icon}</span>}
-                                                {label && <span className="text-[7px] font-black leading-none mt-0.5 opacity-80">{label}</span>}
+                                                {label && <span className="text-[9px] font-black leading-none mt-0.5 opacity-80">{label}</span>}
                                             </div>
                                         );
                                     })}

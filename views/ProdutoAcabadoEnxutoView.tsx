@@ -253,7 +253,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
           <div className="flex items-center gap-2 mb-3">
             <span className="material-symbols-outlined text-teal-500">inventory_2</span>
             <div className="flex-1 min-w-0">
-              <p className="text-[8px] font-black uppercase tracking-widest text-teal-500 leading-none">Processo</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-teal-500 leading-none">Processo</p>
               <h1 className="text-lg font-black uppercase text-slate-900 dark:text-white leading-tight">Produto Acabado</h1>
             </div>
             {escolhaExcede && (
@@ -264,7 +264,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <div className="md:col-span-2">
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
               <input
                 list="pa-op-list"
                 value={op}
@@ -275,17 +275,17 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
               <datalist id="pa-op-list">{opList.map(o => <option key={o} value={o} />)}</datalist>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
               <p className="mt-0.5 flex h-9 items-center rounded-lg bg-slate-50 px-2.5 text-sm font-black text-slate-700 dark:bg-slate-800 dark:text-slate-100">{fmt(opInfo?.qtd_total ?? 0)}</p>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Status</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Status</label>
               <p className={`mt-0.5 flex h-9 items-center rounded-lg px-2.5 text-xs font-black uppercase truncate ${opFound === false ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : opInfo ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20' : 'bg-slate-50 text-slate-400 dark:bg-slate-800'}`}>
                 {opFound === false ? 'não encontrada' : opInfo?.status ?? '—'}
               </p>
             </div>
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Data</label>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Data</label>
               <input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)}
                 className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800" />
             </div>
@@ -301,7 +301,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
 
             {/* Resultado */}
             <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
                 <span className="material-symbols-outlined text-teal-500 text-sm">calculate</span>
                 Resultado nesta etapa
               </p>
@@ -309,7 +309,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
               {recebidoColagem > 0 && (
                 <div className={`rounded-xl border p-3 mb-3 ${escolhaExcede ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20' : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20'}`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600">Recebido da colagem</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Recebido da colagem</span>
                     <span className="text-xl font-black text-emerald-700 dark:text-emerald-300">{fmt(recebidoColagem)}</span>
                   </div>
                   <p className={`text-[9px] font-bold mt-0.5 ${escolhaExcede ? 'text-rose-600' : 'text-slate-400'}`}>
@@ -327,17 +327,17 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
               <div className="grid grid-cols-3 gap-2">
                 {recebidoColagem > 0 ? (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20 p-2.5 flex flex-col gap-1">
-                    <p className="text-[7px] font-black uppercase tracking-widest text-emerald-600 leading-tight">Boas aprovadas</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 leading-tight">Boas aprovadas</p>
                     <p className="text-xl font-black text-emerald-700 dark:text-emerald-300 leading-none">{fmt(boasEfetiva)}</p>
-                    <p className="text-[8px] text-slate-400">recebido − reprov. − refugo</p>
+                    <p className="text-[9px] text-slate-400">recebido − reprov. − refugo</p>
                   </div>
                 ) : (
                   <NumberField label="Boas que passaram (un.)" value={boas} onChange={setBoas} accent="emerald" />
                 )}
                 <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 p-2.5 flex flex-col gap-1">
-                  <p className="text-[7px] font-black uppercase tracking-widest text-amber-600 leading-tight">Reprovados (un.)</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 leading-tight">Reprovados (un.)</p>
                   <p className="text-xl font-black text-amber-700 dark:text-amber-300 leading-none">{fmt(reprovadosUn)}</p>
-                  <p className="text-[8px] text-slate-400">→ Revisão Final</p>
+                  <p className="text-[9px] text-slate-400">→ Revisão Final</p>
                 </div>
                 <NumberField label="Unid. por pallet" value={unidPorPallet} onChange={setUnidPorPallet} accent="slate" />
               </div>
@@ -365,13 +365,13 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
               <section className={`rounded-2xl border p-4 shadow-sm ${cobre ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20' : 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20'}`}>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
-                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">Cobre o pedido?</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Cobre o pedido?</p>
                     <p className={`text-sm font-black mt-0.5 ${cobre ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
                       {cobre ? 'Sim — boas ≥ pedido' : 'Ainda não — falta escolha/recuperação'}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Boas vs pedido</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Boas vs pedido</p>
                     <p className="text-lg font-black text-slate-700 dark:text-slate-200">{fmt(boasEfetiva)} / {fmt(opInfo.qtd_total)}</p>
                   </div>
                 </div>
@@ -388,13 +388,13 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
 
           {/* Coluna direita: operadores + analistas + máquina + turno + obs */}
           <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
               <span className="material-symbols-outlined text-teal-500 text-sm">assignment_ind</span>
               Registro do turno
             </p>
             <div className="space-y-2.5">
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
                 <select value={selectedMachineId} onChange={e => setSelectedMachineId(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione...</option>
@@ -404,7 +404,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
               <ChipPicker label="Operadores" options={operators} selected={selectedOperatorIds} onToggle={toggleOperator} />
               <ChipPicker label="Analistas" options={analysts} selected={selectedAnalystIds} onToggle={toggleAnalyst} />
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Turno</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Turno</label>
                 <select value={shift} onChange={e => setShift(e.target.value)}
                   className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="Manha">Manhã</option>
@@ -413,7 +413,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Observações</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Observações</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
                   className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs outline-none dark:border-slate-700 dark:bg-slate-800 resize-none" />
               </div>
@@ -424,7 +424,7 @@ const ProdutoAcabadoEnxutoView: React.FC = () => {
         {/* Recentes */}
         {recent.length > 0 && (
           <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Registros recentes</p>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Registros recentes</p>
             <div className="grid gap-1.5">
               {recent.map(r => (
                 <div key={r.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
@@ -464,7 +464,7 @@ const ChipPicker: React.FC<{
   onToggle: (id: string) => void;
 }> = ({ label, options, selected, onToggle }) => (
   <div>
-    <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">{label}</label>
+    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</label>
     <div className="mt-1 flex flex-wrap gap-1">
       {options.length === 0 && <span className="text-xs text-slate-400">Nenhum cadastrado</span>}
       {options.map(o => {
@@ -495,7 +495,7 @@ const NumberField: React.FC<{
     'focus:ring-slate-500/20 text-slate-700 dark:text-slate-200';
   return (
     <div>
-      <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">{label}</label>
+      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</label>
       <input type="number" min={0} value={value}
         onChange={e => onChange(Math.max(0, Number(e.target.value) || 0))}
         className={`mt-0.5 w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none font-black text-lg focus:ring-2 ${ring}`} />

@@ -266,7 +266,7 @@ export default function ShiftLogView() {
                                                 <div className="flex items-center justify-between gap-2 mb-2">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-xs font-black uppercase tracking-tight">{log.user_email?.split('@')[0]}</span>
-                                                        <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 opacity-70">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 opacity-70">
                                                             {log.shift}
                                                         </span>
                                                     </div>

@@ -174,11 +174,11 @@ const DefectPhotoUpload: React.FC<DefectPhotoUploadProps> = ({
                   <p className="text-[9px] text-white font-medium truncate">{photo.caption}</p>
                 )}
                 {photo.defect_type && (
-                  <p className="text-[8px] text-white/70 font-bold uppercase tracking-wider truncate">{photo.defect_type}</p>
+                  <p className="text-[9px] text-white/70 font-bold uppercase tracking-wider truncate">{photo.defect_type}</p>
                 )}
               </div>
               {/* Badge salvo */}
-              <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-emerald-500 text-[8px] font-black text-white uppercase">
+              <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-emerald-500 text-[9px] font-black text-white uppercase">
                 Salva
               </div>
               {/* Botao remover */}
@@ -214,7 +214,7 @@ const DefectPhotoUpload: React.FC<DefectPhotoUploadProps> = ({
                 />
               </div>
               {/* Badge pendente */}
-              <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-amber-500 text-[8px] font-black text-white uppercase">
+              <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-amber-500 text-[9px] font-black text-white uppercase">
                 Pendente
               </div>
               {/* Botao remover */}

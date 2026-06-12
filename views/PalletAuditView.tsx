@@ -166,7 +166,7 @@ export default function PalletAuditView() {
                                 level="M"
                             />
                         </div>
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest text-center">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
                             Audit QR
                         </p>
                     </div>

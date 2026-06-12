@@ -170,7 +170,7 @@ const SectionTitle: React.FC<{
       <div className="flex items-center gap-2 flex-wrap">
         <h2 className="text-sm font-black uppercase tracking-tight text-slate-800 dark:text-white leading-none">{title}</h2>
         {optional && (
-          <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 font-bold uppercase tracking-wide">opcional</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 font-bold uppercase tracking-wide">opcional</span>
         )}
       </div>
       {subtitle && <p className="text-[10px] text-slate-400 mt-0.5">{subtitle}</p>}
@@ -219,7 +219,7 @@ const ProblemaCard: React.FC<{
         <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex-1">
           Problema {index + 1}
           {problema.setor && (
-            <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-black ${setorColor.active}`}>
+            <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-black ${setorColor.active}`}>
               {problema.setor}
             </span>
           )}
@@ -360,7 +360,7 @@ const PeriodoTecnicoCard: React.FC<{
               ['Custo', fmtMoney(custo)],
             ] as const).map(([label, value]) => (
               <div key={label} className="rounded-lg bg-white dark:bg-slate-900 border border-violet-100 dark:border-violet-900/30 p-2 text-center">
-                <p className="text-[7px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
                 <p className="text-[11px] font-black text-violet-700 dark:text-violet-300 mt-0.5">{value}</p>
               </div>
             ))}
@@ -1107,7 +1107,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 onChange={e => setResultadoField('qty_recuperada', e.target.value)}
                 className="w-full h-14 rounded-xl border-0 bg-white dark:bg-slate-900 text-center text-2xl font-black text-emerald-700 dark:text-emerald-300 outline-none focus:ring-2 focus:ring-emerald-400/30 shadow-sm"
               />
-              {qtyRecuperada > 0 && <p className="text-[8px] text-emerald-500 text-center mt-1 font-bold">+ {fmt(qtyRecuperada)} un. aprovadas</p>}
+              {qtyRecuperada > 0 && <p className="text-[9px] text-emerald-500 text-center mt-1 font-bold">+ {fmt(qtyRecuperada)} un. aprovadas</p>}
             </div>
 
             {/* REFUGO */}
@@ -1121,7 +1121,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 onChange={e => setResultadoField('qty_refugada', e.target.value)}
                 className="w-full h-14 rounded-xl border-0 bg-white dark:bg-slate-900 text-center text-2xl font-black text-rose-600 dark:text-rose-300 outline-none focus:ring-2 focus:ring-rose-400/30 shadow-sm"
               />
-              {qtyRefugadaFinal > 0 && <p className="text-[8px] text-rose-500 text-center mt-1 font-bold">{fmt(qtyRefugadaFinal)} un. descartadas</p>}
+              {qtyRefugadaFinal > 0 && <p className="text-[9px] text-rose-500 text-center mt-1 font-bold">{fmt(qtyRefugadaFinal)} un. descartadas</p>}
             </div>
           </div>
 
@@ -1158,7 +1158,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 color === 'indigo'  ? 'border-indigo-200 dark:border-indigo-900/50 bg-indigo-50 dark:bg-indigo-950/20' :
                 'border-teal-100 dark:border-teal-900/50 bg-white dark:bg-slate-900'
               }`}>
-                <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 leading-none">{label}</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-none">{label}</p>
                 <p className={`mt-1 text-base font-black leading-none ${
                   color === 'emerald' ? 'text-emerald-700 dark:text-emerald-300' :
                   color === 'rose'    ? 'text-rose-600 dark:text-rose-300' :
@@ -1193,7 +1193,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                   <div className="ml-auto text-right shrink-0">
                     <p className="text-[9px] font-black uppercase text-rose-500">Reimprimir</p>
                     <p className="text-xl font-black text-rose-600 dark:text-rose-400">{fmt(Math.abs(saldo))}</p>
-                    <p className="text-[8px] text-rose-400">unidades</p>
+                    <p className="text-[9px] text-rose-400">unidades</p>
                   </div>
                 )}
               </div>
@@ -1243,7 +1243,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                 { label: 'Homem-hora',     value: `${totalHomemHora.toFixed(1).replace('.', ',')} HH`, color: 'text-violet-700 dark:text-violet-300' },
               ]).map(({ label, value, color }) => (
                 <div key={label} className="rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900/30 p-2.5 text-center">
-                  <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
                   <p className={`text-sm font-black mt-0.5 ${color}`}>{value}</p>
                 </div>
               ))}
@@ -1287,7 +1287,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{s.icon}</span>
                   <span>{s.label}</span>
                   {statusSugerido === s.value && statusFinal !== s.value && (
-                    <span className="text-[8px] opacity-60">sugerido</span>
+                    <span className="text-[9px] opacity-60">sugerido</span>
                   )}
                 </button>
               );
@@ -1332,12 +1332,12 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="text-xs font-black text-slate-800 dark:text-white">OP {r.op}</span>
                       {statusOpt && (
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full border ${statusOpt.on}`}>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${statusOpt.on}`}>
                           {statusOpt.label}
                         </span>
                       )}
                       {fechou !== undefined && (
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full ${
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
                           fechou
                             ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
                             : 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
@@ -1354,7 +1354,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                         {setores.map(s => {
                           const c = SETOR_COLORS[s];
                           return (
-                            <span key={s} className={`text-[8px] px-1.5 py-0.5 rounded font-bold border ${c ? c.inactive : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+                            <span key={s} className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${c ? c.inactive : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}>
                               {s}
                             </span>
                           );
@@ -1388,7 +1388,7 @@ const AcabamentoRevisaoFinalView: React.FC = () => {
                     style={{ width: `${(Object.values(stepDone).filter(Boolean).length / Object.values(stepDone).length) * 100}%` }}
                   />
                 </div>
-                <span className="text-[8px] font-black text-slate-400 shrink-0">
+                <span className="text-[9px] font-black text-slate-400 shrink-0">
                   {Object.values(stepDone).filter(Boolean).length}/{Object.values(stepDone).length}
                 </span>
               </>

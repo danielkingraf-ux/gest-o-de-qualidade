@@ -682,7 +682,7 @@ export default function ManagementReportView() {
                 <div key={card.label} className={`rounded-xl border p-3 ${cardStyle(card.color).box}`}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className={`material-symbols-outlined text-sm ${cardStyle(card.color).icon}`}>{card.icon}</span>
-                    <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">{card.label}</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{card.label}</span>
                   </div>
                   <p className={`text-lg font-black ${cardStyle(card.color).value}`}>{card.value}</p>
                 </div>
@@ -983,7 +983,7 @@ export default function ManagementReportView() {
                                 </span>
                                 <div className="text-right shrink-0">
                                   <span className="text-[10px] font-black text-slate-800 dark:text-white">{fmt(item.total)}</span>
-                                  <span className="text-[8px] text-slate-400 ml-1">un · {item.ocorrencias}×</span>
+                                  <span className="text-[9px] text-slate-400 ml-1">un · {item.ocorrencias}×</span>
                                 </div>
                               </div>
                               <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">

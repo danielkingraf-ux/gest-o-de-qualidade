@@ -749,7 +749,7 @@ const ReportsView = () => {
                     </th>
                     <th className="py-2 text-right border-l border-slate-100 dark:border-slate-800 pl-2">Data</th>
                   </tr>
-                  <tr className="border-b border-slate-100 text-[8px] font-black uppercase tracking-widest text-slate-300 dark:border-slate-800 dark:text-slate-600">
+                  <tr className="border-b border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-300 dark:border-slate-800 dark:text-slate-600">
                     <th className="pb-1" />
                     <th className="pb-1 text-right px-2 border-l border-slate-100 dark:border-slate-800">Rod.</th>
                     <th className="pb-1 text-right px-1 text-amber-400">Esc.</th>
@@ -1056,7 +1056,7 @@ function StatusPill({ label, value, tone }: { label: string; value: number; tone
   return (
     <div className={`rounded-lg p-2 text-center ${colors}`}>
       <p className="text-sm font-black">{formatNumber(value)}</p>
-      <p className="text-[8px] font-black uppercase tracking-widest">{label}</p>
+      <p className="text-[9px] font-black uppercase tracking-widest">{label}</p>
     </div>
   );
 }

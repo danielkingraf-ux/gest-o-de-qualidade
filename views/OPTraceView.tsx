@@ -749,15 +749,15 @@ function InspCard({ record, index }: { key?: React.Key; record: InspRecord; inde
                     {(record.qtyProduzida > 0 || record.qtyEscolha > 0 || record.qtyRefugo > 0) && (
                         <div className="grid grid-cols-3 gap-2">
                             <div className="p-2 rounded-xl text-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                                <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Produzido</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Produzido</p>
                                 <p className="text-base font-black text-slate-800 dark:text-slate-100">{fmt.format(record.qtyProduzida)}</p>
                             </div>
                             <div className="p-2 rounded-xl text-center bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
-                                <p className="text-[8px] font-black uppercase tracking-widest text-amber-500">Escolha</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-500">Escolha</p>
                                 <p className="text-base font-black text-amber-700 dark:text-amber-300">{fmt.format(record.qtyEscolha)}</p>
                             </div>
                             <div className="p-2 rounded-xl text-center bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
-                                <p className="text-[8px] font-black uppercase tracking-widest text-rose-500">Refugo</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-rose-500">Refugo</p>
                                 <p className="text-base font-black text-rose-700 dark:text-rose-300">{fmt.format(record.qtyRefugo)}</p>
                             </div>
                         </div>
