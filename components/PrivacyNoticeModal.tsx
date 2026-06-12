@@ -42,7 +42,8 @@ export default function PrivacyNoticeModal({ userId }: { userId: string }) {
   if (loading || !needsAcceptance) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-[120] w-full max-w-lg -translate-x-1/2 px-4">
+    // bottom-24 deixa livre a barra de ações sticky (Salvar/Finalizar) das telas de produção
+    <div className="fixed bottom-24 left-1/2 z-[120] w-full max-w-lg -translate-x-1/2 px-4">
       <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
         <span className="material-symbols-outlined shrink-0 text-base text-primary">verified_user</span>
         <p className="flex-1 text-[10px] font-semibold leading-snug text-slate-500 dark:text-slate-400">

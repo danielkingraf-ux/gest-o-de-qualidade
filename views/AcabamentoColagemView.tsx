@@ -45,18 +45,18 @@ const QtyCard: React.FC<{
       <button
         type="button"
         onClick={() => onChange(Math.max(0, value - 1))}
-        className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs"
+        className="size-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs"
       >-</button>
       <input
         type="number"
         value={value}
         onChange={e => onChange(Math.max(0, Number(e.target.value) || 0))}
-        className="flex-1 h-6 bg-transparent text-center font-black text-xs outline-none min-w-0"
+        className="flex-1 h-8 bg-transparent text-center font-black text-sm outline-none min-w-0"
       />
       <button
         type="button"
         onClick={() => onChange(value + 1)}
-        className="size-6 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs"
+        className="size-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 text-xs"
       >+</button>
     </div>
   </div>
@@ -318,15 +318,15 @@ const AcabamentoColagemView: React.FC = () => {
 
   return (
     <div className="min-h-full bg-slate-50 dark:bg-slate-950 pb-16">
-      <div className="mx-auto max-w-5xl p-3 md:p-4 space-y-3">
+      <div className="mx-auto max-w-5xl p-4 md:p-6 space-y-4">
 
         {/* ── Cabeçalho compacto ── */}
-        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <span className="material-symbols-outlined text-indigo-500">precision_manufacturing</span>
             <div className="flex-1 min-w-0">
               <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 leading-none">Processo</p>
-              <h1 className="text-lg font-black uppercase text-slate-900 dark:text-white leading-tight">Colagem</h1>
+              <h1 className="text-xl md:text-2xl font-black uppercase text-slate-900 dark:text-white leading-tight">Colagem</h1>
             </div>
             {(saldoExcedido || composicaoInvalida) && (
               <span className="shrink-0 px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300 text-[9px] font-black uppercase tracking-widest">
@@ -338,33 +338,33 @@ const AcabamentoColagemView: React.FC = () => {
             <div className="md:col-span-2">
               <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nº da OP</label>
               <input list="col-op-list-simple" value={op} onChange={e => setOp(e.target.value)} placeholder="OP"
-                className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800" />
+                className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800" />
               <datalist id="col-op-list-simple">{opList.map(o => <option key={o} value={o} />)}</datalist>
             </div>
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. pedido</label>
-              <p className="mt-0.5 flex h-9 items-center rounded-lg bg-slate-50 px-2.5 text-sm font-black text-slate-700 dark:bg-slate-800 dark:text-slate-100">{fmt(opInfo?.qtd_total ?? 0)}</p>
+              <p className="mt-0.5 flex h-10 items-center rounded-lg bg-slate-50 px-2.5 text-sm font-black text-slate-700 dark:bg-slate-800 dark:text-slate-100">{fmt(opInfo?.qtd_total ?? 0)}</p>
             </div>
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Status</label>
-              <p className={`mt-0.5 flex h-9 items-center rounded-lg px-2.5 text-xs font-black uppercase truncate ${opFound === false ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20'}`}>{statusLabel}</p>
+              <p className={`mt-0.5 flex h-10 items-center rounded-lg px-2.5 text-xs font-black uppercase truncate ${opFound === false ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20'}`}>{statusLabel}</p>
             </div>
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Data</label>
               <input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)}
-                className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800" />
+                className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800" />
             </div>
           </div>
         </section>
 
         {/* ── Grid principal ── */}
-        <div className="grid md:grid-cols-[1fr_296px] gap-3 items-start">
+        <div className="grid md:grid-cols-[1fr_296px] gap-4 items-start">
 
           {/* Coluna esquerda: saldo + escolha + fotos */}
           <div className="space-y-3">
 
             {/* Saldo da etapa */}
-            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
                 <span className="material-symbols-outlined text-indigo-500 text-sm">calculate</span>
                 Saldo da etapa
@@ -481,13 +481,13 @@ const AcabamentoColagemView: React.FC = () => {
             )}
 
             {/* Fotos de defeito */}
-            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
               <DefectPhotoUpload pendingPhotos={pendingPhotos} onPendingChange={setPendingPhotos} disabled={saving} />
             </section>
           </div>
 
           {/* Coluna direita: turno */}
-          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
               <span className="material-symbols-outlined text-indigo-500 text-sm">assignment_ind</span>
               Registro do turno
@@ -496,7 +496,7 @@ const AcabamentoColagemView: React.FC = () => {
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operador</label>
                 <select value={selectedOperatorIds[0] ?? ''} onChange={e => setSelectedOperatorIds(e.target.value ? [e.target.value] : [])}
-                  className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
+                  className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione o operador</option>
                   {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
@@ -504,7 +504,7 @@ const AcabamentoColagemView: React.FC = () => {
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Máquina</label>
                 <select value={selectedMachineId} onChange={e => setSelectedMachineId(e.target.value)}
-                  className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
+                  className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Selecione a máquina</option>
                   {machines.map(m => <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>)}
                 </select>
@@ -512,7 +512,7 @@ const AcabamentoColagemView: React.FC = () => {
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Turno</label>
                 <select value={shift} onChange={e => setShift(e.target.value)}
-                  className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
+                  className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="Manha">Manhã</option>
                   <option value="Tarde">Tarde</option>
                   <option value="Noite">Noite</option>
@@ -521,7 +521,7 @@ const AcabamentoColagemView: React.FC = () => {
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Defeito encontrado</label>
                 <select value={selectedDefectKey} onChange={e => setSelectedDefectKey(e.target.value)}
-                  className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
+                  className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-800">
                   <option value="">Sem defeito</option>
                   {DEFECTS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                 </select>
@@ -531,7 +531,7 @@ const AcabamentoColagemView: React.FC = () => {
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Qtd. do defeito</label>
                   <input type="number" min={0} value={defectQty}
                     onChange={e => setDefectQty(Math.max(0, Number(e.target.value) || 0))}
-                    className="mt-0.5 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none dark:border-slate-700 dark:bg-slate-800" />
+                    className="mt-0.5 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm font-black outline-none dark:border-slate-700 dark:bg-slate-800" />
                 </div>
               )}
               <div>
